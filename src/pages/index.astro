@@ -1,16 +1,17 @@
 ---
-
+import Layout from "../layouts/Layout.astro";
+import Login from "../components/Login.tsx";
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout title="NFL Pickem">
+  <main class="min-h-screen bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+      <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">
+        NFL Pickem
+      </h1>
+      <div class="max-w-md mx-auto">
+        <Login client:load />
+      </div>
+    </div>
+  </main>
+</Layout>

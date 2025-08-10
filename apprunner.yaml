@@ -1,0 +1,39 @@
+version: 1.0
+runtime: docker
+build:
+  commands:
+    build:
+      - echo "Building NFL Pick'em Application for AWS App Runner"
+      - echo "Build completed - using Dockerfile"
+run:
+  runtime-version: latest
+  command: ./scripts/start.sh
+  network:
+    port: 8080
+    env: PORT
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "8080"
+    - name: FRONTEND_PORT
+      value: "8080"
+    - name: BACKEND_PORT
+      value: "3001"
+    - name: DATABASE_PATH
+      value: "/app/data/database.sqlite"
+    - name: CLIENT_URL
+      value: "https://your-app-name.region.awsapprunner.com"
+    - name: FRONTEND_URL
+      value: "https://your-app-name.region.awsapprunner.com"
+    # These should be set as secrets in App Runner console:
+    # - JWT_SECRET
+    # - SETTINGS_ENCRYPTION_KEY
+    # - ADMIN_EMAIL (optional)
+    # - ADMIN_PASSWORD (optional)
+    # SMTP settings (optional):
+    # - SMTP_HOST
+    # - SMTP_PORT
+    # - SMTP_USER
+    # - SMTP_PASS
+    # - FROM_EMAIL

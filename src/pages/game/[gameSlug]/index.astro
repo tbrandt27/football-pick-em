@@ -1,0 +1,16 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import GameView from '../../../components/GameView.tsx';
+
+export const prerender = false;
+
+const { gameSlug } = Astro.params;
+
+if (!gameSlug) {
+  return Astro.redirect('/dashboard');
+}
+---
+
+<Layout title="Game View - NFL Pickem">
+	<GameView gameSlug={gameSlug} client:load />
+</Layout>

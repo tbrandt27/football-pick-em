@@ -1,0 +1,16 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import GameManagement from '../../../components/GameManagement.tsx';
+
+export const prerender = false;
+
+const { gameId } = Astro.params;
+
+if (!gameId) {
+  return Astro.redirect('/dashboard');
+}
+---
+
+<Layout title="Manage Game - NFL Pickem">
+	<GameManagement gameId={gameId} client:load />
+</Layout>
