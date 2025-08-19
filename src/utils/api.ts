@@ -171,6 +171,12 @@ class ApiClient {
     });
   }
 
+  async deleteGame(gameId: string) {
+    return this.request<{ message: string }>(`/games/${gameId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Seasons endpoints
   async getCurrentSeason() {
     return this.request<{ season: Season }>('/seasons/current');

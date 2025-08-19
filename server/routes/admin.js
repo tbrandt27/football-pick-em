@@ -357,7 +357,13 @@ router.delete(
         return res.status(404).json({ error: "Game not found" });
       }
 
-      // Delete game and all related data (cascading)
+      // Delete related records manually to handle foreign key constraints
+      await db.run("DELETE FROM picks WHERE game_id = ?", [gameId]);
+      await db.run("DELETE FROM weekly_standings WHERE game_id = ?", [gameId]);
+      await db.run("DELETE FROM game_invitations WHERE game_id = ?", [gameId]);
+      await db.run("DELETE FROM game_participants WHERE game_id = ?", [gameId]);
+      
+      // Finally delete the game itself
       await db.run("DELETE FROM pickem_games WHERE id = ?", [gameId]);
 
       res.json({

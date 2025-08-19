@@ -53,13 +53,10 @@ app.use("/api/admin", adminRoutes);
 app.get("/logos/:filename", (req, res) => {
   const { filename } = req.params;
   const publicLogoPath = join(__dirname, "../public/logos", filename);
-  const imagesLogoPath = join(__dirname, "../images/logos", filename);
 
-  // Try public folder first, then images folder
+  // Try public folder
   if (existsSync(publicLogoPath)) {
     res.sendFile(publicLogoPath);
-  } else if (existsSync(imagesLogoPath)) {
-    res.sendFile(imagesLogoPath);
   } else {
     // Return a placeholder SVG for missing logos
     console.warn(`Missing logo file: ${filename}`);

@@ -196,6 +196,32 @@ const GamesManager: React.FC = () => {
     }
   };
 
+  const deleteGame = async (gameId: string, gameName: string) => {
+    if (!confirm(`Are you sure you want to delete "${gameName}"?\n\nThis action cannot be undone and will remove all participants, picks, and game data.`)) {
+      return;
+    }
+
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/games/${gameId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        // Reload games to remove the deleted one
+        loadData();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to delete game');
+      }
+    } catch (err) {
+      setError('Failed to delete game');
+    }
+  };
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
@@ -429,6 +455,12 @@ const GamesManager: React.FC = () => {
                       >
                         Manage
                       </a>
+                      <button
+                        onClick={() => deleteGame(game.id, game.name)}
+                        className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}

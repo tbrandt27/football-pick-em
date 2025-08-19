@@ -24,6 +24,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   const [editingGameName, setEditingGameName] = useState(false);
   const [newGameName, setNewGameName] = useState('');
   const [savingGameName, setSavingGameName] = useState(false);
+  const [deletingGame, setDeletingGame] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -160,6 +161,38 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   const handleCancelGameNameEdit = () => {
     setEditingGameName(false);
     setNewGameName(game?.game_name || '');
+  };
+
+  const handleDeleteGame = async () => {
+    if (!game) return;
+    
+    const confirmDelete = confirm(
+      `Are you sure you want to delete "${game.game_name}"?\n\nThis action cannot be undone and will remove all participants, picks, and game data.`
+    );
+    
+    if (!confirmDelete) return;
+
+    setDeletingGame(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await api.deleteGame(gameId);
+
+      if (response.success) {
+        setSuccess('Game deleted successfully! Redirecting to dashboard...');
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 2000);
+      } else {
+        setError(response.error || 'Failed to delete game');
+      }
+    } catch (err) {
+      setError('Failed to delete game');
+    } finally {
+      setDeletingGame(false);
+    }
   };
 
   const getHeaderStyle = () => {
@@ -320,6 +353,33 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
                 <h3 className="text-sm font-medium text-gray-500">Total Participants</h3>
                 <p className="text-lg font-semibold text-gray-900">{game.participants.length}</p>
               </div>
+            </div>
+            
+            {/* Delete Game Section */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-500 mb-4">Danger Zone</h3>
+              <button
+                onClick={handleDeleteGame}
+                disabled={deletingGame}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+              >
+                {deletingGame ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete Game</span>
+                  </>
+                )}
+              </button>
+              <p className="text-sm text-gray-500 mt-2">
+                This will permanently delete the game, all participants, and all picks. This action cannot be undone.
+              </p>
             </div>
           </div>
         </div>
