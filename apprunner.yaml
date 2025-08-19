@@ -1,10 +1,5 @@
 version: 1.0
 runtime: docker
-build:
-  commands:
-    build:
-      - echo "Building NFL Pick'em Application for AWS App Runner"
-      - echo "Build completed - using Dockerfile"
 run:
   command: ./scripts/start.sh
   network:
