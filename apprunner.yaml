@@ -6,7 +6,6 @@ build:
       - echo "Building NFL Pick'em Application for AWS App Runner"
       - echo "Build completed - using Dockerfile"
 run:
-  runtime-version: latest
   command: ./scripts/start.sh
   network:
     port: 8080
