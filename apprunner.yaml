@@ -1,7 +1,12 @@
 version: 1.0
-runtime: docker
+runtime: nodejs
+build:
+  commands:
+    build:
+      - npm ci
+      - npm run build
 run:
-  command: ./scripts/start.sh
+  command: npm run start
   network:
     port: 8080
     env: PORT
