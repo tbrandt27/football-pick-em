@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import db from '../models/database.js';
 
-const nflTeams = [
+const footballTeams = [
   // AFC East
   { code: 'BUF', name: 'Bills', city: 'Buffalo', conference: 'AFC', division: 'East', primaryColor: '#00338D', secondaryColor: '#C60C30' },
   { code: 'MIA', name: 'Dolphins', city: 'Miami', conference: 'AFC', division: 'East', primaryColor: '#008E97', secondaryColor: '#FC4C02' },
@@ -55,8 +55,8 @@ export async function seedTeams() {
   console.log('Seeding NFL teams...');
   
   try {
-    for (const team of nflTeams) {
-      const existingTeam = await db.get('SELECT id FROM nfl_teams WHERE team_code = ?', [team.code]);
+    for (const team of footballTeams) {
+      const existingTeam = await db.get('SELECT id FROM football_teams WHERE team_code = ?', [team.code]);
       
       if (!existingTeam) {
         // Map team codes to logo filenames - some codes don't match exactly
@@ -70,8 +70,8 @@ export async function seedTeams() {
         const logoPath = `/logos/${logoFilename}`;
         
         await db.run(`
-          INSERT INTO nfl_teams (
-            id, team_code, team_name, team_city, team_conference, 
+          INSERT INTO football_teams (
+            id, team_code, team_name, team_city, team_conference,
             team_division, team_logo, team_primary_color, team_secondary_color
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
@@ -109,13 +109,13 @@ export async function updateTeamLogos() {
       'LV': 'OAK.svg'
     };
     
-    const teams = await db.all('SELECT id, team_code FROM nfl_teams WHERE team_logo IS NULL OR team_logo = ""');
+    const teams = await db.all('SELECT id, team_code FROM football_teams WHERE team_logo IS NULL OR team_logo = ""');
     
     for (const team of teams) {
       const logoFilename = logoMap[team.team_code] || `${team.team_code}.svg`;
       const logoPath = `/logos/${logoFilename}`;
       
-      await db.run('UPDATE nfl_teams SET team_logo = ? WHERE id = ?', [logoPath, team.id]);
+      await db.run('UPDATE football_teams SET team_logo = ? WHERE id = ?', [logoPath, team.id]);
       console.log(`Updated ${team.team_code} with logo ${logoFilename}`);
     }
     

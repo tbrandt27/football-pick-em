@@ -17,7 +17,7 @@ router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
     const [userCount, gameCount, teamCount, seasonCount] = await Promise.all([
       db.get("SELECT COUNT(*) as count FROM users"),
       db.get("SELECT COUNT(*) as count FROM pickem_games"),
-      db.get("SELECT COUNT(*) as count FROM nfl_teams"),
+      db.get("SELECT COUNT(*) as count FROM football_teams"),
       db.get("SELECT COUNT(*) as count FROM seasons"),
     ]);
 
@@ -417,12 +417,12 @@ router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       SELECT 
         s.*,
         COUNT(DISTINCT pg.id) as game_count,
-        COUNT(DISTINCT ng.id) as nfl_games_count,
+        COUNT(DISTINCT ng.id) as football_games_count,
         s.season as year,
         s.is_current as is_active
       FROM seasons s
       LEFT JOIN pickem_games pg ON s.id = pg.season_id
-      LEFT JOIN nfl_games ng ON s.id = ng.season_id
+      LEFT JOIN football_games ng ON s.id = ng.season_id
       GROUP BY s.id
       ORDER BY s.season DESC
     `);
@@ -467,7 +467,7 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       SELECT 
         *,
         0 as game_count,
-        0 as nfl_games_count,
+        0 as football_games_count,
         season as year,
         is_current as is_active
       FROM seasons 
@@ -522,7 +522,7 @@ router.put(
 
 // Sync NFL games for season
 router.post(
-  "/seasons/:seasonId/sync-nfl-games",
+  "/seasons/:seasonId/sync-football-games",
   authenticateToken,
   requireAdmin,
   async (req, res) => {
@@ -539,7 +539,7 @@ router.post(
       // This would integrate with ESPN API to sync games
       // For now, return success with count
       const gameCount = await db.get(
-        "SELECT COUNT(*) as count FROM nfl_games WHERE season_id = ?",
+        "SELECT COUNT(*) as count FROM football_games WHERE season_id = ?",
         [seasonId]
       );
 
@@ -590,7 +590,7 @@ router.put(
 
 // Update NFL game time
 router.put(
-  "/nfl-games/:gameId",
+  "/football-games/:gameId",
   authenticateToken,
   requireAdmin,
   async (req, res) => {
@@ -598,7 +598,7 @@ router.put(
       const { gameId } = req.params;
       const { start_time } = req.body;
 
-      const game = await db.get("SELECT * FROM nfl_games WHERE id = ?", [
+      const game = await db.get("SELECT * FROM football_games WHERE id = ?", [
         gameId,
       ]);
       if (!game) {
@@ -607,7 +607,7 @@ router.put(
 
       await db.run(
         `
-      UPDATE nfl_games 
+      UPDATE football_games
       SET start_time = ?, updated_at = datetime('now')
       WHERE id = ?
     `,
@@ -699,7 +699,7 @@ router.put(
         team_logo,
       } = req.body;
 
-      const team = await db.get("SELECT * FROM nfl_teams WHERE id = ?", [
+      const team = await db.get("SELECT * FROM football_teams WHERE id = ?", [
         teamId,
       ]);
       if (!team) {
@@ -708,7 +708,7 @@ router.put(
 
       await db.run(
         `
-      UPDATE nfl_teams 
+      UPDATE football_teams
       SET team_city = ?, team_name = ?, team_primary_color = ?, team_secondary_color = ?, team_logo = ?, updated_at = datetime('now')
       WHERE id = ?
     `,

@@ -1,6 +1,10 @@
 version: 1.0
 runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
 
+instance:
+  # IAM role that gives App Runner access to DynamoDB and other AWS services
+  instance-role-arn: "{{resolve:ssm:/football-pickem/apprunner/instance-role-arn}}"
+
 build:
   commands:
     build:
@@ -18,25 +22,54 @@ run:
     port: 8080
     env: PORT
   env:
+    # Application Environment
     - name: NODE_ENV
       value: production
-    - name: DATABASE_PATH
-      value: "./server/data/database.sqlite"
     - name: CLIENT_URL
       value: ${AWS_APPRUNNER_SERVICE_URL}
     - name: FRONTEND_URL
       value: ${AWS_APPRUNNER_SERVICE_URL}
+
+    # Database Configuration
+    - name: DATABASE_TYPE
+      value: "auto"  # Uses DynamoDB in production, SQLite in development
+    
+    # DynamoDB Configuration (no file path needed - cloud service)
+    - name: DYNAMODB_TABLE_PREFIX
+      value: "football_pickem_"
+    - name: AWS_REGION
+      value: "us-east-1"
+    
+    # SQLite fallback (only used if DATABASE_TYPE=sqlite explicitly set)
+    # - name: DATABASE_PATH
+    #   value: "./server/data/database.sqlite"
+
+    # Security Configuration
     - name: JWT_SECRET
       value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:jwt_secret}}"
+    - name: SETTINGS_ENCRYPTION_KEY
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:settings_encryption_key}}"
+
+    # Admin Configuration
     - name: ADMIN_EMAIL
       value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_email}}"
     - name: ADMIN_PASSWORD
       value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_password}}"
 
-    # SMTP settings (optional):
-    # - SMTP_HOST
-    # - SMTP_PORT
-    # - SMTP_USER
-    # - SMTP_PASS
-    # - FROM_EMAIL
-    # - SETTINGS_ENCRYPTION_KEY
+    # SMTP Configuration (optional - can be configured via admin panel):
+    # - name: SMTP_HOST
+    #   value: "{{resolve:secretsmanager:football-pickem/smtp:SecretString:smtp_host}}"
+    # - name: SMTP_PORT
+    #   value: "{{resolve:secretsmanager:football-pickem/smtp:SecretString:smtp_port}}"
+    # - name: SMTP_USER
+    #   value: "{{resolve:secretsmanager:football-pickem/smtp:SecretString:smtp_user}}"
+    # - name: SMTP_PASS
+    #   value: "{{resolve:secretsmanager:football-pickem/smtp:SecretString:smtp_pass}}"
+    # - name: FROM_EMAIL
+    #   value: "{{resolve:secretsmanager:football-pickem/smtp:SecretString:from_email}}"
+
+    # AWS Credentials (optional - App Runner uses IAM roles by default)
+    # - name: AWS_ACCESS_KEY_ID
+    #   value: "{{resolve:secretsmanager:football-pickem/aws-credentials:SecretString:access_key_id}}"
+    # - name: AWS_SECRET_ACCESS_KEY
+    #   value: "{{resolve:secretsmanager:football-pickem/aws-credentials:SecretString:secret_access_key}}"

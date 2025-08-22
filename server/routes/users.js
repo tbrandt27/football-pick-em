@@ -21,7 +21,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
       FROM users u
-      LEFT JOIN nfl_teams t ON u.favorite_team_id = t.id
+      LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       ORDER BY u.created_at DESC
     `);
 
@@ -56,7 +56,7 @@ router.get('/:userId', authenticateToken, async (req, res) => {
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
       FROM users u
-      LEFT JOIN nfl_teams t ON u.favorite_team_id = t.id
+      LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       WHERE u.id = ?
     `, [userId]);
 
@@ -100,7 +100,7 @@ router.put('/:userId', authenticateToken, async (req, res) => {
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
       FROM users u
-      LEFT JOIN nfl_teams t ON u.favorite_team_id = t.id
+      LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       WHERE u.id = ?
     `, [userId]);
 

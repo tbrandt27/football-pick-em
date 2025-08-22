@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const teams = await db.all(`
-      SELECT * FROM nfl_teams 
+      SELECT * FROM football_teams
       ORDER BY team_conference, team_division, team_city
     `);
 
@@ -25,7 +25,7 @@ router.get('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
     
-    const team = await db.get('SELECT * FROM nfl_teams WHERE id = ?', [teamId]);
+    const team = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
     
     if (!team) {
       return res.status(404).json({ error: 'Team not found' });
@@ -59,7 +59,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Check if team code already exists
-    const existingTeam = await db.get('SELECT id FROM nfl_teams WHERE team_code = ?', [teamCode]);
+    const existingTeam = await db.get('SELECT id FROM football_teams WHERE team_code = ?', [teamCode]);
     if (existingTeam) {
       return res.status(409).json({ error: 'Team with this code already exists' });
     }
@@ -67,7 +67,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const teamId = uuidv4();
     
     await db.run(`
-      INSERT INTO nfl_teams (
+      INSERT INTO football_teams (
         id, team_code, team_name, team_city, team_conference,
         team_division, team_logo, team_primary_color, team_secondary_color
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -83,7 +83,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       teamSecondaryColor || null
     ]);
 
-    const newTeam = await db.get('SELECT * FROM nfl_teams WHERE id = ?', [teamId]);
+    const newTeam = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
 
     res.status(201).json({
       message: 'Team created successfully',
@@ -111,13 +111,13 @@ router.put('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
       teamSecondaryColor
     } = req.body;
 
-    const existingTeam = await db.get('SELECT id FROM nfl_teams WHERE id = ?', [teamId]);
+    const existingTeam = await db.get('SELECT id FROM football_teams WHERE id = ?', [teamId]);
     if (!existingTeam) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
     await db.run(`
-      UPDATE nfl_teams 
+      UPDATE football_teams
       SET team_code = ?, team_name = ?, team_city = ?, team_conference = ?,
           team_division = ?, team_logo = ?, team_primary_color = ?, team_secondary_color = ?,
           updated_at = datetime('now')
@@ -134,7 +134,7 @@ router.put('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
       teamId
     ]);
 
-    const updatedTeam = await db.get('SELECT * FROM nfl_teams WHERE id = ?', [teamId]);
+    const updatedTeam = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
 
     res.json({
       message: 'Team updated successfully',
@@ -152,14 +152,14 @@ router.delete('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { teamId } = req.params;
 
-    const existingTeam = await db.get('SELECT id FROM nfl_teams WHERE id = ?', [teamId]);
+    const existingTeam = await db.get('SELECT id FROM football_teams WHERE id = ?', [teamId]);
     if (!existingTeam) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
     // Check if team is referenced in other tables
     const userCount = await db.get('SELECT COUNT(*) as count FROM users WHERE favorite_team_id = ?', [teamId]);
-    const gameCount = await db.get('SELECT COUNT(*) as count FROM nfl_games WHERE home_team_id = ? OR away_team_id = ?', [teamId, teamId]);
+    const gameCount = await db.get('SELECT COUNT(*) as count FROM football_games WHERE home_team_id = ? OR away_team_id = ?', [teamId, teamId]);
     
     if (userCount.count > 0 || gameCount.count > 0) {
       return res.status(400).json({ 
@@ -167,7 +167,7 @@ router.delete('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    await db.run('DELETE FROM nfl_teams WHERE id = ?', [teamId]);
+    await db.run('DELETE FROM football_teams WHERE id = ?', [teamId]);
 
     res.json({ message: 'Team deleted successfully' });
 
@@ -183,7 +183,7 @@ router.get('/conference/:conference', async (req, res) => {
     const { conference } = req.params;
     
     const teams = await db.all(`
-      SELECT * FROM nfl_teams 
+      SELECT * FROM football_teams
       WHERE team_conference = ?
       ORDER BY team_division, team_city
     `, [conference.toUpperCase()]);
@@ -201,7 +201,7 @@ router.get('/division/:conference/:division', async (req, res) => {
     const { conference, division } = req.params;
     
     const teams = await db.all(`
-      SELECT * FROM nfl_teams 
+      SELECT * FROM football_teams
       WHERE team_conference = ? AND team_division = ?
       ORDER BY team_city
     `, [conference.toUpperCase(), division]);

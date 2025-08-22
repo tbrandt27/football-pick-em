@@ -17,7 +17,7 @@ class OnDemandUpdateService {
           COUNT(*) as total_games,
           COUNT(scores_updated_at) as updated_games,
           MAX(scores_updated_at) as last_update
-        FROM nfl_games 
+        FROM football_games
         WHERE season_id = ? AND week = ?
       `, [seasonId, week]);
 
@@ -52,7 +52,7 @@ class OnDemandUpdateService {
     try {
       const result = await db.get(`
         SELECT MAX(scores_updated_at) as last_update
-        FROM nfl_games 
+        FROM football_games
         WHERE season_id = ? AND week = ? AND scores_updated_at IS NOT NULL
       `, [seasonId, week]);
 

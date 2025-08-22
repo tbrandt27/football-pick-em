@@ -24,7 +24,7 @@ class PickCalculatorService {
       // Get completed games
       const completedGames = await db.all(`
         SELECT ng.id, ng.home_team_id, ng.away_team_id, ng.home_score, ng.away_score, ng.week
-        FROM nfl_games ng
+        FROM football_games ng
         ${whereClause} AND ng.status IN ('STATUS_FINAL', 'STATUS_CLOSED', 'Final')
       `, params);
 
@@ -49,7 +49,7 @@ class PickCalculatorService {
               ELSE 0 
             END,
             updated_at = datetime('now')
-            WHERE nfl_game_id = ?
+            WHERE football_game_id = ?
           `, [winningTeamId, game.id]);
           
           updatedPicks += result.changes || 0;
@@ -59,7 +59,7 @@ class PickCalculatorService {
             UPDATE picks 
             SET is_correct = 0,
             updated_at = datetime('now')
-            WHERE nfl_game_id = ?
+            WHERE football_game_id = ?
           `, [game.id]);
           
           updatedPicks += result.changes || 0;

@@ -36,8 +36,8 @@ class DatabaseSwitcher {
         currentMode: "production",
         lastSwitched: new Date().toISOString(),
         databases: {
-          production: "nfl_pickem.db",
-          test: "nfl_pickem_test.db",
+          production: "football_pickem.db",
+          test: "football_pickem_test.db",
         },
       };
       fs.writeFileSync(this.configFile, JSON.stringify(config, null, 2));
@@ -66,8 +66,8 @@ class DatabaseSwitcher {
         currentMode: "production",
         lastSwitched: new Date().toISOString(),
         databases: {
-          production: "nfl_pickem.db",
-          test: "nfl_pickem_test.db",
+          production: "football_pickem.db",
+          test: "football_pickem_test.db",
         },
       };
     }

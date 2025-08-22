@@ -46,10 +46,10 @@ router.get('/', authenticateToken, async (req, res) => {
         pt.team_name as pick_team_name,
         pt.team_code as pick_team_code
       FROM picks p
-      JOIN nfl_games ng ON p.nfl_game_id = ng.id
-      JOIN nfl_teams ht ON ng.home_team_id = ht.id
-      JOIN nfl_teams at ON ng.away_team_id = at.id
-      JOIN nfl_teams pt ON p.pick_team_id = pt.id
+      JOIN football_games ng ON p.football_game_id = ng.id
+      JOIN football_teams ht ON ng.home_team_id = ht.id
+      JOIN football_teams at ON ng.away_team_id = at.id
+      JOIN football_teams pt ON p.pick_team_id = pt.id
       WHERE p.user_id = ?
     `;
     
@@ -84,9 +84,9 @@ router.get('/', authenticateToken, async (req, res) => {
 // Make a pick
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { gameId, nflGameId, pickTeamId, tiebreaker } = req.body;
+    const { gameId, footballGameId, pickTeamId, tiebreaker } = req.body;
 
-    if (!gameId || !nflGameId || !pickTeamId) {
+    if (!gameId || !footballGameId || !pickTeamId) {
       return res.status(400).json({ 
         error: 'Game ID, NFL game ID, and pick team ID are required' 
       });
@@ -102,20 +102,20 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'You are not a participant in this game' });
     }
 
-    // Get NFL game details
-    const nflGame = await db.get(`
-      SELECT season_id, week, start_time, status 
-      FROM nfl_games 
+    // Get Football game details
+    const footballGame = await db.get(`
+      SELECT season_id, week, start_time, status
+      FROM football_games
       WHERE id = ?
-    `, [nflGameId]);
+    `, [footballGameId]);
 
-    if (!nflGame) {
-      return res.status(404).json({ error: 'NFL game not found' });
+    if (!footballGame) {
+      return res.status(404).json({ error: 'Football game not found' });
     }
 
     // Check if game has already started
     const now = new Date();
-    const gameStart = new Date(nflGame.start_time);
+    const gameStart = new Date(footballGame.start_time);
     
     if (now >= gameStart) {
       return res.status(400).json({ error: 'Cannot make picks after game has started' });
@@ -123,9 +123,9 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Verify the pick team is playing in this game
     const teamInGame = await db.get(`
-      SELECT 1 FROM nfl_games 
+      SELECT 1 FROM football_games
       WHERE id = ? AND (home_team_id = ? OR away_team_id = ?)
-    `, [nflGameId, pickTeamId, pickTeamId]);
+    `, [footballGameId, pickTeamId, pickTeamId]);
 
     if (!teamInGame) {
       return res.status(400).json({ error: 'Selected team is not playing in this game' });
@@ -138,7 +138,7 @@ router.post('/', authenticateToken, async (req, res) => {
       const previousPick = await db.get(`
         SELECT id FROM picks 
         WHERE user_id = ? AND game_id = ? AND pick_team_id = ? AND season_id = ?
-      `, [req.user.id, gameId, pickTeamId, nflGame.season_id]);
+      `, [req.user.id, gameId, pickTeamId, footballGame.season_id]);
 
       if (previousPick) {
         return res.status(400).json({ 
@@ -149,9 +149,9 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Check if pick already exists for this game
     const existingPick = await db.get(`
-      SELECT id FROM picks 
-      WHERE user_id = ? AND game_id = ? AND nfl_game_id = ?
-    `, [req.user.id, gameId, nflGameId]);
+      SELECT id FROM picks
+      WHERE user_id = ? AND game_id = ? AND football_game_id = ?
+    `, [req.user.id, gameId, footballGameId]);
 
     const pickId = existingPick?.id || uuidv4();
 
@@ -166,16 +166,16 @@ router.post('/', authenticateToken, async (req, res) => {
       // Create new pick
       await db.run(`
         INSERT INTO picks (
-          id, user_id, game_id, season_id, week, nfl_game_id, 
+          id, user_id, game_id, season_id, week, football_game_id,
           pick_team_id, tiebreaker
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         pickId,
         req.user.id,
         gameId,
-        nflGame.season_id,
-        nflGame.week,
-        nflGameId,
+        footballGame.season_id,
+        footballGame.week,
+        footballGameId,
         pickTeamId,
         tiebreaker || null
       ]);
@@ -189,7 +189,7 @@ router.post('/', authenticateToken, async (req, res) => {
         pt.team_name as pick_team_name,
         pt.team_code as pick_team_code
       FROM picks p
-      JOIN nfl_teams pt ON p.pick_team_id = pt.id
+      JOIN football_teams pt ON p.pick_team_id = pt.id
       WHERE p.id = ?
     `, [pickId]);
 
@@ -212,7 +212,7 @@ router.delete('/:pickId', authenticateToken, async (req, res) => {
     const pick = await db.get(`
       SELECT p.*, ng.start_time 
       FROM picks p
-      JOIN nfl_games ng ON p.nfl_game_id = ng.id
+      JOIN football_games ng ON p.football_game_id = ng.id
       WHERE p.id = ?
     `, [pickId]);
 

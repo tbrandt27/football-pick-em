@@ -1,0 +1,360 @@
+# CloudFormation template for DynamoDB tables
+# This template creates all the DynamoDB tables needed for the Football Pick'em application
+# Simplified version to avoid deployment issues
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB tables for Football Pick em application'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'prod'
+    Description: 'Environment name (dev, staging, prod)'
+  
+  TablePrefix:
+    Type: String
+    Default: 'football_pickem_'
+    Description: 'Prefix for all table names'
+
+Resources:
+  # Users table
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}users'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Football Teams table
+  FootballTeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}football_teams'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: team_code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: team_code-index
+          KeySchema:
+            - AttributeName: team_code
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Pick'em Games table
+  PickemGamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}pickem_games'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: commissioner_id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: commissioner_id-index
+          KeySchema:
+            - AttributeName: commissioner_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Game Participants table
+  GameParticipantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}game_participants'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Seasons table
+  SeasonsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}seasons'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: season
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: season-index
+          KeySchema:
+            - AttributeName: season
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Football Games table
+  FootballGamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}football_games'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # System Settings table
+  SystemSettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}system_settings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Picks table
+  PicksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}picks'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Weekly Standings table
+  WeeklyStandingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}weekly_standings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Game Invitations table
+  GameInvitationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}game_invitations'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: invite_token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: invite_token-index
+          KeySchema:
+            - AttributeName: invite_token
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  UsersTableName:
+    Description: 'Name of the Users table'
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub '${AWS::StackName}-UsersTable'
+
+  FootballTeamsTableName:
+    Description: 'Name of the Football Teams table'
+    Value: !Ref FootballTeamsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-FootballTeamsTable'
+
+  PickemGamesTableName:
+    Description: 'Name of the Pickem Games table'
+    Value: !Ref PickemGamesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PickemGamesTable'
+
+  GameParticipantsTableName:
+    Description: 'Name of the Game Participants table'
+    Value: !Ref GameParticipantsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-GameParticipantsTable'
+
+  SeasonsTableName:
+    Description: 'Name of the Seasons table'
+    Value: !Ref SeasonsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SeasonsTable'
+
+  FootballGamesTableName:
+    Description: 'Name of the Football Games table'
+    Value: !Ref FootballGamesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-FootballGamesTable'
+
+  SystemSettingsTableName:
+    Description: 'Name of the System Settings table'
+    Value: !Ref SystemSettingsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SystemSettingsTable'
+
+  PicksTableName:
+    Description: 'Name of the Picks table'
+    Value: !Ref PicksTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PicksTable'
+
+  WeeklyStandingsTableName:
+    Description: 'Name of the Weekly Standings table'
+    Value: !Ref WeeklyStandingsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-WeeklyStandingsTable'
+
+  GameInvitationsTableName:
+    Description: 'Name of the Game Invitations table'
+    Value: !Ref GameInvitationsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-GameInvitationsTable'

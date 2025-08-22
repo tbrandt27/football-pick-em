@@ -190,7 +190,7 @@ class ESPNService {
 
         // Check if game already exists
         const existingGame = await db.get(`
-          SELECT id FROM nfl_games 
+          SELECT id FROM football_games
           WHERE season_id = ? AND week = ? AND home_team_id = ? AND away_team_id = ?
         `, [seasonId, gameData.week, homeTeamRecord.id, awayTeamRecord.id]);
 
@@ -200,8 +200,8 @@ class ESPNService {
         if (existingGame) {
           // Update existing game
           await db.run(`
-            UPDATE nfl_games 
-            SET home_score = ?, away_score = ?, status = ?, 
+            UPDATE football_games
+            SET home_score = ?, away_score = ?, status = ?,
                 game_date = ?, start_time = ?, season_type = ?, updated_at = datetime('now'), scores_updated_at = datetime('now')
             WHERE id = ?
           `, [
@@ -217,7 +217,7 @@ class ESPNService {
         } else {
           // Create new game
           await db.run(`
-            INSERT INTO nfl_games (
+            INSERT INTO football_games (
               id, season_id, week, home_team_id, away_team_id,
               home_score, away_score, game_date, start_time, status, season_type, scores_updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -250,13 +250,13 @@ class ESPNService {
   async findOrCreateTeam(teamData) {
     try {
       // First try to find by abbreviation
-      let team = await db.get('SELECT * FROM nfl_teams WHERE team_code = ?', [teamData.abbreviation]);
+      let team = await db.get('SELECT * FROM football_teams WHERE team_code = ?', [teamData.abbreviation]);
       
       if (!team) {
         // Create new team
         const teamId = uuidv4();
         await db.run(`
-          INSERT INTO nfl_teams (
+          INSERT INTO football_teams (
             id, team_code, team_name, team_city, team_conference, team_division,
             team_logo, team_primary_color, team_secondary_color
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -272,12 +272,12 @@ class ESPNService {
           teamData.alternateColor ? `#${teamData.alternateColor}` : null
         ]);
 
-        team = await db.get('SELECT * FROM nfl_teams WHERE id = ?', [teamId]);
+        team = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
         console.log(`Created new team: ${teamData.location} ${teamData.name}`);
       } else {
         // Update team info if we have new data, but don't use ESPN logos
         await db.run(`
-          UPDATE nfl_teams 
+          UPDATE football_teams
           SET team_primary_color = COALESCE(?, team_primary_color),
               team_secondary_color = COALESCE(?, team_secondary_color),
               updated_at = datetime('now')

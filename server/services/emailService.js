@@ -101,7 +101,7 @@ class EmailService {
     const fromEmail =
       this.smtpSettings && this.smtpSettings.from
         ? this.smtpSettings.from
-        : process.env.FROM_EMAIL || "noreply@nflpickem.app";
+        : process.env.FROM_EMAIL || "noreply@footballpickem.app";
 
     const mailOptions = {
       from: fromEmail,

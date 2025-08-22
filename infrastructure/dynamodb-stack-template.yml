@@ -1,0 +1,160 @@
+# AWS SAM/CloudFormation Stack Template for DynamoDB Tables
+# This is a simplified stack template focused specifically on DynamoDB resources
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'DynamoDB Stack Template for Football Pick em application'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'prod'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name'
+  
+  TablePrefix:
+    Type: String
+    Default: 'football_pickem_'
+    Description: 'Prefix for all table names'
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+    Runtime: nodejs18.x
+
+Resources:
+  # DynamoDB Tables Stack
+  DynamoDBTablesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./dynamodb-tables-simple.yml
+      Parameters:
+        Environment: !Ref Environment
+        TablePrefix: !Ref TablePrefix
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FootballPickem
+        - Key: StackType
+          Value: Database
+
+  # IAM Role for Application Access
+  ApplicationDynamoDBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${TablePrefix}application-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+                - apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*/index/*'
+
+  # Application Configuration Parameter Store
+  DatabaseConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${Environment}/football-pickem/database/config'
+      Type: String
+      Value: !Sub |
+        {
+          "type": "dynamodb",
+          "region": "${AWS::Region}",
+          "tablePrefix": "${TablePrefix}",
+          "environment": "${Environment}"
+        }
+      Description: 'Database configuration for Football Pick em application'
+      Tags:
+        Environment: !Ref Environment
+        Application: FootballPickem
+
+  # Store App Runner Instance Role ARN in Parameter Store
+  AppRunnerInstanceRoleParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: '/football-pickem/apprunner/instance-role-arn'
+      Type: String
+      Value: !GetAtt ApplicationDynamoDBRole.Arn
+      Description: 'ARN of the IAM role for App Runner instance to access DynamoDB'
+      Tags:
+        Environment: !Ref Environment
+        Application: FootballPickem
+
+Outputs:
+  # Stack Outputs
+  StackId:
+    Description: 'DynamoDB Tables Stack ID'
+    Value: !Ref DynamoDBTablesStack
+    Export:
+      Name: !Sub '${AWS::StackName}-DynamoDBStackId'
+
+  # IAM Role
+  ApplicationRoleArn:
+    Description: 'ARN of the application IAM role'
+    Value: !GetAtt ApplicationDynamoDBRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ApplicationRoleArn'
+
+  ApplicationRoleName:
+    Description: 'Name of the application IAM role'
+    Value: !Ref ApplicationDynamoDBRole
+    Export:
+      Name: !Sub '${AWS::StackName}-ApplicationRoleName'
+
+  # Configuration
+  DatabaseConfig:
+    Description: 'Database configuration parameter name'
+    Value: !Ref DatabaseConfigParameter
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseConfig'
+
+  # Environment Variables for Application
+  DatabaseType:
+    Description: 'Database type for application'
+    Value: 'dynamodb'
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseType'
+
+  TablePrefix:
+    Description: 'Table prefix for DynamoDB tables'
+    Value: !Ref TablePrefix
+    Export:
+      Name: !Sub '${AWS::StackName}-TablePrefix'
+
+  Region:
+    Description: 'AWS Region'
+    Value: !Ref AWS::Region
+    Export:
+      Name: !Sub '${AWS::StackName}-Region'
+
+  Environment:
+    Description: 'Environment name'
+    Value: !Ref Environment
+    Export:
+      Name: !Sub '${AWS::StackName}-Environment'

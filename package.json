@@ -24,6 +24,8 @@
     "@astrojs/check": "^0.9.4",
     "@astrojs/node": "^9.3.0",
     "@astrojs/react": "^4.3.0",
+    "@aws-sdk/client-dynamodb": "^3.873.0",
+    "@aws-sdk/lib-dynamodb": "^3.873.0",
     "@heroicons/react": "^2.2.0",
     "@nanostores/react": "^1.0.0",
     "@tailwindcss/vite": "^4.1.11",

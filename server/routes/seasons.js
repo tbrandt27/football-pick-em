@@ -183,7 +183,7 @@ router.delete('/:seasonId', authenticateToken, requireAdmin, async (req, res) =>
     }
 
     // Check if season has associated games
-    const gameCount = await db.get('SELECT COUNT(*) as count FROM nfl_games WHERE season_id = ?', [seasonId]);
+    const gameCount = await db.get('SELECT COUNT(*) as count FROM football_games WHERE season_id = ?', [seasonId]);
     if (gameCount.count > 0) {
       return res.status(400).json({ 
         error: 'Cannot delete season that has associated games' 
@@ -221,9 +221,9 @@ router.get('/:seasonId/games', async (req, res) => {
         at.team_primary_color as away_team_primary_color,
         at.team_secondary_color as away_team_secondary_color,
         at.team_logo as away_team_logo
-      FROM nfl_games ng
-      JOIN nfl_teams ht ON ng.home_team_id = ht.id
-      JOIN nfl_teams at ON ng.away_team_id = at.id
+      FROM football_games ng
+      JOIN football_teams ht ON ng.home_team_id = ht.id
+      JOIN football_teams at ON ng.away_team_id = at.id
       WHERE ng.season_id = ?
     `;
     
