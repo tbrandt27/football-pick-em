@@ -2,8 +2,18 @@ import express from 'express';
 import DynamoDBHealthCheck from '../utils/dynamoDbHealthCheck.js';
 import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 import db from '../models/database.js';
+import { requireHealthAccess, sanitizeHealthResponse } from '../middleware/healthAuth.js';
 
 const router = express.Router();
+
+// Apply health authentication to all routes except basic health check
+router.use('/', (req, res, next) => {
+  // Skip auth for basic health endpoint
+  if (req.path === '/' || req.path === '') {
+    return next();
+  }
+  return requireHealthAccess(req, res, next);
+});
 
 /**
  * Simple health check endpoint
@@ -46,12 +56,13 @@ router.get('/database', async (req, res) => {
       const result = await healthCheck.fullHealthCheck();
       healthCheck.close();
       
-      res.status(result.overall.success ? 200 : 503).json(result);
+      const sanitizedResult = sanitizeHealthResponse(result, req);
+      res.status(result.overall.success ? 200 : 503).json(sanitizedResult);
     } else {
       // Basic SQLite health check
       try {
         await db.get('SELECT 1 as test');
-        res.json({
+        const result = {
           overall: {
             success: true,
             timestamp: new Date().toISOString()
@@ -60,9 +71,10 @@ router.get('/database', async (req, res) => {
             type: 'sqlite',
             status: 'connected'
           }
-        });
+        };
+        res.json(sanitizeHealthResponse(result, req));
       } catch (dbError) {
-        res.status(503).json({
+        const result = {
           overall: {
             success: false,
             timestamp: new Date().toISOString()
@@ -72,17 +84,19 @@ router.get('/database', async (req, res) => {
             status: 'error',
             error: dbError.message
           }
-        });
+        };
+        res.status(503).json(sanitizeHealthResponse(result, req));
       }
     }
   } catch (error) {
-    res.status(500).json({
+    const result = {
       overall: {
         success: false,
         timestamp: new Date().toISOString()
       },
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 
@@ -95,15 +109,17 @@ router.get('/dynamodb', async (req, res) => {
     const result = await healthCheck.fullHealthCheck();
     healthCheck.close();
     
-    res.status(result.overall.success ? 200 : 503).json(result);
+    const sanitizedResult = sanitizeHealthResponse(result, req);
+    res.status(result.overall.success ? 200 : 503).json(sanitizedResult);
   } catch (error) {
-    res.status(500).json({
+    const result = {
       overall: {
         success: false,
         timestamp: new Date().toISOString()
       },
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 
@@ -116,13 +132,15 @@ router.get('/dynamodb/connection', async (req, res) => {
     const result = await healthCheck.testConnection();
     healthCheck.close();
     
-    res.status(result.success ? 200 : 503).json(result);
+    const sanitizedResult = sanitizeHealthResponse(result, req);
+    res.status(result.success ? 200 : 503).json(sanitizedResult);
   } catch (error) {
-    res.status(500).json({
+    const result = {
       success: false,
       timestamp: new Date().toISOString(),
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 
@@ -135,13 +153,15 @@ router.get('/dynamodb/tables', async (req, res) => {
     const result = await healthCheck.verifyTables();
     healthCheck.close();
     
-    res.status(result.success ? 200 : 503).json(result);
+    const sanitizedResult = sanitizeHealthResponse(result, req);
+    res.status(result.success ? 200 : 503).json(sanitizedResult);
   } catch (error) {
-    res.status(500).json({
+    const result = {
       success: false,
       timestamp: new Date().toISOString(),
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 
@@ -153,17 +173,19 @@ router.get('/dynamodb/config', async (req, res) => {
     const healthCheck = new DynamoDBHealthCheck();
     const config = healthCheck.getConfigInfo();
     
-    res.json({
+    const result = {
       success: true,
       timestamp: new Date().toISOString(),
       config: config
-    });
+    };
+    res.json(sanitizeHealthResponse(result, req));
   } catch (error) {
-    res.status(500).json({
+    const result = {
       success: false,
       timestamp: new Date().toISOString(),
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 
@@ -177,13 +199,15 @@ router.get('/dynamodb/test/:tableName?', async (req, res) => {
     const result = await healthCheck.testTableOperations(tableName);
     healthCheck.close();
     
-    res.status(result.success ? 200 : 503).json(result);
+    const sanitizedResult = sanitizeHealthResponse(result, req);
+    res.status(result.success ? 200 : 503).json(sanitizedResult);
   } catch (error) {
-    res.status(500).json({
+    const result = {
       success: false,
       timestamp: new Date().toISOString(),
       error: error.message
-    });
+    };
+    res.status(500).json(sanitizeHealthResponse(result, req));
   }
 });
 

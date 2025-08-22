@@ -64,10 +64,24 @@ export default class DatabaseInitializer {
       checks.season = !season;
       
       // Check if admin user exists (using env var email)
-      const adminEmail = process.env.ADMIN_EMAIL;
+      let adminEmail = process.env.ADMIN_EMAIL;
+      
+      // Handle AWS Secrets Manager placeholders
+      if (adminEmail && adminEmail.includes('{{resolve:secretsmanager')) {
+        console.log("⚠️  AWS Secrets Manager placeholder detected in admin check, using fallback");
+        adminEmail = "admin@nflpickem.com";
+      }
+      
       if (adminEmail) {
         const adminUser = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
         checks.adminUser = !adminUser;
+        
+        // Also check for any users created with placeholder emails and mark for cleanup
+        const placeholderUser = await this.db.get('SELECT id FROM users WHERE email LIKE ? LIMIT 1', ['%{{resolve:secretsmanager%']);
+        if (placeholderUser) {
+          console.log("🧹 Found user with placeholder email, will clean up during seeding");
+          checks.adminUser = true; // Force admin user recreation
+        }
       } else {
         // If no admin email env var, check for any admin user
         const anyAdmin = await this.db.get('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
@@ -205,10 +219,50 @@ export default class DatabaseInitializer {
     console.log("👤 Creating admin user...");
 
     // Get admin credentials from environment variables (configured in apprunner.yaml)
-    const adminEmail = process.env.ADMIN_EMAIL || "admin@nflpickem.com";
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+    let adminEmail = process.env.ADMIN_EMAIL || "admin@nflpickem.com";
+    let adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+
+    // Check if AWS Secrets Manager placeholders weren't resolved
+    if (adminEmail.includes('{{resolve:secretsmanager')) {
+      console.log("⚠️  AWS Secrets Manager placeholder detected in ADMIN_EMAIL, using fallback");
+      adminEmail = "admin@nflpickem.com";
+    }
+    
+    if (adminPassword.includes('{{resolve:secretsmanager')) {
+      console.log("⚠️  AWS Secrets Manager placeholder detected in ADMIN_PASSWORD, using fallback");
+      adminPassword = "admin123";
+    }
+
+    console.log(`📧 Admin email resolved to: ${adminEmail}`);
+    console.log(`🔑 Admin password source: ${process.env.ADMIN_PASSWORD ? 'environment variable' : 'fallback default'}`);
 
     try {
+      // Clean up any users with placeholder emails first
+      if (this.db.getType() === 'dynamodb') {
+        // For DynamoDB, we need to scan and delete placeholder users
+        try {
+          const placeholderUsers = await this.db.all('SELECT * FROM users WHERE email LIKE ?', ['%{{resolve:secretsmanager%']);
+          for (const user of placeholderUsers || []) {
+            console.log(`🧹 Removing user with placeholder email: ${user.email}`);
+            await this.db.run({
+              action: 'delete',
+              table: 'users',
+              key: { id: user.id }
+            });
+          }
+        } catch (error) {
+          console.log("Note: Could not clean placeholder users (this is expected if none exist)");
+        }
+      } else {
+        // For SQLite, simpler DELETE query
+        try {
+          await this.db.run('DELETE FROM users WHERE email LIKE ?', ['%{{resolve:secretsmanager%']);
+          console.log("🧹 Cleaned up any placeholder email users");
+        } catch (error) {
+          console.log("Note: Could not clean placeholder users (this is expected if none exist)");
+        }
+      }
+
       const hashedPassword = await bcrypt.hash(adminPassword, 12);
       const adminId = uuidv4();
 
