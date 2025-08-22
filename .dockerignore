@@ -9,8 +9,7 @@ pnpm-debug.log*
 dist/
 .astro/
 
-# Environment files
-.env
+# Environment files (keep .env for Docker builds, exclude others)
 .env.local
 .env.production
 .env.test

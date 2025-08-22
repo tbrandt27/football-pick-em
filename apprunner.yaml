@@ -17,8 +17,6 @@ run:
       value: "8080"
     - name: FRONTEND_PORT
       value: "8080"
-    - name: BACKEND_PORT
-      value: "3001"
     - name: DATABASE_PATH
       value: "/app/data/database.sqlite"
     - name: CLIENT_URL

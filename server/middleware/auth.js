@@ -10,7 +10,7 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
     const user = await db.get('SELECT * FROM users WHERE id = ?', [decoded.userId]);
     
     if (!user) {

@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync } from "fs";
+import { readFileSync } from "fs";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -29,7 +30,15 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'"],
+      "style-src": ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:4321",
@@ -38,6 +47,12 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static client files from the dist/client directory (for SSR builds)
+const clientPath = join(__dirname, "../dist/client");
+if (existsSync(clientPath)) {
+  app.use(express.static(clientPath));
+}
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -81,9 +96,33 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong!" });
 });
 
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({ error: "Route not found" });
+// Import Astro SSR handler
+let astroHandler;
+const serverPath = join(__dirname, "../dist/server/entry.mjs");
+
+if (existsSync(serverPath)) {
+  const astroModule = await import(serverPath);
+  astroHandler = astroModule.handler;
+}
+
+// Handle all non-API routes with Astro SSR
+app.get("*", async (req, res) => {
+  // Skip API routes - they're already handled above
+  if (req.path.startsWith('/api/') || req.path.startsWith('/logos/')) {
+    return res.status(404).json({ error: "Route not found" });
+  }
+  
+  if (astroHandler) {
+    try {
+      // Use Astro handler for SSR
+      await astroHandler(req, res);
+    } catch (error) {
+      console.error("Error handling Astro request:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  } else {
+    res.status(404).json({ error: "Application not built. Run 'npm run build' first." });
+  }
 });
 
 app.listen(PORT, () => {

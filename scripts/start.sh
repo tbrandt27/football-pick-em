@@ -28,31 +28,23 @@ if [ ! -f "$DATABASE_PATH" ]; then
     node /app/scripts/init-db.js
 fi
 
-# Start the backend server in the background
-echo "🔧 Starting backend server on port $BACKEND_PORT..."
-node server/index.js &
-BACKEND_PID=$!
-
-# Wait a moment for backend to start
-sleep 3
-
-# Start the frontend server
-echo "🌐 Starting frontend server on port $FRONTEND_PORT..."
+# Start the unified server (backend serving frontend static files)
+echo "🚀 Starting unified server on port $PORT..."
 cd /app
-HOST=0.0.0.0 PORT=$FRONTEND_PORT npm run preview &
-FRONTEND_PID=$!
+PORT=$PORT node server/index.js &
+SERVER_PID=$!
 
 # Function to handle shutdown gracefully
 shutdown() {
-    echo "🛑 Shutting down services..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
-    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
-    echo "✅ Services stopped"
+    echo "🛑 Shutting down server..."
+    kill $SERVER_PID 2>/dev/null || true
+    wait $SERVER_PID 2>/dev/null || true
+    echo "✅ Server stopped"
     exit 0
 }
 
 # Trap signals for graceful shutdown
 trap shutdown SIGTERM SIGINT
 
-# Wait for either process to exit
-wait $BACKEND_PID $FRONTEND_PID
+# Wait for the server process to exit
+wait $SERVER_PID
