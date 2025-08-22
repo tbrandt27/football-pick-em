@@ -1,5 +1,7 @@
 version: 1.0
-run:
+runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
+
+build:
   commands:
     build:
       - echo "Installing dependencies..."
@@ -8,7 +10,10 @@ run:
       - npm run build
       - echo "Setting permissions..."
       - chmod +x scripts/start.sh
-    start: ./scripts/start.sh
+
+run:
+  runtime-version: nodejs18  # Match the runtime above
+  command: ./scripts/start.sh
   network:
     port: 8080
     env: PORT
@@ -21,7 +26,6 @@ run:
       value: ${AWS_APPRUNNER_SERVICE_URL}
     - name: FRONTEND_URL
       value: ${AWS_APPRUNNER_SERVICE_URL}
-    # JWT Secret from AWS Secrets Manager
     - name: JWT_SECRET
       value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString}}"
     - name: ADMIN_EMAIL
