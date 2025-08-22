@@ -14,8 +14,6 @@ build:
 run:
   runtime-version: nodejs18  # Match the runtime above
   command: ./scripts/start.sh
-  # IAM role that gives App Runner access to DynamoDB and other AWS services
-  instance-role-arn: "{{resolve:ssm:/football-pickem/apprunner/instance-role-arn}}"
   network:
     port: 8080
     env: PORT
