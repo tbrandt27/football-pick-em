@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "engines": {
-    "node": ">=18.0q.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
@@ -15,7 +15,7 @@
     "setup": "node setup.js",
     "test-schedule": "node test-schedule.js",
     "start": "./scripts/start.sh",
-    "start:production": "NODE_ENV=production ./scriwpts/start.sh",
+    "start:production": "NODE_ENV=production ./scripts/start.sh",
     "init-db": "node scripts/init-db.js",
     "docker:build": "docker build -t football-pickem .",
     "docker:run": "docker run -p 8080:8080 football-pickem"
