@@ -410,6 +410,60 @@ router.put(
   }
 );
 
+// Delete user (admin only)
+router.delete(
+  "/users/:userId",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      // Don't allow deleting yourself
+      if (userId === req.user.id) {
+        return res
+          .status(400)
+          .json({ error: "Cannot delete your own account" });
+      }
+
+      // Get user info before deletion
+      const user = await db.get(
+        "SELECT first_name, last_name, email FROM users WHERE id = ?",
+        [userId]
+      );
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Delete related records manually to handle foreign key constraints
+      // Delete picks first
+      await db.run("DELETE FROM picks WHERE user_id = ?", [userId]);
+      
+      // Delete weekly standings
+      await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
+      
+      // Delete game invitations
+      await db.run("DELETE FROM game_invitations WHERE invited_by_user_id = ? OR email = ?", [userId, user.email]);
+      
+      // Remove from game participants
+      await db.run("DELETE FROM game_participants WHERE user_id = ?", [userId]);
+      
+      // Update games where this user was commissioner (set to the requesting admin)
+      await db.run("UPDATE pickem_games SET commissioner_id = ? WHERE commissioner_id = ?", [req.user.id, userId]);
+      
+      // Finally delete the user
+      await db.run("DELETE FROM users WHERE id = ?", [userId]);
+
+      res.json({
+        message: `User "${user.first_name} ${user.last_name}" (${user.email}) deleted successfully`,
+      });
+    } catch (error) {
+      console.error("Delete user error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Get all seasons (for season management)
 router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -486,6 +540,52 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Delete season (admin only)
+router.delete(
+  "/seasons/:seasonId",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { seasonId } = req.params;
+
+      // Get season info before deletion
+      const season = await db.get(
+        "SELECT season FROM seasons WHERE id = ?",
+        [seasonId]
+      );
+      if (!season) {
+        return res.status(404).json({ error: "Season not found" });
+      }
+
+      // Check if season has any active games
+      const gameCount = await db.get(
+        "SELECT COUNT(*) as count FROM pickem_games WHERE season_id = ?",
+        [seasonId]
+      );
+
+      if (gameCount.count > 0) {
+        return res.status(400).json({
+          error: `Cannot delete season ${season.season} - it has ${gameCount.count} associated pick'em games. Delete the games first.`
+        });
+      }
+
+      // Delete related NFL games first
+      await db.run("DELETE FROM football_games WHERE season_id = ?", [seasonId]);
+      
+      // Finally delete the season itself
+      await db.run("DELETE FROM seasons WHERE id = ?", [seasonId]);
+
+      res.json({
+        message: `Season ${season.season} deleted successfully`,
+      });
+    } catch (error) {
+      console.error("Delete season error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Toggle season status
 router.put(
   "/seasons/:seasonId/status",
@@ -550,6 +650,38 @@ router.post(
     } catch (error) {
       console.error("Sync NFL games error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Sync NFL games for season (proper ESPN integration)
+router.post(
+  "/seasons/:seasonId/sync-nfl-games",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { seasonId } = req.params;
+
+      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
+        seasonId,
+      ]);
+      if (!season) {
+        return res.status(404).json({ error: "Season not found" });
+      }
+
+      // Call ESPN service to actually sync games
+      const result = await espnService.updateNFLGames(seasonId);
+
+      res.json({
+        message: `ESPN sync completed for ${season.season}`,
+        gamesCount: result.created + result.updated,
+        created: result.created,
+        updated: result.updated
+      });
+    } catch (error) {
+      console.error("Sync NFL games error:", error);
+      res.status(500).json({ error: error.message || "Failed to sync NFL games" });
     }
   }
 );

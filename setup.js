@@ -4,7 +4,7 @@ import db from './server/models/database.js';
 import { seedTeams } from './server/utils/seedTeams.js';
 
 async function setupDatabase() {
-  console.log('🗃️  Setting up NFL Pickem database...\n');
+  console.log('🗃️  Setting up Football Pickem database...\n');
 
   try {
     // 1. Seed NFL teams
@@ -59,7 +59,7 @@ async function setupDatabase() {
     // 4. Display summary
     const [userCount, teamCount, seasonCount] = await Promise.all([
       db.get('SELECT COUNT(*) as count FROM users'),
-      db.get('SELECT COUNT(*) as count FROM nfl_teams'),
+      db.get('SELECT COUNT(*) as count FROM football_teams'),
       db.get('SELECT COUNT(*) as count FROM seasons')
     ]);
 

@@ -15,6 +15,7 @@ interface Season {
 interface NFLGame {
   id: string;
   week: number;
+  season_type: number; // 1=preseason, 2=regular, 3=postseason
   home_team_id: string;
   away_team_id: string;
   home_score: number;
@@ -181,56 +182,62 @@ const SeasonSchedule: React.FC = () => {
     );
   }
 
-  const groupedGames = games.reduce((acc, game) => {
+  // Group games by season type first, then by week
+  const gamesBySeasonType = games.reduce((acc, game) => {
+    const seasonType = game.season_type || 2; // Default to regular season
+    if (!acc[seasonType]) acc[seasonType] = {};
+    
     const week = game.week || 1;
-    if (!acc[week]) acc[week] = [];
-    acc[week].push(game);
+    if (!acc[seasonType][week]) acc[seasonType][week] = [];
+    acc[seasonType][week].push(game);
+    
     return acc;
-  }, {} as Record<number, NFLGame[]>);
+  }, {} as Record<number, Record<number, NFLGame[]>>);
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-orange-600 text-white shadow-lg">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <nav className="text-sm opacity-90 mb-2">
-                <a href="/admin" className="hover:underline">Admin</a> / 
-                <a href="/admin/seasons" className="hover:underline"> Seasons</a> / 
-                {season.year} Schedule
-              </nav>
-              <h1 className="text-3xl font-bold">{season.year} NFL Schedule</h1>
-              <p className="text-lg opacity-90">{games.length} games • Click dates/times to edit</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <a
-                href="/admin/seasons"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
-              >
-                Back to Seasons
-              </a>
-            </div>
-          </div>
+  const preseasonGames = gamesBySeasonType[1] || {};
+  const regularSeasonGames = gamesBySeasonType[2] || {};
+  const postseasonGames = gamesBySeasonType[3] || {};
+
+  const getSeasonTypeLabel = (seasonType: number) => {
+    switch (seasonType) {
+      case 1: return 'Preseason';
+      case 2: return 'Regular Season';
+      case 3: return 'Postseason';
+      default: return 'Unknown';
+    }
+  };
+
+  const getSeasonTypeColor = (seasonType: number) => {
+    switch (seasonType) {
+      case 1: return 'bg-blue-600'; // Preseason - Blue
+      case 2: return 'bg-orange-600'; // Regular Season - Orange
+      case 3: return 'bg-purple-600'; // Postseason - Purple
+      default: return 'bg-gray-600';
+    }
+  };
+
+  const renderSeasonSection = (seasonType: number, gamesGrouped: Record<number, NFLGame[]>) => {
+    if (Object.keys(gamesGrouped).length === 0) return null;
+
+    const totalGames = Object.values(gamesGrouped).flat().length;
+    
+    return (
+      <div key={seasonType} className="mb-8">
+        <div className={`${getSeasonTypeColor(seasonType)} text-white rounded-t-lg px-6 py-4`}>
+          <h2 className="text-2xl font-bold">
+            {getSeasonTypeLabel(seasonType)} ({totalGames} games)
+          </h2>
         </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-6">
-          {Object.entries(groupedGames)
+        
+        <div className="space-y-4 mt-4">
+          {Object.entries(gamesGrouped)
             .sort(([a], [b]) => parseInt(a) - parseInt(b))
             .map(([week, weekGames]) => (
-              <div key={week} className="bg-white rounded-lg shadow-md">
+              <div key={`${seasonType}-${week}`} className="bg-white rounded-lg shadow-md">
                 <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 rounded-t-lg">
-                  <h2 className="text-xl font-bold text-gray-800">
+                  <h3 className="text-xl font-bold text-gray-800">
                     Week {week} ({weekGames.length} games)
-                  </h2>
+                  </h3>
                 </div>
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -264,7 +271,7 @@ const SeasonSchedule: React.FC = () => {
                               </div>
                             </div>
                           ) : (
-                            <div 
+                            <div
                               className="cursor-pointer hover:bg-orange-50 p-1 rounded"
                               onClick={() => startEditing(game)}
                             >
@@ -357,7 +364,7 @@ const SeasonSchedule: React.FC = () => {
 
                         <div className="mt-3 pt-3 border-t">
                           <span className={`text-xs px-2 py-1 rounded font-medium ${
-                            game.status === 'STATUS_FINAL' 
+                            game.status === 'STATUS_FINAL'
                               ? 'bg-green-100 text-green-800'
                               : game.status === 'STATUS_IN_PROGRESS'
                               ? 'bg-yellow-100 text-yellow-800'
@@ -372,6 +379,54 @@ const SeasonSchedule: React.FC = () => {
                 </div>
               </div>
             ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <header className="bg-orange-600 text-white shadow-lg">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <nav className="text-sm opacity-90 mb-2">
+                <a href="/admin" className="hover:underline">Admin</a> / 
+                <a href="/admin/seasons" className="hover:underline"> Seasons</a> / 
+                {season.year} Schedule
+              </nav>
+              <h1 className="text-3xl font-bold">{season.year} NFL Schedule</h1>
+              <p className="text-lg opacity-90">{games.length} games • Click dates/times to edit</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <a
+                href="/admin/seasons"
+                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+              >
+                Back to Seasons
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-8">
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-8">
+          {/* Render Preseason */}
+          {renderSeasonSection(1, preseasonGames)}
+          
+          {/* Render Regular Season */}
+          {renderSeasonSection(2, regularSeasonGames)}
+          
+          {/* Render Postseason */}
+          {renderSeasonSection(3, postseasonGames)}
         </div>
 
         {games.length === 0 && (

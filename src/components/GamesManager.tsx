@@ -48,9 +48,7 @@ const GamesManager: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newGame, setNewGame] = useState({
     name: '',
-    type: 'weekly' as 'weekly' | 'survivor',
-    season_id: '',
-    weekly_week: 1
+    type: 'weekly' as 'weekly' | 'survivor'
   });
   const [editingGame, setEditingGame] = useState<PickemGame | null>(null);
   const [updatingGame, setUpdatingGame] = useState(false);
@@ -143,9 +141,7 @@ const GamesManager: React.FC = () => {
         },
         body: JSON.stringify({
           gameName: newGame.name,
-          gameType: newGame.type,
-          season_id: newGame.season_id,
-          weekly_week: newGame.type === 'weekly' ? newGame.weekly_week : null
+          gameType: newGame.type === 'weekly' ? 'week' : 'survivor'
         })
       });
 
@@ -155,9 +151,7 @@ const GamesManager: React.FC = () => {
         setShowCreateForm(false);
         setNewGame({
           name: '',
-          type: 'weekly',
-          season_id: '',
-          weekly_week: 1
+          type: 'weekly'
         });
       } else {
         const errorData = await response.json();
@@ -508,40 +502,6 @@ const GamesManager: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Season
-                  </label>
-                  <select
-                    value={newGame.season_id}
-                    onChange={(e) => setNewGame({...newGame, season_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select a season</option>
-                    {seasons.map(season => (
-                      <option key={season.id} value={season.id}>
-                        {season.year} {season.is_active ? '(Active)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {newGame.type === 'weekly' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Week Number
-                    </label>
-                    <select
-                      value={newGame.weekly_week}
-                      onChange={(e) => setNewGame({...newGame, weekly_week: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {Array.from({length: 18}, (_, i) => i + 1).map(week => (
-                        <option key={week} value={week}>Week {week}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">

@@ -192,7 +192,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const gameId = uuidv4();
 
-    // Get current season
+    // Get current season - ensure only one active season
     const currentSeason = await db.get(
       "SELECT id FROM seasons WHERE is_current = 1"
     );
@@ -202,13 +202,16 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Create the game
+    // Convert gameType to match database values
+    const dbGameType = gameType === "week" ? "weekly" : "survivor";
+
+    // Create the game (note: using game_name column, not name)
     await db.run(
       `
-      INSERT INTO pickem_games (id, name, type, commissioner_id, season_id)
+      INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id)
       VALUES (?, ?, ?, ?, ?)
     `,
-      [gameId, gameName, gameType, req.user.id, currentSeason.id]
+      [gameId, gameName, dbGameType, req.user.id, currentSeason.id]
     );
 
     // Add creator as owner
@@ -222,7 +225,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const newGame = await db.get(
       `
-      SELECT 
+      SELECT
         g.*,
         COUNT(gp.id) as player_count,
         COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count

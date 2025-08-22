@@ -1,8 +1,0 @@
-{
-  "currentMode": "production",
-  "lastSwitched": "2025-07-27T22:36:32.700Z",
-  "databases": {
-    "production": "nfl_pickem.db",
-    "test": "nfl_pickem_test.db"
-  }
-}

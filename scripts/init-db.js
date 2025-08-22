@@ -87,13 +87,13 @@ async function createTables(dbRun) {
       last_login DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (favorite_team_id) REFERENCES nfl_teams (id)
+      FOREIGN KEY (favorite_team_id) REFERENCES football_teams (id)
     )
   `);
 
-  // NFL Teams table
+  // Football Teams table
   await dbRun(`
-    CREATE TABLE IF NOT EXISTS nfl_teams (
+    CREATE TABLE IF NOT EXISTS football_teams (
       id TEXT PRIMARY KEY,
       team_code TEXT UNIQUE NOT NULL,
       team_name TEXT NOT NULL,
@@ -150,9 +150,9 @@ async function createTables(dbRun) {
     )
   `);
 
-  // NFL Games table
+  // Football Games table
   await dbRun(`
-    CREATE TABLE IF NOT EXISTS nfl_games (
+    CREATE TABLE IF NOT EXISTS football_games (
       id TEXT PRIMARY KEY,
       season_id TEXT NOT NULL,
       week INTEGER NOT NULL,
@@ -170,8 +170,8 @@ async function createTables(dbRun) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (season_id) REFERENCES seasons (id),
-      FOREIGN KEY (home_team_id) REFERENCES nfl_teams (id),
-      FOREIGN KEY (away_team_id) REFERENCES nfl_teams (id)
+      FOREIGN KEY (home_team_id) REFERENCES football_teams (id),
+      FOREIGN KEY (away_team_id) REFERENCES football_teams (id)
     )
   `);
 
@@ -192,8 +192,8 @@ async function createTables(dbRun) {
       FOREIGN KEY (user_id) REFERENCES users (id),
       FOREIGN KEY (game_id) REFERENCES pickem_games (id),
       FOREIGN KEY (season_id) REFERENCES seasons (id),
-      FOREIGN KEY (nfl_game_id) REFERENCES nfl_games (id),
-      FOREIGN KEY (pick_team_id) REFERENCES nfl_teams (id),
+      FOREIGN KEY (nfl_game_id) REFERENCES football_games (id),
+      FOREIGN KEY (pick_team_id) REFERENCES football_teams (id),
       UNIQUE (user_id, game_id, nfl_game_id)
     )
   `);
@@ -261,7 +261,7 @@ async function seedTeams(dbRun, dbGet) {
   console.log("🏈 Seeding NFL teams...");
 
   // Check if teams already exist
-  const existingTeam = await dbGet("SELECT id FROM nfl_teams LIMIT 1");
+  const existingTeam = await dbGet("SELECT id FROM football_teams LIMIT 1");
   if (existingTeam) {
     console.log("ℹ️  NFL teams already exist, skipping seed\n");
     return;
@@ -498,7 +498,7 @@ async function seedTeams(dbRun, dbGet) {
     const teamId = uuidv4();
     await dbRun(
       `
-      INSERT INTO nfl_teams (id, team_code, team_name, team_city, team_conference, team_division, team_logo)
+      INSERT INTO football_teams (id, team_code, team_name, team_city, team_conference, team_division, team_logo)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       [

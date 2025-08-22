@@ -126,6 +126,35 @@ const UsersManager: React.FC = () => {
     }
   };
 
+  const deleteUser = async (userId: string, userName: string, userEmail: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setUsers(users.filter(u => u.id !== userId));
+        // Show success message briefly
+        setError('');
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.textContent = `User "${userName}" (${userEmail}) deleted successfully`;
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to delete user');
+      }
+    } catch (err) {
+      setError('Failed to delete user');
+    }
+  };
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
@@ -269,16 +298,28 @@ const UsersManager: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {userData.id !== user?.id && (
-                        <button
-                          onClick={() => toggleAdminStatus(userData.id, !userData.is_admin)}
-                          className={`px-3 py-1 rounded text-xs font-medium ${
-                            userData.is_admin
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                          }`}
-                        >
-                          {userData.is_admin ? 'Remove Admin' : 'Make Admin'}
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => toggleAdminStatus(userData.id, !userData.is_admin)}
+                            className={`px-3 py-1 rounded text-xs font-medium ${
+                              userData.is_admin
+                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                            }`}
+                          >
+                            {userData.is_admin ? 'Remove Admin' : 'Make Admin'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete user "${userData.first_name} ${userData.last_name}" (${userData.email})?\n\nThis will permanently delete:\n- All their picks and game data\n- Their game participations\n- Any games they commissioned will be transferred to you\n\nThis action cannot be undone.`)) {
+                                deleteUser(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
+                              }
+                            }}
+                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                          >
+                            Delete User
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

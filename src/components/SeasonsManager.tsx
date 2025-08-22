@@ -20,8 +20,10 @@ const SeasonsManager: React.FC = () => {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSeasonYear, setNewSeasonYear] = useState(new Date().getFullYear());
+  const [syncingSeasonId, setSyncingSeasonId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -90,6 +92,10 @@ const SeasonsManager: React.FC = () => {
 
   const syncNFLGames = async (seasonId: string) => {
     try {
+      setSyncingSeasonId(seasonId);
+      setError('');
+      setSuccess('');
+      
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const response = await fetch(`/api/admin/seasons/${seasonId}/sync-nfl-games`, {
         method: 'POST',
@@ -101,14 +107,26 @@ const SeasonsManager: React.FC = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setSeasons(seasons.map(s => 
+        
+        // Update the season with new game count
+        setSeasons(seasons.map(s =>
           s.id === seasonId ? { ...s, nfl_games_count: data.gamesCount } : s
         ));
+        
+        // Show success message
+        setSuccess(`✅ ${data.message} - ${data.created} created, ${data.updated} updated`);
+        
+        // Reload seasons to get fresh data
+        setTimeout(() => loadSeasons(), 1000);
+        
       } else {
-        setError('Failed to sync NFL games');
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to sync NFL games');
       }
-    } catch (err) {
-      setError('Failed to sync NFL games');
+    } catch (err: any) {
+      setError(`Failed to sync NFL games: ${err.message}`);
+    } finally {
+      setSyncingSeasonId(null);
     }
   };
 
@@ -159,6 +177,27 @@ const SeasonsManager: React.FC = () => {
       }
     } catch (err) {
       setError('Failed to unset current season');
+    }
+  };
+
+  const deleteSeason = async (seasonId: string, seasonYear: number) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/seasons/${seasonId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setSeasons(seasons.filter(s => s.id !== seasonId));
+        setSuccess(`Season ${seasonYear} deleted successfully`);
+        setTimeout(() => setSuccess(''), 5000);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to delete season');
+      }
+    } catch (err) {
+      setError('Failed to delete season');
     }
   };
 
@@ -224,6 +263,12 @@ const SeasonsManager: React.FC = () => {
           </div>
         )}
 
+        {success && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+            {success}
+          </div>
+        )}
+
 
         {/* Seasons List */}
         <div className="bg-white rounded-lg shadow-md">
@@ -283,35 +328,62 @@ const SeasonsManager: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(season.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      {season.is_active ? (
-                        <button
-                          onClick={() => unsetCurrentSeason(season.id)}
-                          className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
-                        >
-                          Unset as Current
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setCurrentSeason(season.id)}
-                          className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
-                        >
-                          Set as Current
-                        </button>
-                      )}
-                      <button
-                        onClick={() => syncNFLGames(season.id)}
-                        className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded text-xs font-medium"
-                      >
-                        Sync NFL Games
-                      </button>
-                      <a
-                        href={`/admin/seasons/${season.year}/schedule`}
-                        className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium inline-block"
-                      >
-                        View Schedule
-                      </a>
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                     <div className="flex flex-wrap gap-2">
+                       {season.is_active ? (
+                         <button
+                           onClick={() => unsetCurrentSeason(season.id)}
+                           className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                         >
+                           Unset as Current
+                         </button>
+                       ) : (
+                         <button
+                           onClick={() => setCurrentSeason(season.id)}
+                           className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
+                         >
+                           Set as Current
+                         </button>
+                       )}
+                       <button
+                         onClick={() => syncNFLGames(season.id)}
+                         disabled={syncingSeasonId === season.id}
+                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                           syncingSeasonId === season.id
+                             ? 'bg-yellow-100 text-yellow-700 cursor-not-allowed'
+                             : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                         }`}
+                       >
+                         {syncingSeasonId === season.id ? (
+                           <span className="flex items-center space-x-1">
+                             <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                             </svg>
+                             <span>Syncing...</span>
+                           </span>
+                         ) : (
+                           'Sync NFL Games'
+                         )}
+                       </button>
+                       <a
+                         href={`/admin/seasons/${season.year}/schedule`}
+                         className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium inline-block"
+                       >
+                         View Schedule
+                       </a>
+                       <button
+                         onClick={() => {
+                           if (confirm(`Are you sure you want to delete season ${season.year}?\n\nThis will permanently delete:\n- The season record\n- All NFL games for this season\n\nNote: If there are any pick'em games associated with this season, you must delete them first.\n\nThis action cannot be undone.`)) {
+                             deleteSeason(season.id, season.year);
+                           }
+                         }}
+                         className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                       >
+                         Delete Season
+                       </button>
+                     </div>
+                   </td>
                   </tr>
                 ))}
               </tbody>

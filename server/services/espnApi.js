@@ -48,7 +48,8 @@ class ESPNService {
 
   async fetchWeeklyGames(week = 1, seasonType = 2, year = null) {
     try {
-      const currentYear = year || await this.fetchCurrentSeason();
+      const seasonInfo = year ? { year: year.toString() } : await this.fetchCurrentSeason();
+      const currentYear = seasonInfo.year;
       const data = await this.makeRequest('/scoreboard', {
         dates: currentYear,
         week: week,
@@ -153,10 +154,12 @@ class ESPNService {
       
       if (week && seasonType) {
         // Fetch specific week and season type
-        games = await this.fetchWeeklyGames(week, seasonType);
+        const seasonInfo = await this.fetchCurrentSeason();
+        games = await this.fetchWeeklyGames(week, seasonType, seasonInfo.year);
       } else if (week) {
         // Fetch specific week (regular season)
-        games = await this.fetchWeeklyGames(week);
+        const seasonInfo = await this.fetchCurrentSeason();
+        games = await this.fetchWeeklyGames(week, 2, seasonInfo.year);
       } else {
         // Fetch all games for the season (including preseason)
         games = await this.fetchFullSchedule(null, true);
@@ -249,8 +252,15 @@ class ESPNService {
 
   async findOrCreateTeam(teamData) {
     try {
-      // First try to find by abbreviation
-      let team = await db.get('SELECT * FROM football_teams WHERE team_code = ?', [teamData.abbreviation]);
+      // Map ESPN team codes to our preferred codes
+      const teamCodeMap = {
+        'WAS': 'WSH'  // ESPN uses WAS, we prefer WSH for Washington Commanders
+      };
+      
+      const ourTeamCode = teamCodeMap[teamData.abbreviation] || teamData.abbreviation;
+      
+      // First try to find by our mapped abbreviation
+      let team = await db.get('SELECT * FROM football_teams WHERE team_code = ?', [ourTeamCode]);
       
       if (!team) {
         // Create new team
@@ -262,7 +272,7 @@ class ESPNService {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           teamId,
-          teamData.abbreviation,
+          ourTeamCode, // Use our mapped team code
           teamData.name,
           teamData.location,
           'Unknown', // ESPN doesn't provide conference in this endpoint
