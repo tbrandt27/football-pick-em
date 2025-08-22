@@ -15,22 +15,21 @@ export PORT=${PORT:-8080}
 export FRONTEND_PORT=${FRONTEND_PORT:-8080}
 export BACKEND_PORT=${BACKEND_PORT:-3001}
 
-# Set database path to persistent volume
-export DATABASE_PATH=${DATABASE_PATH:-/app/data/database.sqlite}
+# Set database path relative to current directory for AppRunner
+export DATABASE_PATH=${DATABASE_PATH:-./server/data/database.sqlite}
 
 # Create data directory if it doesn't exist
-mkdir -p /app/data
-mkdir -p /app/logs
+mkdir -p ./server/data
+mkdir -p ./logs
 
 # Initialize database if it doesn't exist
 if [ ! -f "$DATABASE_PATH" ]; then
     echo "📊 Initializing database..."
-    node /app/scripts/init-db.js
+    node ./scripts/init-db.js
 fi
 
 # Start the unified server (backend serving frontend static files)
 echo "🚀 Starting unified server on port $PORT..."
-cd /app
 PORT=$PORT node server/index.js &
 SERVER_PID=$!
 

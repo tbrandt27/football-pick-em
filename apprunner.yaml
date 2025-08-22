@@ -1,5 +1,14 @@
 version: 1.0
+build:
+  commands:
+    - echo "Installing dependencies..."
+    - npm ci --only=production
+    - echo "Building application..."
+    - npm run build
+    - echo "Setting permissions..."
+    - chmod +x scripts/start.sh
 run:
+  runtime-version: 18
   command: ./scripts/start.sh
   network:
     port: 8080
@@ -12,13 +21,14 @@ run:
     - name: FRONTEND_PORT
       value: "8080"
     - name: DATABASE_PATH
-      value: "/app/data/database.sqlite"
+      value: "./server/data/database.sqlite"
     - name: CLIENT_URL
       value: "https://your-app-name.region.awsapprunner.com"
     - name: FRONTEND_URL
       value: "https://your-app-name.region.awsapprunner.com"
-    # These should be set as secrets in App Runner console:
-    # - JWT_SECRET
+    # JWT Secret from AWS Secrets Manager
+    - name: JWT_SECRET
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString}}"
     # - SETTINGS_ENCRYPTION_KEY
     # - ADMIN_EMAIL (optional)
     # - ADMIN_PASSWORD (optional)

@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     python3 \
     make \
     g++ \
+    curl \
     && rm -rf /var/cache/apk/*
 
 # Copy package files first for better Docker layer caching
