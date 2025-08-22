@@ -1,15 +1,14 @@
 version: 1.0
-build:
-  commands:
-    - echo "Installing dependencies..."
-    - npm ci --only=production
-    - echo "Building application..."
-    - npm run build
-    - echo "Setting permissions..."
-    - chmod +x scripts/start.sh
 run:
-  runtime-version: 18
-  command: ./scripts/start.sh
+  commands:
+    build:
+      - echo "Installing dependencies..."
+      - npm ci --only=production
+      - echo "Building application..."
+      - npm run build
+      - echo "Setting permissions..."
+      - chmod +x scripts/start.sh
+    start: ./scripts/start.sh
   network:
     port: 8080
     env: PORT
@@ -19,18 +18,21 @@ run:
     - name: DATABASE_PATH
       value: "./server/data/database.sqlite"
     - name: CLIENT_URL
-      value: "https://your-app-name.region.awsapprunner.com"
+      value: ${AWS_APPRUNNER_SERVICE_URL}
     - name: FRONTEND_URL
-      value: "https://your-app-name.region.awsapprunner.com"
+      value: ${AWS_APPRUNNER_SERVICE_URL}
     # JWT Secret from AWS Secrets Manager
     - name: JWT_SECRET
       value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString}}"
-    # - SETTINGS_ENCRYPTION_KEY
-    # - ADMIN_EMAIL (optional)
-    # - ADMIN_PASSWORD (optional)
+    - name: ADMIN_EMAIL
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString}}"
+    - name: ADMIN_PASSWORD
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString}}"
+
     # SMTP settings (optional):
     # - SMTP_HOST
     # - SMTP_PORT
     # - SMTP_USER
     # - SMTP_PASS
     # - FROM_EMAIL
+    # - SETTINGS_ENCRYPTION_KEY
