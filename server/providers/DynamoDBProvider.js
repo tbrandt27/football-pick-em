@@ -27,27 +27,39 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async initialize() {
-    console.log(`Connecting to DynamoDB in region: ${this.region}`);
+    console.log(`[DynamoDB] Connecting to DynamoDB in region: ${this.region}`);
+    console.log(`[DynamoDB] Table prefix: ${this.tablePrefix}`);
+    console.log(`[DynamoDB] Using credentials: ${process.env.AWS_ACCESS_KEY_ID ? 'Yes (Access Key)' : 'No (IAM Role/Profile)'}`);
     
     // Initialize DynamoDB client
-    this.client = new DynamoDBClient({
-      region: this.region,
-      // Add credentials configuration if needed
-      ...(process.env.AWS_ACCESS_KEY_ID && {
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-        }
-      })
-    });
+    try {
+      this.client = new DynamoDBClient({
+        region: this.region,
+        // Add credentials configuration if needed
+        ...(process.env.AWS_ACCESS_KEY_ID && {
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+          }
+        })
+      });
 
-    this.docClient = DynamoDBDocumentClient.from(this.client);
-    
-    console.log("Connected to DynamoDB");
+      this.docClient = DynamoDBDocumentClient.from(this.client);
+      
+      console.log("[DynamoDB] Client initialized successfully");
+      
+      // Test connection by listing tables
+      await this._testConnection();
+      
+      console.log("[DynamoDB] Connection verified successfully");
+      
+    } catch (error) {
+      console.error("[DynamoDB] Failed to initialize:", error);
+      throw error;
+    }
     
     // Note: Table creation would typically be handled by infrastructure (CloudFormation, CDK, etc.)
-    // For development, you might want to check if tables exist and create them if needed
-    console.log("DynamoDB tables should be created via infrastructure (CloudFormation/CDK)");
+    console.log("[DynamoDB] Tables should be created via infrastructure (CloudFormation/CDK)");
   }
 
   async close() {
@@ -63,34 +75,68 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
   // Helper method to convert SQL operations to DynamoDB operations
   async run(operation, params = []) {
+    const operationId = this._generateOperationId();
+    const startTime = Date.now();
+    
     try {
+      console.log(`[DynamoDB:${operationId}] Starting RUN operation:`, typeof operation === 'string' ? operation.substring(0, 100) : operation);
+      
       const result = await this._executeOperation(operation, params);
-      return { 
-        id: result.id || (result.Attributes && result.Attributes.id), 
-        changes: 1 
+      const duration = Date.now() - startTime;
+      
+      console.log(`[DynamoDB:${operationId}] RUN completed in ${duration}ms`);
+      
+      return {
+        id: result.id || (result.Attributes && result.Attributes.id),
+        changes: 1
       };
     } catch (error) {
-      console.error('DynamoDB run operation error:', error);
+      const duration = Date.now() - startTime;
+      console.error(`[DynamoDB:${operationId}] RUN failed after ${duration}ms:`, error.message);
+      console.error(`[DynamoDB:${operationId}] Operation details:`, { operation: typeof operation === 'string' ? operation.substring(0, 200) : operation, params });
       throw error;
     }
   }
 
   async get(operation, params = []) {
+    const operationId = this._generateOperationId();
+    const startTime = Date.now();
+    
     try {
+      console.log(`[DynamoDB:${operationId}] Starting GET operation:`, typeof operation === 'string' ? operation.substring(0, 100) : operation);
+      
       const result = await this._executeOperation(operation, params);
+      const duration = Date.now() - startTime;
+      
+      console.log(`[DynamoDB:${operationId}] GET completed in ${duration}ms, found: ${result.Item ? 'Yes' : 'No'}`);
+      
       return result.Item || result;
     } catch (error) {
-      console.error('DynamoDB get operation error:', error);
+      const duration = Date.now() - startTime;
+      console.error(`[DynamoDB:${operationId}] GET failed after ${duration}ms:`, error.message);
+      console.error(`[DynamoDB:${operationId}] Operation details:`, { operation: typeof operation === 'string' ? operation.substring(0, 200) : operation, params });
       throw error;
     }
   }
 
   async all(operation, params = []) {
+    const operationId = this._generateOperationId();
+    const startTime = Date.now();
+    
     try {
+      console.log(`[DynamoDB:${operationId}] Starting ALL operation:`, typeof operation === 'string' ? operation.substring(0, 100) : operation);
+      
       const result = await this._executeOperation(operation, params);
+      const duration = Date.now() - startTime;
+      const count = result.Items ? result.Items.length : (Array.isArray(result) ? result.length : 0);
+      
+      console.log(`[DynamoDB:${operationId}] ALL completed in ${duration}ms, returned ${count} items`);
+      
       return result.Items || result || [];
     } catch (error) {
-      console.error('DynamoDB all operation error:', error);
+      const duration = Date.now() - startTime;
+      console.error(`[DynamoDB:${operationId}] ALL failed after ${duration}ms:`, error.message);
+      console.error(`[DynamoDB:${operationId}] Operation details:`, { operation: typeof operation === 'string' ? operation.substring(0, 200) : operation, params });
       throw error;
     }
   }
@@ -430,6 +476,45 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         };
       default:
         throw new Error(`Unsupported transaction action: ${action}`);
+    }
+  }
+
+  // Helper method to test DynamoDB connection
+  async _testConnection() {
+    try {
+      const { ListTablesCommand } = await import("@aws-sdk/client-dynamodb");
+      const command = new ListTablesCommand({});
+      const response = await this.client.send(command);
+      console.log(`[DynamoDB] Connection test successful. Found ${response.TableNames?.length || 0} tables.`);
+      return true;
+    } catch (error) {
+      console.error("[DynamoDB] Connection test failed:", error.message);
+      throw error;
+    }
+  }
+
+  // Helper method to generate operation IDs for logging
+  _generateOperationId() {
+    return Math.random().toString(36).substr(2, 9);
+  }
+
+  // Enhanced error logging
+  _logError(operation, error, context = {}) {
+    console.error(`[DynamoDB] Error in ${operation}:`, {
+      message: error.message,
+      code: error.name,
+      statusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId,
+      context
+    });
+  }
+
+  // Log performance metrics
+  _logPerformance(operation, duration, details = {}) {
+    if (duration > 1000) {
+      console.warn(`[DynamoDB] Slow operation detected: ${operation} took ${duration}ms`, details);
+    } else if (duration > 500) {
+      console.log(`[DynamoDB] Operation ${operation} took ${duration}ms`, details);
     }
   }
 }

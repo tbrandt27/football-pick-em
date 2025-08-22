@@ -15,6 +15,7 @@ import teamRoutes from "./routes/teams.js";
 import pickRoutes from "./routes/picks.js";
 import seasonRoutes from "./routes/seasons.js";
 import adminRoutes from "./routes/admin.js";
+import healthRoutes from "./routes/health.js";
 // import databaseAdminRoutes from "./routes/databaseAdmin.js";
 
 // Import services
@@ -62,6 +63,7 @@ app.use("/api/teams", teamRoutes);
 app.use("/api/picks", pickRoutes);
 app.use("/api/seasons", seasonRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/health", healthRoutes);
 // app.use("/api/admin/database", databaseAdminRoutes);
 
 // Serve static logo files with graceful fallback for missing files
@@ -85,8 +87,8 @@ app.get("/logos/:filename", (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
+// Basic health check endpoint (keep for backward compatibility)
+app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 

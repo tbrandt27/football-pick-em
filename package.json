@@ -17,7 +17,7 @@
     "start": "./scripts/start.sh",
     "start:production": "NODE_ENV=production ./scripts/start.sh",
     "init-db": "node scripts/init-db.js",
-    "docker:build": "docker build -t football-pickem .",
+    "docker:build": "docker build -t football-pickem -f Dockerfile.backup .",
     "docker:run": "docker run -p 8080:8080 football-pickem"
   },
   "dependencies": {
