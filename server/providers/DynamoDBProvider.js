@@ -110,7 +110,8 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       
       console.log(`[DynamoDB:${operationId}] GET completed in ${duration}ms, found: ${result.Item ? 'Yes' : 'No'}`);
       
-      return result.Item || result;
+      // Return null if no item found, otherwise return the item
+      return result.Item || null;
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[DynamoDB:${operationId}] GET failed after ${duration}ms:`, error.message);

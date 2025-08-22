@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import DatabaseProviderFactory from "../providers/DatabaseProviderFactory.js";
+import DatabaseInitializer from "../services/databaseInitializer.js";
 
 dotenv.config();
 
@@ -14,6 +15,11 @@ class Database {
       this.provider = DatabaseProviderFactory.createProvider();
       await this.provider.initialize();
       console.log(`Database initialized with provider: ${this.provider.getType()}`);
+      
+      // Auto-seed database if needed
+      const initializer = new DatabaseInitializer(this);
+      await initializer.initialize();
+      
     } catch (error) {
       console.error("Error initializing database:", error);
       throw error;
