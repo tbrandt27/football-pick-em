@@ -23,10 +23,46 @@ export default class SQLiteSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Current season or null
    */
   async getCurrentSeason() {
-    return await db.get(`
-      SELECT * FROM seasons 
+    // Check for multiple current seasons and fix if needed
+    const currentSeasons = await db.all(`
+      SELECT * FROM seasons
       WHERE is_current = 1
+      ORDER BY season DESC
     `);
+    
+    if (!currentSeasons || currentSeasons.length === 0) {
+      return null;
+    }
+    
+    // If multiple seasons are marked as current, fix the inconsistency
+    if (currentSeasons.length > 1) {
+      console.warn(`[SQLite Season] Found ${currentSeasons.length} seasons marked as current! Fixing inconsistency...`);
+      await this.fixMultipleCurrentSeasons(currentSeasons);
+    }
+    
+    return currentSeasons[0];
+  }
+
+  /**
+   * Fix inconsistent state where multiple seasons are marked as current
+   * @param {Array} currentSeasons - Array of seasons marked as current
+   */
+  async fixMultipleCurrentSeasons(currentSeasons) {
+    try {
+      // Keep the most recent season as current, unset others
+      const mostRecentSeason = currentSeasons[0]; // Already sorted by season DESC
+      
+      console.log(`[SQLite Season] Keeping ${mostRecentSeason.season} as current, unsetting others`);
+      
+      // Unset all seasons first
+      await db.run('UPDATE seasons SET is_current = 0');
+      
+      // Set only the most recent as current
+      await db.run('UPDATE seasons SET is_current = 1 WHERE id = ?', [mostRecentSeason.id]);
+      
+    } catch (error) {
+      console.error(`[SQLite Season] Error fixing multiple current seasons:`, error);
+    }
   }
 
   /**

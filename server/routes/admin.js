@@ -816,12 +816,12 @@ router.delete(
 
       console.log(`[Admin] Delete season request for ID: ${seasonId}`);
 
-      // Get season info before deletion
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const gameService = DatabaseServiceFactory.getGameService();
+
+      // Get season info before deletion using the service
       console.log(`[Admin] Looking up season with ID: ${seasonId}`);
-      const season = await db.get(
-        "SELECT season FROM seasons WHERE id = ?",
-        [seasonId]
-      );
+      const season = await seasonService.getSeasonById(seasonId);
       
       console.log(`[Admin] Season lookup result:`, season);
       
@@ -830,46 +830,38 @@ router.delete(
         return res.status(404).json({ error: "Season not found" });
       }
 
-      // Check if season has any active games
-      console.log(`[Admin] Checking for associated games for season: ${seasonId}`);
-      const gameCount = await db.get(
-        "SELECT COUNT(*) as count FROM pickem_games WHERE season_id = ?",
-        [seasonId]
-      );
+      // Check if season has any active pickem games using the service
+      console.log(`[Admin] Checking for associated pickem games for season: ${seasonId}`);
+      const gameCount = await gameService.getGameCountBySeason(seasonId);
 
-      console.log(`[Admin] Game count result:`, gameCount);
+      console.log(`[Admin] Game count result: ${gameCount}`);
 
-      if (gameCount?.count > 0) {
-        console.log(`[Admin] Cannot delete season - has ${gameCount.count} associated games`);
+      if (gameCount > 0) {
+        console.log(`[Admin] Cannot delete season - has ${gameCount} associated games`);
         return res.status(400).json({
-          error: `Cannot delete season ${season.season} - it has ${gameCount.count} associated pick'em games. Delete the games first.`
+          error: `Cannot delete season ${season.season || season.year} - it has ${gameCount} associated pick'em games. Delete the games first.`
         });
       }
 
-      // Delete related NFL games first (DynamoDB requires individual deletes by ID)
-      console.log(`[Admin] Getting football games for season: ${seasonId}`);
-      const footballGames = await db.all("SELECT id FROM football_games WHERE season_id = ?", [seasonId]);
-      console.log(`[Admin] Found ${footballGames.length} football games to delete`);
-      
-      // Delete each football game individually
-      for (const game of footballGames) {
-        console.log(`[Admin] Deleting football game: ${game.id}`);
-        await db.run("DELETE FROM football_games WHERE id = ?", [game.id]);
-      }
-      console.log(`[Admin] Deleted ${footballGames.length} football games`);
-      
-      // Finally delete the season itself
-      console.log(`[Admin] Deleting season record: ${seasonId}`);
-      const seasonDeleteResult = await db.run("DELETE FROM seasons WHERE id = ?", [seasonId]);
-      console.log(`[Admin] Season deletion result:`, seasonDeleteResult);
+      // Use the service layer to delete the season (which handles football games too)
+      console.log(`[Admin] Deleting season using service layer`);
+      await seasonService.deleteSeason(seasonId);
 
-      console.log(`[Admin] Season ${season.season} deleted successfully`);
+      console.log(`[Admin] Season ${season.season || season.year} deleted successfully`);
       res.json({
-        message: `Season ${season.season} deleted successfully`,
+        message: `Season ${season.season || season.year} deleted successfully`,
       });
     } catch (error) {
       console.error("[Admin] Delete season error:", error);
       console.error("[Admin] Error stack:", error.stack);
+      
+      // Handle specific service errors
+      if (error.message === 'Season not found') {
+        return res.status(404).json({ error: error.message });
+      } else if (error.message.includes('Cannot delete season that has associated games')) {
+        return res.status(400).json({ error: error.message });
+      }
+      
       res.status(500).json({
         error: "Internal server error",
         details: error.message

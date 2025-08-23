@@ -413,10 +413,14 @@ export default class DynamoDBGameService extends IGameService {
       // Get commissioner name
       let commissioner_name = 'Unknown';
       if (game.commissioner_id) {
-        const userService = require('../DatabaseServiceFactory.js').default.getUserService();
-        const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
-        if (commissioner) {
-          commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+        try {
+          const commissionerResult = await this.db._dynamoGet('users', { id: game.commissioner_id });
+          const commissioner = commissionerResult.Item;
+          if (commissioner) {
+            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+          }
+        } catch (error) {
+          console.warn(`Failed to get commissioner info for game ${game.id}:`, error);
         }
       }
       
@@ -424,17 +428,26 @@ export default class DynamoDBGameService extends IGameService {
       let season_year = null;
       let season_is_current = false;
       if (game.season_id) {
-        const seasonResult = await this.db._dynamoGet('seasons', { id: game.season_id });
-        const season = seasonResult.Item;
-        if (season) {
-          season_year = season.season;
-          season_is_current = Boolean(season.is_current);
+        try {
+          const seasonResult = await this.db._dynamoGet('seasons', { id: game.season_id });
+          const season = seasonResult.Item;
+          if (season) {
+            season_year = season.season;
+            season_is_current = Boolean(season.is_current);
+          }
+        } catch (error) {
+          console.warn(`Failed to get season info for game ${game.id}:`, error);
         }
       }
       
       // Get participant count
-      const participantsResult = await this.db._dynamoScan('game_participants', { game_id: game.id });
-      const participant_count = participantsResult.Items ? participantsResult.Items.length : 0;
+      let participant_count = 0;
+      try {
+        const participantsResult = await this.db._dynamoScan('game_participants', { game_id: game.id });
+        participant_count = participantsResult.Items ? participantsResult.Items.length : 0;
+      } catch (error) {
+        console.warn(`Failed to get participant count for game ${game.id}:`, error);
+      }
       
       return {
         ...game,
@@ -527,7 +540,15 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<number>} Number of games in season
    */
   async getGameCountBySeason(seasonId) {
-    const result = await this.db._dynamoScan('pickem_games', { season_id: seasonId });
-    return result.Items ? result.Items.length : 0;
+    try {
+      console.log(`[DynamoDBGameService] Getting game count for season: ${seasonId}`);
+      const result = await this.db._dynamoScan('pickem_games', { season_id: seasonId });
+      const count = result.Items ? result.Items.length : 0;
+      console.log(`[DynamoDBGameService] Found ${count} games for season ${seasonId}`);
+      return count;
+    } catch (error) {
+      console.error(`[DynamoDBGameService] Error getting game count for season ${seasonId}:`, error);
+      return 0; // Return 0 on error to be safe
+    }
   }
 }

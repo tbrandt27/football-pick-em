@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+aimport { v4 as uuidv4 } from 'uuid';
 import db from '../models/database.js';
 
 const footballTeams = [
@@ -112,24 +112,50 @@ async function seedTeamsDynamoDB() {
   
   try {
     for (const team of footballTeams) {
-      // Check if team already exists using a more reliable method
+      // Check if team already exists using multiple approaches for maximum reliability
       let existingTeam = null;
+      
+      // Method 1: Try scan with filter
       try {
-        // Try to scan for the team with team_code filter
         const scanResult = await db._dynamoScan('football_teams', { team_code: team.code });
         if (scanResult && scanResult.Items && scanResult.Items.length > 0) {
           existingTeam = scanResult.Items[0];
+          console.log(`[DynamoDB] Found existing team ${team.code} via filtered scan`);
         }
       } catch (scanError) {
-        console.log(`[DynamoDB] Scan failed for ${team.code}, trying alternative approach:`, scanError.message);
-        // Fallback: get all teams and filter in memory
+        console.log(`[DynamoDB] Filtered scan failed for ${team.code}:`, scanError.message);
+      }
+      
+      // Method 2: If not found, try scanning all teams and filter in memory
+      if (!existingTeam) {
         try {
           const allTeamsResult = await db._dynamoScan('football_teams');
           if (allTeamsResult && allTeamsResult.Items) {
             existingTeam = allTeamsResult.Items.find(t => t.team_code === team.code);
+            if (existingTeam) {
+              console.log(`[DynamoDB] Found existing team ${team.code} via fallback scan`);
+            }
           }
         } catch (fallbackError) {
           console.log(`[DynamoDB] Fallback scan also failed for ${team.code}:`, fallbackError.message);
+        }
+      }
+      
+      // Method 3: Double-check with a small delay and retry (eventual consistency)
+      if (!existingTeam) {
+        console.log(`[DynamoDB] No team found for ${team.code}, waiting and retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Brief delay
+        
+        try {
+          const retryResult = await db._dynamoScan('football_teams');
+          if (retryResult && retryResult.Items) {
+            existingTeam = retryResult.Items.find(t => t.team_code === team.code);
+            if (existingTeam) {
+              console.log(`[DynamoDB] Found existing team ${team.code} via retry scan`);
+            }
+          }
+        } catch (retryError) {
+          console.log(`[DynamoDB] Retry scan failed for ${team.code}:`, retryError.message);
         }
       }
       

@@ -118,14 +118,39 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         ]);
       } catch (dataError) {
         console.error('[GameView] Error loading season/teams data:', dataError);
-        // Don't fail completely if teams loading fails, season is more critical
-        if (dataError instanceof Error && dataError.message.includes('season')) {
-          setError(`Failed to load season data: ${dataError.message}`);
-          return;
-        } else {
-          console.warn('[GameView] Teams loading failed, continuing without teams data:', dataError);
+        // Handle season loading failure gracefully
+        try {
           seasonResponse = await api.getCurrentSeason();
-          teamsResponse = { success: false, data: null };
+          teamsResponse = await api.getTeams();
+        } catch (retryError) {
+          console.error('[GameView] Retry failed:', retryError);
+          // Try to get all seasons as fallback
+          try {
+            const seasonsResponse = await api.getSeasons();
+            if (seasonsResponse?.success && seasonsResponse.data?.seasons && seasonsResponse.data.seasons.length > 0) {
+              // Use the most recent season as fallback
+              const fallbackSeason = seasonsResponse.data.seasons.sort((a, b) =>
+                parseInt(b.season) - parseInt(a.season)
+              )[0];
+              seasonResponse = { success: true, data: { season: fallbackSeason } };
+              console.log('[GameView] Using fallback season:', fallbackSeason);
+            } else {
+              setError('No seasons available. Please contact an administrator to set up seasons.');
+              return;
+            }
+          } catch (fallbackError) {
+            console.error('[GameView] Fallback season loading failed:', fallbackError);
+            setError('Unable to load season data. Please try refreshing the page or contact support.');
+            return;
+          }
+          
+          // Try to load teams separately
+          try {
+            teamsResponse = await api.getTeams();
+          } catch (teamsError) {
+            console.warn('[GameView] Teams loading failed, continuing without teams data:', teamsError);
+            teamsResponse = { success: false, data: null };
+          }
         }
       }
 

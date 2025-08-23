@@ -32,11 +32,80 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Current season or null
    */
   async getCurrentSeason() {
-    const result = await this.db._dynamoScan('seasons', {
-      is_current: true
-    });
+    try {
+      // First try scan with filter
+      const result = await this.db._dynamoScan('seasons', {
+        is_current: true
+      });
 
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+      if (result.Items && result.Items.length > 0) {
+        // Handle multiple current seasons by returning the most recent and fixing the inconsistency
+        if (result.Items.length > 1) {
+          console.warn(`[DynamoDB Season] Found ${result.Items.length} seasons marked as current! Fixing inconsistency...`);
+          await this.fixMultipleCurrentSeasons(result.Items);
+        }
+        return result.Items[0];
+      }
+
+      // Fallback: scan all seasons and filter in memory
+      console.log(`[DynamoDB Season] Scan filter failed for current season, using fallback`);
+      const allSeasonsResult = await this.db._dynamoScan('seasons');
+      if (allSeasonsResult.Items) {
+        const currentSeasons = allSeasonsResult.Items.filter(s => s.is_current === true);
+        if (currentSeasons.length > 0) {
+          if (currentSeasons.length > 1) {
+            console.warn(`[DynamoDB Season] Found ${currentSeasons.length} seasons marked as current! Fixing inconsistency...`);
+            await this.fixMultipleCurrentSeasons(currentSeasons);
+          }
+          console.log(`[DynamoDB Season] Found current season via fallback: ${currentSeasons[0].season}`);
+          return currentSeasons[0];
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`[DynamoDB Season] Error in getCurrentSeason:`, error);
+      
+      // Final fallback: scan all and filter
+      try {
+        const allSeasonsResult = await this.db._dynamoScan('seasons');
+        if (allSeasonsResult.Items) {
+          const currentSeasons = allSeasonsResult.Items.filter(s => s.is_current === true);
+          if (currentSeasons.length > 1) {
+            console.warn(`[DynamoDB Season] Found ${currentSeasons.length} seasons marked as current in fallback! Fixing...`);
+            await this.fixMultipleCurrentSeasons(currentSeasons);
+          }
+          return currentSeasons.length > 0 ? currentSeasons[0] : null;
+        }
+      } catch (fallbackError) {
+        console.error(`[DynamoDB Season] Fallback also failed:`, fallbackError);
+      }
+      
+      return null;
+    }
+  }
+
+  /**
+   * Fix inconsistent state where multiple seasons are marked as current
+   * @param {Array} currentSeasons - Array of seasons marked as current
+   */
+  async fixMultipleCurrentSeasons(currentSeasons) {
+    try {
+      // Sort by season year (most recent first) and keep only the most recent as current
+      const sortedSeasons = currentSeasons.sort((a, b) => parseInt(b.season) - parseInt(a.season));
+      const mostRecentSeason = sortedSeasons[0];
+      
+      console.log(`[DynamoDB Season] Keeping ${mostRecentSeason.season} as current, unsetting others`);
+      
+      // Unset all others
+      for (let i = 1; i < sortedSeasons.length; i++) {
+        const season = sortedSeasons[i];
+        console.log(`[DynamoDB Season] Unsetting ${season.season} as current`);
+        await this.db._dynamoUpdate('seasons', { id: season.id }, { is_current: false });
+      }
+    } catch (error) {
+      console.error(`[DynamoDB Season] Error fixing multiple current seasons:`, error);
+    }
   }
 
   /**
@@ -55,8 +124,40 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Season or null
    */
   async getSeasonByYear(year) {
-    const result = await this.db._dynamoScan('seasons', { season: year });
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    try {
+      // First try scan with filter
+      const result = await this.db._dynamoScan('seasons', { season: year });
+      if (result.Items && result.Items.length > 0) {
+        return result.Items[0];
+      }
+
+      // Fallback: scan all seasons and filter in memory for reliability
+      console.log(`[DynamoDB Season] Scan filter failed for year ${year}, using fallback`);
+      const allSeasonsResult = await this.db._dynamoScan('seasons');
+      if (allSeasonsResult.Items) {
+        const matchingSeason = allSeasonsResult.Items.find(s => s.season === year);
+        if (matchingSeason) {
+          console.log(`[DynamoDB Season] Found existing season via fallback: ${year}`);
+          return matchingSeason;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`[DynamoDB Season] Error in getSeasonByYear for ${year}:`, error);
+      
+      // Final fallback: scan all and filter
+      try {
+        const allSeasonsResult = await this.db._dynamoScan('seasons');
+        if (allSeasonsResult.Items) {
+          return allSeasonsResult.Items.find(s => s.season === year) || null;
+        }
+      } catch (fallbackError) {
+        console.error(`[DynamoDB Season] Fallback also failed:`, fallbackError);
+      }
+      
+      return null;
+    }
   }
 
   /**
@@ -270,11 +371,43 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Team or null
    */
   async getTeamByCode(teamCode) {
-    const result = await this.db._dynamoScan('football_teams', {
-      team_code: teamCode
-    });
-    
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    try {
+      // First try scan with filter
+      const result = await this.db._dynamoScan('football_teams', {
+        team_code: teamCode
+      });
+      
+      if (result.Items && result.Items.length > 0) {
+        return result.Items[0];
+      }
+
+      // Fallback: scan all teams and filter in memory for reliability
+      console.log(`[DynamoDB Team] Scan filter failed for team code ${teamCode}, using fallback`);
+      const allTeamsResult = await this.db._dynamoScan('football_teams');
+      if (allTeamsResult.Items) {
+        const matchingTeam = allTeamsResult.Items.find(t => t.team_code === teamCode);
+        if (matchingTeam) {
+          console.log(`[DynamoDB Team] Found existing team via fallback: ${teamCode}`);
+          return matchingTeam;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`[DynamoDB Team] Error in getTeamByCode for ${teamCode}:`, error);
+      
+      // Final fallback: scan all and filter
+      try {
+        const allTeamsResult = await this.db._dynamoScan('football_teams');
+        if (allTeamsResult.Items) {
+          return allTeamsResult.Items.find(t => t.team_code === teamCode) || null;
+        }
+      } catch (fallbackError) {
+        console.error(`[DynamoDB Team] Fallback also failed:`, fallbackError);
+      }
+      
+      return null;
+    }
   }
 
   /**
