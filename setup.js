@@ -16,18 +16,32 @@ async function setupDatabase() {
     console.log('🏈 Creating default season...');
     const currentYear = new Date().getFullYear().toString();
     
-    const existingSeason = await db.get('SELECT id FROM seasons WHERE season = ?', [currentYear]);
+    // Import DatabaseServiceFactory to use proper season service
+    const { default: DatabaseServiceFactory } = await import('./server/services/database/DatabaseServiceFactory.js');
+    const seasonService = DatabaseServiceFactory.getSeasonService();
     
-    if (!existingSeason) {
-      const seasonId = uuidv4();
-      await db.run(`
-        INSERT INTO seasons (id, season, is_current)
-        VALUES (?, ?, 1)
-      `, [seasonId, currentYear]);
+    try {
+      // Check if season already exists using the service layer
+      const existingSeason = await seasonService.getSeasonByYear(currentYear);
       
-      console.log(`✅ Created ${currentYear} season as current season\n`);
-    } else {
-      console.log(`ℹ️  Season ${currentYear} already exists\n`);
+      if (!existingSeason) {
+        // Use the season service to create the season (with duplicate prevention)
+        const newSeason = await seasonService.createSeason({
+          season: currentYear,
+          isCurrent: true
+        });
+        
+        console.log(`✅ Created ${currentYear} season as current season (ID: ${newSeason.id})\n`);
+      } else {
+        console.log(`ℹ️  Season ${currentYear} already exists\n`);
+      }
+    } catch (error) {
+      if (error.message.includes('Season already exists')) {
+        console.log(`ℹ️  Season ${currentYear} already exists\n`);
+      } else {
+        console.error(`❌ Failed to create season: ${error.message}\n`);
+        throw error;
+      }
     }
 
     // 3. Create admin user

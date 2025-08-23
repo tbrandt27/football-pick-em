@@ -227,6 +227,31 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
       )
     `);
 
+    // Add missing columns to existing picks table if they don't exist
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN football_game_id TEXT`);
+    } catch (e) {} // Column might already exist
+    
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN pick_team_id TEXT`);
+    } catch (e) {}
+    
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN is_correct BOOLEAN DEFAULT NULL`);
+    } catch (e) {}
+    
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN tiebreaker INTEGER`);
+    } catch (e) {}
+    
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN season_id TEXT`);
+    } catch (e) {}
+    
+    try {
+      await this.run(`ALTER TABLE picks ADD COLUMN week INTEGER`);
+    } catch (e) {}
+
     // Weekly Standings table
     await this.run(`
       CREATE TABLE IF NOT EXISTS weekly_standings (

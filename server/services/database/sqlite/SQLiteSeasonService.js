@@ -182,7 +182,7 @@ export default class SQLiteSeasonService extends ISeasonService {
    */
   async getSeasonGames(seasonId, filters = {}) {
     let query = `
-      SELECT 
+      SELECT
         ng.*,
         ht.team_city as home_team_city,
         ht.team_name as home_team_name,
@@ -199,7 +199,7 @@ export default class SQLiteSeasonService extends ISeasonService {
       FROM football_games ng
       JOIN football_teams ht ON ng.home_team_id = ht.id
       JOIN football_teams at ON ng.away_team_id = at.id
-      WHERE ng.season_id = ?
+      WHERE ng.season_id = ? AND ng.season_type != 1
     `;
     
     const params = [seasonId];

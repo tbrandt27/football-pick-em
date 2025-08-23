@@ -120,113 +120,49 @@ export default class DatabaseInitializer {
   }
 
   async seedTeams() {
-    console.log("🏈 Seeding NFL teams...");
+    console.log("🏈 Seeding NFL teams using proper seeding logic...");
     
-    const teams = [
-      { code: "ARI", name: "Cardinals", city: "Arizona", conference: "NFC", division: "West" },
-      { code: "ATL", name: "Falcons", city: "Atlanta", conference: "NFC", division: "South" },
-      { code: "BAL", name: "Ravens", city: "Baltimore", conference: "AFC", division: "North" },
-      { code: "BUF", name: "Bills", city: "Buffalo", conference: "AFC", division: "East" },
-      { code: "CAR", name: "Panthers", city: "Carolina", conference: "NFC", division: "South" },
-      { code: "CHI", name: "Bears", city: "Chicago", conference: "NFC", division: "North" },
-      { code: "CIN", name: "Bengals", city: "Cincinnati", conference: "AFC", division: "North" },
-      { code: "CLE", name: "Browns", city: "Cleveland", conference: "AFC", division: "North" },
-      { code: "DAL", name: "Cowboys", city: "Dallas", conference: "NFC", division: "East" },
-      { code: "DEN", name: "Broncos", city: "Denver", conference: "AFC", division: "West" },
-      { code: "DET", name: "Lions", city: "Detroit", conference: "NFC", division: "North" },
-      { code: "GB", name: "Packers", city: "Green Bay", conference: "NFC", division: "North" },
-      { code: "HOU", name: "Texans", city: "Houston", conference: "AFC", division: "South" },
-      { code: "IND", name: "Colts", city: "Indianapolis", conference: "AFC", division: "South" },
-      { code: "JAX", name: "Jaguars", city: "Jacksonville", conference: "AFC", division: "South" },
-      { code: "KC", name: "Chiefs", city: "Kansas City", conference: "AFC", division: "West" },
-      { code: "LAC", name: "Chargers", city: "Los Angeles", conference: "AFC", division: "West" },
-      { code: "LAR", name: "Rams", city: "Los Angeles", conference: "NFC", division: "West" },
-      { code: "LV", name: "Raiders", city: "Las Vegas", conference: "AFC", division: "West" },
-      { code: "MIA", name: "Dolphins", city: "Miami", conference: "AFC", division: "East" },
-      { code: "MIN", name: "Vikings", city: "Minnesota", conference: "NFC", division: "North" },
-      { code: "NE", name: "Patriots", city: "New England", conference: "AFC", division: "East" },
-      { code: "NO", name: "Saints", city: "New Orleans", conference: "NFC", division: "South" },
-      { code: "NYG", name: "Giants", city: "New York", conference: "NFC", division: "East" },
-      { code: "NYJ", name: "Jets", city: "New York", conference: "AFC", division: "East" },
-      { code: "PHI", name: "Eagles", city: "Philadelphia", conference: "NFC", division: "East" },
-      { code: "PIT", name: "Steelers", city: "Pittsburgh", conference: "AFC", division: "North" },
-      { code: "SEA", name: "Seahawks", city: "Seattle", conference: "NFC", division: "West" },
-      { code: "SF", name: "49ers", city: "San Francisco", conference: "NFC", division: "West" },
-      { code: "TB", name: "Buccaneers", city: "Tampa Bay", conference: "NFC", division: "South" },
-      { code: "TEN", name: "Titans", city: "Tennessee", conference: "AFC", division: "South" },
-      { code: "WSH", name: "Commanders", city: "Washington", conference: "NFC", division: "East" },
-    ];
-
-    let successCount = 0;
-    for (const team of teams) {
-      try {
-        const teamId = uuidv4();
-        
-        if (this.db.getType() === 'dynamodb') {
-          // DynamoDB format
-          await this.db.run({
-            action: 'put',
-            table: 'football_teams',
-            item: {
-              id: teamId,
-              team_code: team.code,
-              team_name: team.name,
-              team_city: team.city,
-              team_conference: team.conference,
-              team_division: team.division,
-              team_logo: `/logos/${team.code}.svg`,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }
-          });
-        } else {
-          // SQLite format
-          await this.db.run(`
-            INSERT INTO football_teams (id, team_code, team_name, team_city, team_conference, team_division, team_logo)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `, [teamId, team.code, team.name, team.city, team.conference, team.division, `/logos/${team.code}.svg`]);
-        }
-        
-        successCount++;
-      } catch (error) {
-        console.error(`❌ Failed to insert team ${team.code}:`, error.message);
-      }
+    try {
+      // Use the comprehensive seedTeams function with robust duplicate detection
+      const { seedTeams } = await import('../utils/seedTeams.js');
+      await seedTeams();
+      console.log("✅ NFL teams seeded successfully with proper duplicate detection");
+    } catch (error) {
+      console.error(`❌ Failed to seed teams: ${error.message}`);
+      // Don't throw - allow app to continue starting even if team seeding fails
     }
-
-    console.log(`✅ NFL teams seeded: ${successCount}/${teams.length} teams`);
   }
 
   async createDefaultSeason() {
     console.log("📅 Creating default season...");
     
     const currentYear = new Date().getFullYear().toString();
-    const seasonId = uuidv4();
 
     try {
-      if (this.db.getType() === 'dynamodb') {
-        // DynamoDB format
-        await this.db.run({
-          action: 'put',
-          table: 'seasons',
-          item: {
-            id: seasonId,
-            season: currentYear,
-            is_current: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        });
-      } else {
-        // SQLite format
-        await this.db.run(`
-          INSERT INTO seasons (id, season, is_current)
-          VALUES (?, ?, 1)
-        `, [seasonId, currentYear]);
+      // Import DatabaseServiceFactory to use proper season service
+      const { default: DatabaseServiceFactory } = await import('./database/DatabaseServiceFactory.js');
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+
+      // Check if season already exists using the service layer
+      const existingSeason = await seasonService.getSeasonByYear(currentYear);
+      if (existingSeason) {
+        console.log(`ℹ️  Season ${currentYear} already exists, skipping creation`);
+        return;
       }
 
-      console.log(`✅ Created ${currentYear} season as current season`);
+      // Use the season service to create the season (with duplicate prevention)
+      const newSeason = await seasonService.createSeason({
+        season: currentYear,
+        isCurrent: true
+      });
+
+      console.log(`✅ Created ${currentYear} season as current season (ID: ${newSeason.id})`);
     } catch (error) {
-      console.error(`❌ Failed to create season: ${error.message}`);
+      if (error.message.includes('Season already exists')) {
+        console.log(`ℹ️  Season ${currentYear} already exists, skipping creation`);
+      } else {
+        console.error(`❌ Failed to create season: ${error.message}`);
+      }
     }
   }
 

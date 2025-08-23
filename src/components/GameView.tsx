@@ -371,113 +371,269 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     return pick.is_correct ? 'correct' : 'incorrect';
   };
 
-  if (isLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  // Add comprehensive render error handling
+  try {
+    if (isLoading || loading) {
+      return (
+        <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading game data...</p>
+            <div className="mt-2 text-sm text-gray-500">
+              {gameSlug && <div>Game: {gameSlug}</div>}
+              {gameId && <div>ID: {gameId}</div>}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
-  if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !user) {
+      return (
+        <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">
+              Please log in to view this game
+            </p>
+            <a
+              href="/"
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Go to Login
+            </a>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+          <div className="text-center">
+            <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg mb-4">
+              <h3 className="font-bold text-lg mb-2">Error Loading Game</h3>
+              <p className="mb-4">{error}</p>
+              <details className="text-sm text-left">
+                <summary className="cursor-pointer font-medium">Debug Information</summary>
+                <div className="mt-2 p-2 bg-red-50 rounded">
+                  <p><strong>Game ID:</strong> {gameId || 'Not provided'}</p>
+                  <p><strong>Game Slug:</strong> {gameSlug || 'Not provided'}</p>
+                  <p><strong>User:</strong> {user?.email || 'Not available'}</p>
+                  <p><strong>Authentication:</strong> {isAuthenticated ? 'Yes' : 'No'}</p>
+                  <p><strong>Game Data:</strong> {game ? 'Loaded' : 'Not loaded'}</p>
+                  <p><strong>Season Data:</strong> {currentSeason ? 'Loaded' : 'Not loaded'}</p>
+                </div>
+              </details>
+            </div>
+            <div className="space-x-3">
+              <button
+                onClick={() => {
+                  setError('');
+                  loadGameData();
+                }}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Try Again
+              </button>
+              <a
+                href="/dashboard"
+                className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Back to Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!game || !currentSeason) {
+      return (
+        <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+          <div className="text-center">
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-6 py-4 rounded-lg mb-4">
+              <h3 className="font-bold text-lg mb-2">Missing Data</h3>
+              <p className="mb-4">Game or season data not available</p>
+              <div className="text-sm">
+                <p><strong>Game:</strong> {game ? '✓ Loaded' : '✗ Missing'}</p>
+                <p><strong>Season:</strong> {currentSeason ? '✓ Loaded' : '✗ Missing'}</p>
+                <p><strong>User:</strong> {user ? '✓ Loaded' : '✗ Missing'}</p>
+              </div>
+            </div>
+            <div className="space-x-3">
+              <button
+                onClick={() => {
+                  console.log('[GameView] Reloading game data...', { game, currentSeason, user });
+                  loadGameData();
+                }}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Reload Data
+              </button>
+              <a
+                href="/dashboard"
+                className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Back to Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  } catch (renderError) {
+    console.error('[GameView] Render error in early checks:', renderError);
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">
-            Please log in to view this game
-          </p>
+          <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg mb-4">
+            <h3 className="font-bold text-lg mb-2">Render Error</h3>
+            <p>Component failed to render properly</p>
+            <details className="text-sm text-left mt-2">
+              <summary className="cursor-pointer font-medium">Error Details</summary>
+              <div className="mt-2 p-2 bg-red-50 rounded">
+                <pre className="whitespace-pre-wrap">{String(renderError)}</pre>
+              </div>
+            </details>
+          </div>
           <a
-            href="/"
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            href="/dashboard"
+            className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
-            Go to Login
+            Back to Dashboard
           </a>
         </div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="text-center">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg mb-4">
-            <h3 className="font-bold text-lg mb-2">Error Loading Game</h3>
-            <p className="mb-4">{error}</p>
-            <details className="text-sm text-left">
-              <summary className="cursor-pointer font-medium">Debug Information</summary>
-              <div className="mt-2 p-2 bg-red-50 rounded">
-                <p><strong>Game ID:</strong> {gameId || 'Not provided'}</p>
-                <p><strong>Game Slug:</strong> {gameSlug || 'Not provided'}</p>
-                <p><strong>User:</strong> {user?.email || 'Not available'}</p>
-                <p><strong>Authentication:</strong> {isAuthenticated ? 'Yes' : 'No'}</p>
-              </div>
-            </details>
-          </div>
-          <div className="space-x-3">
-            <button
-              onClick={() => {
-                setError('');
-                loadGameData();
-              }}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Try Again
-            </button>
-            <a
-              href="/dashboard"
-              className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              Back to Dashboard
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!game || !currentSeason) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">
-            Game or season data not available
-          </p>
-          <div className="space-x-3">
-            <button
-              onClick={() => loadGameData()}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Reload
-            </button>
-            <a
-              href="/dashboard"
-              className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              Back to Dashboard
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const hasUnsavedChanges = Object.keys(selectedPicks).some(footballGameId => {
-    const existingPick = userPicks.find(p => p.football_game_id === footballGameId);
-    return !existingPick || existingPick.pick_team_id !== selectedPicks[footballGameId] ||
-           (tiebreakers[footballGameId] || 0) !== (existingPick.tiebreaker || 0);
-  });
+  // Add safety checks for calculations
+  const hasUnsavedChanges = (() => {
+    try {
+      return Object.keys(selectedPicks).some(footballGameId => {
+        const existingPick = userPicks.find(p => p.football_game_id === footballGameId);
+        return !existingPick || existingPick.pick_team_id !== selectedPicks[footballGameId] ||
+               (tiebreakers[footballGameId] || 0) !== (existingPick.tiebreaker || 0);
+      });
+    } catch (error) {
+      console.error('[GameView] Error calculating unsaved changes:', error);
+      return false;
+    }
+  })();
 
   const getHeaderStyle = () => {
-    if (favoriteTeam?.team_primary_color && favoriteTeam?.team_secondary_color) {
-      return {
-        background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
-      };
+    try {
+      if (favoriteTeam?.team_primary_color && favoriteTeam?.team_secondary_color) {
+        return {
+          background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
+        };
+      }
+    } catch (error) {
+      console.error('[GameView] Error calculating header style:', error);
     }
     return {};
   };
 
-  return (
+  // Render team with error handling
+  const renderTeam = (footballGame: NFLGame, isHome: boolean) => {
+    try {
+      const teamId = isHome ? footballGame.home_team_id : footballGame.away_team_id;
+      const teamCode = isHome ? footballGame.home_team_code : footballGame.away_team_code;
+      const teamCity = isHome ? footballGame.home_team_city : footballGame.away_team_city;
+      const teamName = isHome ? footballGame.home_team_name : footballGame.away_team_name;
+      const teamScore = isHome ? footballGame.home_score : footballGame.away_score;
+      const primaryColor = (footballGame as any)[`${isHome ? 'home' : 'away'}_team_primary_color`] || '#666666';
+      const secondaryColor = (footballGame as any)[`${isHome ? 'home' : 'away'}_team_secondary_color`] || '#cccccc';
+      const teamLogo = (footballGame as any)[`${isHome ? 'home' : 'away'}_team_logo`];
+      const isSelected = selectedPicks[footballGame.id] === teamId;
+      const gameStarted = !canMakePicks(footballGame);
+
+      const gradientStyle = isSelected ? {
+        background: `linear-gradient(30deg, ${primaryColor} 0%, white 25%, white 75%, ${secondaryColor} 100%)`
+      } : {};
+
+      return (
+        <div
+          className={`border rounded-lg p-4 cursor-pointer transition-all hover:shadow-md ${
+            isSelected
+              ? 'border-green-500 shadow-lg'
+              : 'border-gray-200 hover:border-gray-300'
+          } ${gameStarted ? 'opacity-60 cursor-not-allowed' : ''}`}
+          style={gradientStyle}
+          onClick={() => !gameStarted && handlePickChange(footballGame.id, teamId)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 flex items-center justify-center bg-white rounded-lg shadow-sm">
+                {teamLogo ? (
+                  <img
+                    src={teamLogo || `/logos/${teamCode}.svg`}
+                    alt={`${teamCity} ${teamName} logo`}
+                    className="w-10 h-10 object-contain"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const container = target.parentElement;
+                      if (container) {
+                        container.innerHTML = `
+                          <div class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white"
+                               style="background-color: ${primaryColor}">
+                            ${teamCode}
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {teamCode}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="font-bold text-gray-800">
+                  {teamCity} {teamName}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span
+                    className="inline-block px-2 py-1 text-xs font-bold text-white rounded"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {isHome ? 'Home' : 'Visitor'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="text-2xl font-bold">
+                {teamScore > 0 ? teamScore : '-'}
+              </div>
+              {isSelected && !gameStarted && (
+                <div className="text-green-600">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    } catch (error) {
+      console.error('[GameView] Error rendering team:', error);
+      return (
+        <div className="border rounded-lg p-4 bg-red-50 border-red-200">
+          <div className="text-red-600 text-sm">Error loading team data</div>
+        </div>
+      );
+    }
+  };
+
+  try {
+    return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <header className="bg-blue-600 text-white shadow-lg" style={getHeaderStyle()}>
@@ -499,8 +655,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
               <div>
                 <h1 className="text-3xl font-bold">{game.game_name}</h1>
                 <p className="text-lg opacity-90">
-                  {game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)} Picks - 
-                  {currentSeason.season} Season
+                  {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks -
+                  {currentSeason?.season || 'Loading'} Season
                 </p>
                 <p className="text-sm opacity-75">
                   {game.player_count} players
@@ -542,7 +698,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
               <div>
                 <h1 className="text-2xl font-bold">{game.game_name}</h1>
                 <p className="text-sm opacity-90">
-                  {game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)} Picks - {currentSeason.season}
+                  {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks - {currentSeason?.season || 'Loading'}
                 </p>
                 <p className="text-xs opacity-75">
                   {game.player_count} players
@@ -930,7 +1086,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                     >
                       <div className="font-medium text-gray-900">{targetGame.game_name}</div>
                       <div className="text-sm text-gray-500">
-                        {targetGame.game_type.charAt(0).toUpperCase() + targetGame.game_type.slice(1)} • {targetGame.player_count} players
+                        {targetGame?.game_type ? (targetGame.game_type.charAt(0).toUpperCase() + targetGame.game_type.slice(1)) : 'Game'} • {targetGame?.player_count || 0} players
                       </div>
                     </button>
                   ))
@@ -959,6 +1115,39 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       </main>
     </div>
   );
+  } catch (renderError) {
+    console.error('[GameView] Critical render error:', renderError);
+    return (
+      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+        <div className="text-center">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg mb-4">
+            <h3 className="font-bold text-lg mb-2">Component Error</h3>
+            <p>The game view encountered an error while rendering</p>
+            <details className="text-sm text-left mt-2">
+              <summary className="cursor-pointer font-medium">Error Details</summary>
+              <div className="mt-2 p-2 bg-red-50 rounded">
+                <pre className="whitespace-pre-wrap text-xs">{String(renderError)}</pre>
+              </div>
+            </details>
+          </div>
+          <div className="space-x-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Reload Page
+            </button>
+            <a
+              href="/dashboard"
+              className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default GameView;

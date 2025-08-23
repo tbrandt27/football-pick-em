@@ -573,74 +573,57 @@ router.delete(
       const { gameId } = req.params;
 
       console.log(`[Admin Game Deletion] Starting deletion for game: ${gameId}`);
-      console.log(`[Admin Game Deletion] Database type: ${db.getType()}`);
 
-      const game = await db.get(
-        "SELECT game_name FROM pickem_games WHERE id = ?",
-        [gameId]
-      );
-      if (!game) {
+      // Use the game service layer for proper deletion handling
+      const gameService = DatabaseServiceFactory.getGameService();
+      
+      // Get game info before deletion for response message (bypass access control for admin)
+      let game;
+      try {
+        // For admin operations, get game directly without access control
+        const gameData = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
+        if (!gameData) {
+          return res.status(404).json({ error: "Game not found" });
+        }
+        game = gameData;
+      } catch (error) {
+        console.error(`[Admin Game Deletion] Error getting game info:`, error);
         return res.status(404).json({ error: "Game not found" });
       }
 
-      // Handle deletion differently for DynamoDB vs SQLite
-      if (db.getType() === 'dynamodb') {
-        console.log(`[Admin Game Deletion] Using DynamoDB deletion strategy`);
-        
-        // For DynamoDB, we need to find records by game_id and delete them by their primary key (id)
-        
-        // Delete picks
-        console.log(`[Admin Game Deletion] Deleting picks...`);
-        const picks = await db.all("SELECT id FROM picks WHERE game_id = ?", [gameId]);
-        console.log(`[Admin Game Deletion] Found ${picks.length} picks to delete`);
-        for (const pick of picks) {
-          await db.run("DELETE FROM picks WHERE id = ?", [pick.id]);
-        }
-        
-        // Delete weekly standings
-        console.log(`[Admin Game Deletion] Deleting weekly standings...`);
-        const standings = await db.all("SELECT id FROM weekly_standings WHERE game_id = ?", [gameId]);
-        console.log(`[Admin Game Deletion] Found ${standings.length} weekly standings to delete`);
-        for (const standing of standings) {
-          await db.run("DELETE FROM weekly_standings WHERE id = ?", [standing.id]);
-        }
-        
-        // Delete game invitations
-        console.log(`[Admin Game Deletion] Deleting game invitations...`);
-        const invitations = await db.all("SELECT id FROM game_invitations WHERE game_id = ?", [gameId]);
-        console.log(`[Admin Game Deletion] Found ${invitations.length} invitations to delete`);
-        for (const invitation of invitations) {
-          await db.run("DELETE FROM game_invitations WHERE id = ?", [invitation.id]);
-        }
-        
-        // Delete game participants
-        console.log(`[Admin Game Deletion] Deleting game participants...`);
-        const participants = await db.all("SELECT id FROM game_participants WHERE game_id = ?", [gameId]);
-        console.log(`[Admin Game Deletion] Found ${participants.length} participants to delete`);
-        for (const participant of participants) {
-          await db.run("DELETE FROM game_participants WHERE id = ?", [participant.id]);
-        }
-        
-        console.log(`[Admin Game Deletion] All related records deleted, now deleting game itself`);
-      } else {
-        console.log(`[Admin Game Deletion] Using SQLite deletion strategy`);
-        
-        // For SQLite, use direct deletion by foreign key
-        await db.run("DELETE FROM picks WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM weekly_standings WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM game_invitations WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM game_participants WHERE game_id = ?", [gameId]);
-      }
-      
-      // Finally delete the game itself (same for both databases since we're deleting by primary key)
-      await db.run("DELETE FROM pickem_games WHERE id = ?", [gameId]);
+      // Use the service layer deleteGame method which handles both SQLite and DynamoDB correctly
+      await gameService.deleteGame(gameId);
 
       console.log(`[Admin Game Deletion] Game ${gameId} deleted successfully`);
       res.json({
-        message: `Game "${game.game_name}" deleted successfully`,
+        message: `Game "${game.game_name || game.name || 'Unknown Game'}" deleted successfully`,
       });
     } catch (error) {
       console.error("Admin delete game error:", error);
+      if (error.message === 'Game not found') {
+        return res.status(404).json({ error: error.message });
+      } else if (error.message === 'Access denied') {
+        // Admin should always have access, but check if this is the issue
+        console.warn(`[Admin Game Deletion] Access denied for admin user ${req.user.id} on game ${gameId}`);
+        // Try to get game directly without access control for admin
+        try {
+          const gameService = DatabaseServiceFactory.getGameService();
+          const gameExists = await db.get("SELECT game_name FROM pickem_games WHERE id = ?", [gameId]);
+          if (!gameExists) {
+            return res.status(404).json({ error: "Game not found" });
+          }
+          
+          // Call deleteGame directly without access control
+          await gameService.deleteGame(gameId);
+          
+          res.json({
+            message: `Game "${gameExists.game_name}" deleted successfully`,
+          });
+          return;
+        } catch (directError) {
+          console.error("Direct deletion also failed:", directError);
+        }
+      }
       res.status(500).json({ error: "Internal server error" });
     }
   }

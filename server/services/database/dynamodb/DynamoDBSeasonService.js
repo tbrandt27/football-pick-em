@@ -312,6 +312,9 @@ export default class DynamoDBSeasonService extends ISeasonService {
 
     let games = gamesResult.Items;
 
+    // Filter out preseason games (season_type = 1)
+    games = games.filter(game => game.season_type !== 1);
+
     // Filter by week if specified
     if (filters.week) {
       games = games.filter(game => game.week === parseInt(filters.week));
