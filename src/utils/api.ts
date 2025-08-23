@@ -209,7 +209,7 @@ class ApiClient {
 
   async makePick(pickData: {
     gameId: string;
-    nflGameId: string;
+    footballGameId: string;
     pickTeamId: string;
     tiebreaker?: number;
   }) {
@@ -347,7 +347,7 @@ export interface Pick {
   game_id: string;
   season_id: string;
   week: number;
-  nfl_game_id: string;
+  football_game_id: string;
   pick_team_id: string;
   is_correct?: boolean;
   tiebreaker?: number;

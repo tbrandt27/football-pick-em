@@ -609,7 +609,7 @@ router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       SELECT
         s.*,
         COUNT(DISTINCT pg.id) as game_count,
-        COUNT(DISTINCT ng.id) as nfl_games_count,
+        COUNT(DISTINCT ng.id) as football_games_count,
         s.season as year,
         s.is_current as is_active
       FROM seasons s
@@ -659,7 +659,7 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       SELECT
         *,
         0 as game_count,
-        0 as nfl_games_count,
+        0 as football_games_count,
         season as year,
         is_current as is_active
       FROM seasons

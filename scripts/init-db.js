@@ -183,7 +183,7 @@ async function createTables(dbRun) {
       game_id TEXT NOT NULL,
       season_id TEXT NOT NULL,
       week INTEGER NOT NULL,
-      nfl_game_id TEXT NOT NULL,
+      football_game_id TEXT NOT NULL,
       pick_team_id TEXT NOT NULL,
       is_correct BOOLEAN DEFAULT NULL,
       tiebreaker INTEGER,
@@ -192,9 +192,9 @@ async function createTables(dbRun) {
       FOREIGN KEY (user_id) REFERENCES users (id),
       FOREIGN KEY (game_id) REFERENCES pickem_games (id),
       FOREIGN KEY (season_id) REFERENCES seasons (id),
-      FOREIGN KEY (nfl_game_id) REFERENCES football_games (id),
+      FOREIGN KEY (football_game_id) REFERENCES football_games (id),
       FOREIGN KEY (pick_team_id) REFERENCES football_teams (id),
-      UNIQUE (user_id, game_id, nfl_game_id)
+      UNIQUE (user_id, game_id, football_game_id)
     )
   `);
 

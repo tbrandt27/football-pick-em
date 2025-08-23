@@ -9,7 +9,7 @@ interface Season {
   is_active: boolean;
   created_at: string;
   game_count: number;
-  nfl_games_count: number;
+  football_games_count: number;
 }
 
 
@@ -110,7 +110,7 @@ const SeasonsManager: React.FC = () => {
         
         // Update the season with new game count
         setSeasons(seasons.map(s =>
-          s.id === seasonId ? { ...s, nfl_games_count: data.gamesCount } : s
+          s.id === seasonId ? { ...s, football_games_count: data.gamesCount } : s
         ));
         
         // Show success message
@@ -291,7 +291,7 @@ const SeasonsManager: React.FC = () => {
                     Games
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    NFL Games
+                    Football Games
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
@@ -323,7 +323,7 @@ const SeasonsManager: React.FC = () => {
                       {season.game_count} pickem games
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {season.nfl_games_count} NFL games
+                      {season.football_games_count} football games
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(season.created_at).toLocaleDateString()}

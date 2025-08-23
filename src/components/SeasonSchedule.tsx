@@ -9,7 +9,7 @@ interface Season {
   is_active: boolean;
   created_at: string;
   game_count: number;
-  nfl_games_count: number;
+  football_games_count: number;
 }
 
 interface NFLGame {

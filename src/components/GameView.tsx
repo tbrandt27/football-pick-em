@@ -110,10 +110,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         const ties: Record<string, number> = {};
         
         picksResponse.data.picks.forEach(pick => {
-          picks[pick.nfl_game_id] = pick.pick_team_id;
+          picks[pick.football_game_id] = pick.pick_team_id;
           if (pick.tiebreaker) {
-            ties[pick.nfl_game_id] = pick.tiebreaker;
-            setTiebreakerGame(pick.nfl_game_id);
+            ties[pick.football_game_id] = pick.tiebreaker;
+            setTiebreakerGame(pick.football_game_id);
           }
         });
         
@@ -138,17 +138,17 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     }
   };
 
-  const handlePickChange = (nflGameId: string, teamId: string) => {
+  const handlePickChange = (footballGameId: string, teamId: string) => {
     setSelectedPicks(prev => ({
       ...prev,
-      [nflGameId]: teamId
+      [footballGameId]: teamId
     }));
   };
 
-  const handleTiebreakerChange = (nflGameId: string, value: number) => {
+  const handleTiebreakerChange = (footballGameId: string, value: number) => {
     setTiebreakers(prev => ({
       ...prev,
-      [nflGameId]: value
+      [footballGameId]: value
     }));
   };
 
@@ -160,11 +160,11 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     setError('');
     
     try {
-      const promises = Object.entries(selectedPicks).map(([nflGameId, pickTeamId]) => {
-        const tiebreaker = tiebreakers[nflGameId];
+      const promises = Object.entries(selectedPicks).map(([footballGameId, pickTeamId]) => {
+        const tiebreaker = tiebreakers[footballGameId];
         return api.makePick({
           gameId: game?.id || gameId || '',
-          nflGameId,
+          footballGameId,
           pickTeamId,
           tiebreaker
         });
@@ -209,11 +209,11 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     
     try {
       // Copy each pick to the target game
-      const promises = Object.entries(selectedPicks).map(([nflGameId, pickTeamId]) => {
-        const tiebreaker = tiebreakers[nflGameId];
+      const promises = Object.entries(selectedPicks).map(([footballGameId, pickTeamId]) => {
+        const tiebreaker = tiebreakers[footballGameId];
         return api.makePick({
           gameId: targetGameId,
-          nflGameId,
+          footballGameId,
           pickTeamId,
           tiebreaker
         });
@@ -235,13 +235,13 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     }
   };
 
-  const canMakePicks = (nflGame: NFLGame) => {
-    const gameStart = new Date(nflGame.start_time);
+  const canMakePicks = (footballGame: NFLGame) => {
+    const gameStart = new Date(footballGame.start_time);
     const now = new Date();
-    return now < gameStart && (nflGame.status === 'scheduled' || nflGame.status === 'STATUS_SCHEDULED');
+    return now < gameStart && (footballGame.status === 'scheduled' || footballGame.status === 'STATUS_SCHEDULED');
   };
 
-  const getPickResult = (nflGame: NFLGame, pick: Pick | undefined) => {
+  const getPickResult = (footballGame: NFLGame, pick: Pick | undefined) => {
     if (!pick || pick.is_correct === null || pick.is_correct === undefined) {
       return null;
     }
@@ -274,10 +274,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     );
   }
 
-  const hasUnsavedChanges = Object.keys(selectedPicks).some(nflGameId => {
-    const existingPick = userPicks.find(p => p.nfl_game_id === nflGameId);
-    return !existingPick || existingPick.pick_team_id !== selectedPicks[nflGameId] ||
-           (tiebreakers[nflGameId] || 0) !== (existingPick.tiebreaker || 0);
+  const hasUnsavedChanges = Object.keys(selectedPicks).some(footballGameId => {
+    const existingPick = userPicks.find(p => p.football_game_id === footballGameId);
+    return !existingPick || existingPick.pick_team_id !== selectedPicks[footballGameId] ||
+           (tiebreakers[footballGameId] || 0) !== (existingPick.tiebreaker || 0);
   });
 
   const getHeaderStyle = () => {
@@ -480,14 +480,14 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
               </div>
             ) : (
               <div className="space-y-4">
-                {weekGames.map((nflGame) => {
-                  const existingPick = userPicks.find(p => p.nfl_game_id === nflGame.id);
-                  const pickResult = getPickResult(nflGame, existingPick);
-                  const gameStarted = !canMakePicks(nflGame);
+                {weekGames.map((footballGame) => {
+                  const existingPick = userPicks.find(p => p.football_game_id === footballGame.id);
+                  const pickResult = getPickResult(footballGame, existingPick);
+                  const gameStarted = !canMakePicks(footballGame);
                   
                   return (
                     <div
-                      key={nflGame.id}
+                      key={footballGame.id}
                       className={`border rounded-lg p-4 ${
                         pickResult === 'correct' ? 'border-green-500 bg-green-50' :
                         pickResult === 'incorrect' ? 'border-red-500 bg-red-50' :
@@ -496,8 +496,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                     >
                       <div className="flex justify-between items-center mb-4">
                         <div className="text-sm text-gray-600">
-                          {new Date(nflGame.start_time).toLocaleDateString()} at{' '}
-                          {new Date(nflGame.start_time).toLocaleTimeString([], {
+                          {new Date(footballGame.start_time).toLocaleDateString()} at{' '}
+                          {new Date(footballGame.start_time).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
@@ -511,7 +511,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                           )}
                           {!pickResult && (
                             <div className="flex items-center space-x-1">
-                              {canMakePicks(nflGame) ? (
+                              {canMakePicks(footballGame) ? (
                                 <>
                                   <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M10 1C5.477 1 2 4.484 2 9s3.477 8 8 8c4.522 0 8-3.484 8-8s-3.478-8-8-8zM8 11a1 1 0 01-.707-.293L5.586 9l1.414-1.414L8 8.586l2.293-2.293L11.707 7.707 8.707 10.707A1 1 0 018 11z" clipRule="evenodd" />
@@ -534,10 +534,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Away Team */}
                         {(() => {
-                          const primaryColor = (nflGame as any).away_team_primary_color || '#666666';
-                          const secondaryColor = (nflGame as any).away_team_secondary_color || '#cccccc';
-                          const teamLogo = (nflGame as any).away_team_logo;
-                          const isSelected = selectedPicks[nflGame.id] === nflGame.away_team_id;
+                          const primaryColor = (footballGame as any).away_team_primary_color || '#666666';
+                          const secondaryColor = (footballGame as any).away_team_secondary_color || '#cccccc';
+                          const teamLogo = (footballGame as any).away_team_logo;
+                          const isSelected = selectedPicks[footballGame.id] === footballGame.away_team_id;
                           const gradientStyle = isSelected ? {
                             background: `linear-gradient(30deg, ${primaryColor} 0%, white 25%, white 75%, ${secondaryColor} 100%)`
                           } : {};
@@ -550,14 +550,14 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                   : 'border-gray-200 hover:border-gray-300'
                               } ${gameStarted ? 'opacity-60 cursor-not-allowed' : ''}`}
                               style={gradientStyle}
-                              onClick={() => !gameStarted && handlePickChange(nflGame.id, nflGame.away_team_id)}
+                              onClick={() => !gameStarted && handlePickChange(footballGame.id, footballGame.away_team_id)}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-3">
                                   <div className="w-12 h-12 flex items-center justify-center bg-white rounded-lg shadow-sm">
                                     <img
-                                      src={teamLogo || `/logos/${nflGame.away_team_code}.svg`}
-                                      alt={`${nflGame.away_team_city} ${nflGame.away_team_name} logo`}
+                                      src={teamLogo || `/logos/${footballGame.away_team_code}.svg`}
+                                      alt={`${footballGame.away_team_city} ${footballGame.away_team_name} logo`}
                                       className="w-10 h-10 object-contain"
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
@@ -567,7 +567,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                           container.innerHTML = `
                                             <div class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white" 
                                                  style="background-color: ${primaryColor}">
-                                              ${nflGame.away_team_code}
+                                              ${footballGame.away_team_code}
                                             </div>
                                           `;
                                         }
@@ -576,7 +576,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                   </div>
                                   <div>
                                     <div className="font-bold text-gray-800">
-                                      {nflGame.away_team_city} {nflGame.away_team_name}
+                                      {footballGame.away_team_city} {footballGame.away_team_name}
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <span
@@ -590,7 +590,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <div className="text-2xl font-bold">
-                                    {nflGame.away_score > 0 ? nflGame.away_score : '-'}
+                                    {footballGame.away_score > 0 ? footballGame.away_score : '-'}
                                   </div>
                                   {isSelected && !gameStarted && (
                                     <div className="text-green-600">
@@ -607,10 +607,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
 
                         {/* Home Team */}
                         {(() => {
-                          const primaryColor = (nflGame as any).home_team_primary_color || '#666666';
-                          const secondaryColor = (nflGame as any).home_team_secondary_color || '#cccccc';
-                          const teamLogo = (nflGame as any).home_team_logo;
-                          const isSelected = selectedPicks[nflGame.id] === nflGame.home_team_id;
+                          const primaryColor = (footballGame as any).home_team_primary_color || '#666666';
+                          const secondaryColor = (footballGame as any).home_team_secondary_color || '#cccccc';
+                          const teamLogo = (footballGame as any).home_team_logo;
+                          const isSelected = selectedPicks[footballGame.id] === footballGame.home_team_id;
                           const gradientStyle = isSelected ? {
                             background: `linear-gradient(30deg, ${primaryColor} 0%, white 25%, white 75%, ${secondaryColor} 100%)`
                           } : {};
@@ -623,14 +623,14 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                   : 'border-gray-200 hover:border-gray-300'
                               } ${gameStarted ? 'opacity-60 cursor-not-allowed' : ''}`}
                               style={gradientStyle}
-                              onClick={() => !gameStarted && handlePickChange(nflGame.id, nflGame.home_team_id)}
+                              onClick={() => !gameStarted && handlePickChange(footballGame.id, footballGame.home_team_id)}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-3">
                                   <div className="w-12 h-12 flex items-center justify-center bg-white rounded-lg shadow-sm">
                                     <img
-                                      src={teamLogo || `/logos/${nflGame.home_team_code}.svg`}
-                                      alt={`${nflGame.home_team_city} ${nflGame.home_team_name} logo`}
+                                      src={teamLogo || `/logos/${footballGame.home_team_code}.svg`}
+                                      alt={`${footballGame.home_team_city} ${footballGame.home_team_name} logo`}
                                       className="w-10 h-10 object-contain"
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
@@ -640,7 +640,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                           container.innerHTML = `
                                             <div class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white" 
                                                  style="background-color: ${primaryColor}">
-                                              ${nflGame.home_team_code}
+                                              ${footballGame.home_team_code}
                                             </div>
                                           `;
                                         }
@@ -649,7 +649,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                   </div>
                                   <div>
                                     <div className="font-bold text-gray-800">
-                                      {nflGame.home_team_city} {nflGame.home_team_name}
+                                      {footballGame.home_team_city} {footballGame.home_team_name}
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <span
@@ -663,7 +663,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <div className="text-2xl font-bold">
-                                    {nflGame.home_score > 0 ? nflGame.home_score : '-'}
+                                    {footballGame.home_score > 0 ? footballGame.home_score : '-'}
                                   </div>
                                   {isSelected && !gameStarted && (
                                     <div className="text-green-600">
@@ -684,17 +684,17 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                         <div className="flex items-center mb-2">
                           <input
                             type="checkbox"
-                            id={`tiebreaker-${nflGame.id}`}
-                            checked={tiebreakerGame === nflGame.id}
-                            onChange={(e) => setTiebreakerGame(e.target.checked ? nflGame.id : null)}
+                            id={`tiebreaker-${footballGame.id}`}
+                            checked={tiebreakerGame === footballGame.id}
+                            onChange={(e) => setTiebreakerGame(e.target.checked ? footballGame.id : null)}
                             disabled={gameStarted}
                             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-60"
                           />
-                          <label htmlFor={`tiebreaker-${nflGame.id}`} className="ml-2 text-sm font-medium text-gray-700">
+                          <label htmlFor={`tiebreaker-${footballGame.id}`} className="ml-2 text-sm font-medium text-gray-700">
                             Use as Tiebreaker
                           </label>
                         </div>
-                        {tiebreakerGame === nflGame.id && (
+                        {tiebreakerGame === footballGame.id && (
                           <div className="ml-6">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Total Points
@@ -703,8 +703,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                               type="number"
                               min="0"
                               max="200"
-                              value={tiebreakers[nflGame.id] || ''}
-                              onChange={(e) => handleTiebreakerChange(nflGame.id, parseInt(e.target.value) || 0)}
+                              value={tiebreakers[footballGame.id] || ''}
+                              onChange={(e) => handleTiebreakerChange(footballGame.id, parseInt(e.target.value) || 0)}
                               disabled={gameStarted}
                               className="w-32 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                               placeholder="0"
