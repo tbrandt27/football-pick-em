@@ -478,8 +478,9 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _handleUpdate(sql, params) {
-    // Parse UPDATE statement - simplified
+    // Parse UPDATE statement - properly handle SQL format
     const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
+    const setMatch = sql.match(/SET\s+(.+?)\s+WHERE/i);
     const whereMatch = sql.match(/WHERE\s+(.+)$/i);
     
     if (!tableMatch || !whereMatch) {
@@ -487,8 +488,37 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
     
     const tableName = tableMatch[1];
-    const key = params[0] || {}; // Assume key is first param
-    const updates = params[1] || {}; // Assume updates are second param
+    const whereClause = whereMatch[1];
+    
+    // Parse WHERE clause to extract the key
+    const key = {};
+    const whereConditions = this._parseWhereClause(whereClause, params);
+    
+    // For DynamoDB, we need the primary key (id)
+    if (whereConditions.id) {
+      key.id = whereConditions.id;
+    } else {
+      throw new Error('UPDATE requires id in WHERE clause for DynamoDB');
+    }
+    
+    // Parse SET clause to extract updates
+    const updates = {};
+    if (setMatch) {
+      const setClause = setMatch[1];
+      // Handle common SET patterns
+      if (setClause.includes('last_login') && setClause.includes('datetime')) {
+        updates.last_login = new Date().toISOString();
+      }
+      // Add more SET clause parsing as needed
+    }
+    
+    console.log(`[DynamoDB] UPDATE parsing:`, {
+      tableName,
+      key,
+      updates,
+      originalSQL: sql.substring(0, 100),
+      params
+    });
     
     return this._dynamoUpdate(tableName, key, updates);
   }

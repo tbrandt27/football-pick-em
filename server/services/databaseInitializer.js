@@ -244,38 +244,35 @@ export default class DatabaseInitializer {
     console.log(`🔑 Admin password source: ${process.env.ADMIN_PASSWORD ? 'environment variable' : 'fallback default'}`);
 
     try {
-      // Clean up any users with placeholder emails first
-      if (this.db.getType() === 'dynamodb') {
-        // For DynamoDB, we need to scan and delete placeholder users
-        try {
-          const allUsers = await this.db.all('SELECT * FROM users');
-          const placeholderUsers = (allUsers || []).filter(user =>
-            user.email && user.email.includes('{{resolve:secretsmanager')
-          );
-          
-          for (const user of placeholderUsers) {
-            console.log(`🧹 Removing user with placeholder email: ${user.email}`);
+      // First, clean up ALL users with the target email to prevent duplicates
+      const allUsers = await this.db.all('SELECT * FROM users');
+      const usersToDelete = (allUsers || []).filter(user => {
+        return (user.email && user.email.includes('{{resolve:secretsmanager')) ||
+               (user.email && user.email.toLowerCase() === adminEmail.toLowerCase());
+      });
+      
+      if (usersToDelete.length > 0) {
+        console.log(`🧹 Cleaning up ${usersToDelete.length} existing users with email ${adminEmail} or placeholder emails`);
+        
+        for (const user of usersToDelete) {
+          console.log(`🧹 Removing user: ${user.email} (ID: ${user.id})`);
+          if (this.db.getType() === 'dynamodb') {
             await this.db.run({
               action: 'delete',
               table: 'users',
               key: { id: user.id }
             });
+          } else {
+            await this.db.run('DELETE FROM users WHERE id = ?', [user.id]);
           }
-          
-          if (placeholderUsers.length > 0) {
-            console.log(`🧹 Cleaned up ${placeholderUsers.length} placeholder email users`);
-          }
-        } catch (error) {
-          console.log("Note: Could not clean placeholder users (this is expected if none exist)");
         }
-      } else {
-        // For SQLite, simpler DELETE query
-        try {
-          await this.db.run('DELETE FROM users WHERE email LIKE ?', ['%{{resolve:secretsmanager%']);
-          console.log("🧹 Cleaned up any placeholder email users");
-        } catch (error) {
-          console.log("Note: Could not clean placeholder users (this is expected if none exist)");
-        }
+      }
+
+      // Double-check no admin user exists with this email
+      const existingAdmin = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
+      if (existingAdmin) {
+        console.log(`ℹ️  Admin user with email ${adminEmail} already exists after cleanup, skipping creation`);
+        return;
       }
 
       const hashedPassword = await bcrypt.hash(adminPassword, 12);
