@@ -108,10 +108,20 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       const result = await this._executeOperation(operation, params);
       const duration = Date.now() - startTime;
       
-      console.log(`[DynamoDB:${operationId}] GET completed in ${duration}ms, found: ${result.Item ? 'Yes' : 'No'}`);
+      // Handle both GET (result.Item) and SCAN (result.Items) results
+      let item = null;
+      if (result.Item) {
+        // Direct GET operation
+        item = result.Item;
+      } else if (result.Items && result.Items.length > 0) {
+        // SCAN operation - return first item
+        item = result.Items[0];
+      }
       
-      // Return null if no item found, otherwise return the item
-      return result.Item || null;
+      console.log(`[DynamoDB:${operationId}] GET completed in ${duration}ms, found: ${item ? 'Yes' : 'No'}`);
+      console.log(`[DynamoDB:${operationId}] Result type: ${result.Item ? 'GET' : result.Items ? 'SCAN' : 'unknown'}, Items: ${result.Items?.length || 0}`);
+      
+      return item;
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[DynamoDB:${operationId}] GET failed after ${duration}ms:`, error.message);
