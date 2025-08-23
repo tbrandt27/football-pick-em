@@ -192,8 +192,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Array>} Games with participation info
    */
   async getUserGames(userId) {
-    // Get user's game participations
-    const participationsResult = await this.db._dynamoQuery('game_participants', { user_id: userId });
+    // Get user's game participations using Scan since user_id is not the partition key
+    const participationsResult = await this.db._dynamoScan('game_participants', { user_id: userId });
     const participations = participationsResult.Items || [];
 
     if (!participations || participations.length === 0) {
@@ -211,8 +211,8 @@ export default class DynamoDBUserService extends IUserService {
             return null;
           }
 
-          // Get player count for this game
-          const allParticipantsResult = await this.db._dynamoQuery('game_participants', { game_id: participation.game_id });
+          // Get player count for this game using Scan since game_id is not the partition key
+          const allParticipantsResult = await this.db._dynamoScan('game_participants', { game_id: participation.game_id });
           const allParticipants = allParticipantsResult.Items || [];
 
           const playerCount = allParticipants.filter(p => p.role === 'player').length;

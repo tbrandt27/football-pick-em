@@ -13,7 +13,6 @@
     "preview": "astro preview",
     "astro": "astro",
     "setup": "node setup.js",
-    "test-schedule": "node test-schedule.js",
     "start": "./scripts/start.sh",
     "start:production": "NODE_ENV=production ./scripts/start.sh",
     "init-db": "node scripts/init-db.js",

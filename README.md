@@ -116,53 +116,28 @@ football-pickem/
 └── package.json
 ```
 
-## 🧪 Testing with Sample Data
+## 🧪 Testing the Application
 
-For testing picks and stats functionality, you can populate the database with realistic mid-season data:
+To test the application functionality:
 
-```bash
-npm run test-schedule
-```
-
-This creates:
-
-- **8 test users** with different picking skills (60% win rate average)
-- **3 pick'em games** (2 weekly pools, 1 survivor challenge)
-- **10 weeks of NFL games** (8 completed weeks with scores, 2 upcoming)
-- **Realistic user picks** for all completed games with varying accuracy
-- **Tiebreaker data** for testing scoring systems
-
-### Test User Credentials
-
-All test users use the password: `password123`
-
-| Email                     | Name          | Favorite Team        | Picking Skill |
-| ------------------------- | ------------- | -------------------- | ------------- |
-| john.doe@example.com      | John Doe      | Kansas City Chiefs   | 75%           |
-| jane.smith@example.com    | Jane Smith    | Buffalo Bills        | 65%           |
-| mike.wilson@example.com   | Mike Wilson   | San Francisco 49ers  | 55%           |
-| sarah.johnson@example.com | Sarah Johnson | Dallas Cowboys       | 70%           |
-| david.brown@example.com   | David Brown   | Green Bay Packers    | 60%           |
-| lisa.davis@example.com    | Lisa Davis    | New England Patriots | 50%           |
-| tom.miller@example.com    | Tom Miller    | Pittsburgh Steelers  | 45%           |
-| amy.garcia@example.com    | Amy Garcia    | Los Angeles Rams     | 68%           |
+1. **Create Test Users:** Use the registration feature to create multiple user accounts
+2. **Set up Games:** Create pick'em games using the admin dashboard
+3. **Import NFL Data:** Use the ESPN sync feature to import current NFL schedules
+4. **Make Test Picks:** Login with different users and make picks for upcoming games
 
 ### Admin Access
 
-- **Email:** admin@nflpickem.com
-- **Password:** admin123
+After running `npm run setup`, you'll have an admin account with credentials displayed during setup.
 
 ### What You Can Test
 
-- **Pick Making:** Login and make picks for upcoming weeks (9-10)
+- **Pick Making:** Create users and make picks for upcoming NFL games
 - **Leaderboards:** View standings and user performance across weeks
 - **Stats Tracking:** See win percentages, correct picks, and rankings
 - **Game Management:** Create new games, invite players, manage settings
 - **Admin Functions:** Manage users, sync schedules, calculate picks
 - **Responsive Design:** Test on different screen sizes
 - **Copy Picks:** Test copying picks between multiple games
-
-**Note:** The test schedule simulates Week 8 as the current week, with Weeks 1-8 completed and Weeks 9-10 available for new picks.
 
 ## 🔧 Configuration
 

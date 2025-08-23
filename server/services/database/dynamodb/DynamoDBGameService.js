@@ -18,8 +18,8 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Array>} Games with participant info
    */
   async getUserGames(userId) {
-    // Get user's game participations
-    const participations = await this.db._dynamoQuery('game_participants', {
+    // Get user's game participations using Scan since user_id is not the partition key
+    const participations = await this.db._dynamoScan('game_participants', {
       user_id: userId
     });
 
@@ -35,8 +35,8 @@ export default class DynamoDBGameService extends IGameService {
       });
 
       if (game.Item) {
-        // Get participant count for this game
-        const allParticipants = await this.db._dynamoQuery('game_participants', {
+        // Get participant count for this game using Scan
+        const allParticipants = await this.db._dynamoScan('game_participants', {
           game_id: participation.game_id
         });
 
@@ -225,11 +225,11 @@ export default class DynamoDBGameService extends IGameService {
       throw new Error('Game not found');
     }
 
-    // Delete related records
+    // Delete related records using Scan since we're searching by non-partition key fields
     // Note: In production, you'd want to use DynamoDB transactions for consistency
     
     // Delete picks
-    const picks = await this.db._dynamoQuery('picks', { game_id: gameId });
+    const picks = await this.db._dynamoScan('picks', { game_id: gameId });
     if (picks.Items) {
       for (const pick of picks.Items) {
         await this.db._dynamoDelete('picks', { id: pick.id });
@@ -237,7 +237,7 @@ export default class DynamoDBGameService extends IGameService {
     }
 
     // Delete weekly standings
-    const standings = await this.db._dynamoQuery('weekly_standings', { game_id: gameId });
+    const standings = await this.db._dynamoScan('weekly_standings', { game_id: gameId });
     if (standings.Items) {
       for (const standing of standings.Items) {
         await this.db._dynamoDelete('weekly_standings', { id: standing.id });
@@ -245,7 +245,7 @@ export default class DynamoDBGameService extends IGameService {
     }
 
     // Delete game invitations
-    const invitations = await this.db._dynamoQuery('game_invitations', { game_id: gameId });
+    const invitations = await this.db._dynamoScan('game_invitations', { game_id: gameId });
     if (invitations.Items) {
       for (const invitation of invitations.Items) {
         await this.db._dynamoDelete('game_invitations', { id: invitation.id });
@@ -253,7 +253,7 @@ export default class DynamoDBGameService extends IGameService {
     }
 
     // Delete game participants
-    const participants = await this.db._dynamoQuery('game_participants', { game_id: gameId });
+    const participants = await this.db._dynamoScan('game_participants', { game_id: gameId });
     if (participants.Items) {
       for (const participant of participants.Items) {
         await this.db._dynamoDelete('game_participants', { id: participant.id });
@@ -337,16 +337,19 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Object|null>} Participant info or null
    */
   async getParticipant(gameId, userId) {
-    // Query by user_id and filter by game_id
-    const participations = await this.db._dynamoQuery('game_participants', {
-      user_id: userId
+    // Use Scan with filters since we're searching by non-partition key fields
+    // DynamoDB tables use 'id' as partition key, so we can't query by user_id directly
+    const participations = await this.db._dynamoScan('game_participants', {
+      user_id: userId,
+      game_id: gameId
     });
 
-    if (!participations.Items) {
+    if (!participations.Items || participations.Items.length === 0) {
       return null;
     }
 
-    return participations.Items.find(p => p.game_id === gameId) || null;
+    // Return the first match (should be unique per user per game)
+    return participations.Items[0];
   }
 
   /**
@@ -355,7 +358,7 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Array>} Participants with user info
    */
   async getGameParticipants(gameId) {
-    const participantsResult = await this.db._dynamoQuery('game_participants', {
+    const participantsResult = await this.db._dynamoScan('game_participants', {
       game_id: gameId
     });
 

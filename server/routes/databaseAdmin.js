@@ -129,29 +129,12 @@ router.post(
         });
       }
 
-      // Import and run the test schedule script logic
-      const { exec } = await import("child_process");
-      const { promisify } = await import("util");
-      const execAsync = promisify(exec);
-
-      try {
-        const { stdout, stderr } = await execAsync("npm run test-schedule", {
-          cwd: process.cwd(),
-          timeout: 30000, // 30 second timeout
-        });
-
-        res.json({
-          success: true,
-          message: "Test data populated successfully",
-          output: stdout,
-        });
-      } catch (execError) {
-        console.error("Test schedule execution error:", execError);
-        res.status(500).json({
-          error: "Failed to populate test data",
-          details: execError.message,
-        });
-      }
+      // Test data population functionality has been removed
+      // The test-schedule script and related test data files have been cleaned up
+      res.status(501).json({
+        error: "Test data population is not currently available",
+        message: "The test data generation scripts have been removed as part of cleanup. Consider implementing a new test data seeding mechanism if needed.",
+      });
     } catch (error) {
       console.error("Populate test database error:", error);
       res.status(500).json({ error: "Failed to populate test database" });
