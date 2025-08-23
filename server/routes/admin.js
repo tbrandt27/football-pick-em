@@ -90,6 +90,13 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
       path.join(process.env.APP_ROOT || process.cwd(), "public/logos"),
       "/app/public/logos", // Common Docker path
       "/var/app/current/public/logos", // AWS App Runner path
+      // Additional AWS App Runner paths
+      path.join(process.cwd(), "../public/logos"),
+      path.join(process.cwd(), "dist/client/logos"),
+      path.join(__dirname, "../../dist/client/logos"),
+      // Try relative to the built client directory
+      path.join(process.cwd(), "dist/public/logos"),
+      path.join(__dirname, "../dist/public/logos"),
     ];
 
     let logosPath = null;
@@ -106,6 +113,13 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
       return res.status(404).json({
         error: "Logos directory not found",
         triedPaths: possibleLogoPaths,
+        debugInfo: {
+          cwd: process.cwd(),
+          __dirname,
+          envLogosPath: process.env.LOGOS_PATH,
+          envAppRoot: process.env.APP_ROOT,
+          nodeEnv: process.env.NODE_ENV
+        },
         note: "Individual logos may still work via direct URL"
       });
     }

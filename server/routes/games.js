@@ -115,13 +115,21 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
     }
 
     // Check if user is participant, commissioner, or admin
-    const isParticipant = await db.get(
-      `
-      SELECT 1 FROM game_participants
-      WHERE game_id = ? AND user_id = ?
-    `,
-      [game.id, userId]
-    );
+    let isParticipant;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get all participants for this game and filter in JavaScript
+      const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [game.id]);
+      isParticipant = allParticipants.find(p => p.user_id === userId);
+    } else {
+      // For SQLite, use the efficient query
+      isParticipant = await db.get(
+        `
+        SELECT id FROM game_participants
+        WHERE game_id = ? AND user_id = ?
+      `,
+        [game.id, userId]
+      );
+    }
 
     const isCommissioner = game.commissioner_id === userId;
     const isAdmin = req.user.is_admin;
@@ -179,13 +187,21 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
     const { gameId } = req.params;
 
     // Check if user has access to this game
-    const participant = await db.get(
-      `
-      SELECT role FROM game_participants
-      WHERE game_id = ? AND user_id = ?
-    `,
-      [gameId, req.user.id]
-    );
+    let participant;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get all participants for this game and filter in JavaScript
+      const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+      participant = allParticipants.find(p => p.user_id === req.user.id);
+    } else {
+      // For SQLite, use the efficient JOIN query
+      participant = await db.get(
+        `
+        SELECT role FROM game_participants
+        WHERE game_id = ? AND user_id = ?
+      `,
+        [gameId, req.user.id]
+      );
+    }
 
     if (!participant && !req.user.is_admin) {
       return res.status(403).json({ error: "Access denied" });
@@ -304,13 +320,9 @@ router.post("/", authenticateToken, async (req, res) => {
     // Handle both SQLite (is_current = 1) and DynamoDB (is_current = true)
     let currentSeason;
     if (db.getType && db.getType() === 'dynamodb') {
-      // For DynamoDB, use scan with boolean true
-      const seasons = await db.all({
-        action: 'scan',
-        table: 'seasons',
-        conditions: { is_current: true }
-      });
-      currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+      // For DynamoDB, get all seasons and filter in code
+      const allSeasons = await db.all('SELECT * FROM seasons');
+      currentSeason = allSeasons.find(s => s.is_current === true || s.is_current === 1);
     } else {
       // For SQLite, use SQL with numeric 1
       currentSeason = await db.get(
@@ -402,12 +414,13 @@ router.put(
       await db.run(
         `
       UPDATE pickem_games
-      SET game_name = ?, type = ?, updated_at = datetime('now')
+      SET game_name = ?, type = ?, updated_at = ?
       WHERE id = ?
     `,
         [
           gameName || existingGame.game_name,
           gameType || existingGame.type,
+          new Date().toISOString(),
           gameId,
         ]
       );
@@ -502,13 +515,21 @@ router.post(
         // User exists - add them directly to the game
 
         // Check if user is already in the game
-        const existingParticipant = await db.get(
-          `
-        SELECT id FROM game_participants 
-        WHERE game_id = ? AND user_id = ?
-      `,
-          [gameId, existingUser.id]
-        );
+        let existingParticipant;
+        if (db.getType() === 'dynamodb') {
+          // For DynamoDB, get all participants and filter in JavaScript
+          const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+          existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
+        } else {
+          // For SQLite, use the efficient query
+          existingParticipant = await db.get(
+            `
+          SELECT id FROM game_participants
+          WHERE game_id = ? AND user_id = ?
+        `,
+            [gameId, existingUser.id]
+          );
+        }
 
         if (existingParticipant) {
           return res
@@ -539,8 +560,8 @@ router.post(
         // Check if invitation already exists
         const existingInvitation = await db.get(
           `
-        SELECT * FROM game_invitations 
-        WHERE game_id = ? AND email = ? AND status = 'pending' AND expires_at > datetime('now')
+        SELECT * FROM game_invitations
+        WHERE game_id = ? AND email = ? AND status = 'pending'
       `,
           [gameId, normalizedEmail]
         );
@@ -606,13 +627,21 @@ router.delete(
     try {
       const { gameId, userId } = req.params;
 
-      const participant = await db.get(
-        `
-      SELECT id, role FROM game_participants 
-      WHERE game_id = ? AND user_id = ?
-    `,
-        [gameId, userId]
-      );
+      let participant;
+      if (db.getType() === 'dynamodb') {
+        // For DynamoDB, get all participants and filter in JavaScript
+        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+        participant = allParticipants.find(p => p.user_id === userId);
+      } else {
+        // For SQLite, use the efficient query
+        participant = await db.get(
+          `
+        SELECT id, role FROM game_participants
+        WHERE game_id = ? AND user_id = ?
+      `,
+          [gameId, userId]
+        );
+      }
 
       if (!participant) {
         return res.status(404).json({ error: "User is not in this game" });

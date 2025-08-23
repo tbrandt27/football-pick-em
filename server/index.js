@@ -84,6 +84,13 @@ app.get("/logos/:filename", (req, res) => {
     join(process.env.APP_ROOT || process.cwd(), "public/logos", filename),
     `/app/public/logos/${filename}`, // Common Docker path
     `/var/app/current/public/logos/${filename}`, // AWS App Runner path
+    // Additional AWS App Runner paths
+    join(process.cwd(), "../public/logos", filename),
+    join(process.cwd(), "dist/client/logos", filename),
+    join(__dirname, "../../dist/client/logos", filename),
+    // Try relative to the built client directory
+    join(process.cwd(), "dist/public/logos", filename),
+    join(__dirname, "../dist/public/logos", filename),
   ];
 
   let logoPath = null;
