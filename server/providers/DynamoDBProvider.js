@@ -907,15 +907,33 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   _canUseQuery(tableName, conditions) {
-    // Simplified logic to determine if we can use Query instead of Scan
-    // This would depend on your table's key schema
+    // DynamoDB Query operations require the partition key to be specified
+    // For our schema, all tables use 'id' as the partition key
+    // We should only use Query if we have the partition key AND additional conditions
+    
+    console.log(`[DynamoDB] _canUseQuery evaluation:`, {
+      tableName,
+      conditions,
+      conditionKeys: Object.keys(conditions),
+      hasId: !!conditions.id
+    });
+    
     // Don't use Query for simple id lookups (use GET instead)
     if (Object.keys(conditions).length === 1 && conditions.id) {
+      console.log(`[DynamoDB] Single ID lookup - using GET instead of Query`);
       return false; // Use GET instead
     }
     
-    return Object.keys(conditions).includes('user_id') ||
-           Object.keys(conditions).includes('game_id');
+    // Only use Query if we have the partition key (id) plus other conditions
+    // Since our tables use 'id' as partition key, we can't query by other fields alone
+    if (conditions.id && Object.keys(conditions).length > 1) {
+      console.log(`[DynamoDB] Has partition key (id) plus additional conditions - using Query`);
+      return true;
+    }
+    
+    // For all other cases (like user_id only, game_id only), use Scan with filters
+    console.log(`[DynamoDB] No partition key or single field query - using Scan with filters`);
+    return false;
   }
 
   // Helper method to sort query results (since DynamoDB doesn't support ORDER BY)
