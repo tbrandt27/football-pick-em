@@ -128,6 +128,35 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleUpdateTeamColors = async () => {
+    try {
+      setSyncLoading(true);
+      setError('');
+      
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/update-team-colors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSuccessMessage('Team colors updated successfully');
+        loadData(); // Refresh stats
+      } else {
+        setError(data.error || 'Failed to update team colors');
+      }
+    } catch (err) {
+      setError('Failed to update team colors');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const handleSyncESPN = async (seasonId: string, week?: number) => {
     try {
       setSyncLoading(true);
@@ -466,13 +495,22 @@ const AdminDashboard: React.FC = () => {
               <div>
                 <h3 className="text-lg font-semibold mb-2">Initialize Teams</h3>
                 <p className="text-gray-600 mb-3">Seed the database with all 32 NFL teams</p>
-                <button
-                  onClick={handleSeedTeams}
-                  disabled={syncLoading}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  {syncLoading ? 'Seeding...' : 'Seed NFL Teams'}
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={handleSeedTeams}
+                    disabled={syncLoading}
+                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {syncLoading ? 'Seeding...' : 'Seed NFL Teams'}
+                  </button>
+                  <button
+                    onClick={handleUpdateTeamColors}
+                    disabled={syncLoading}
+                    className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {syncLoading ? 'Updating...' : 'Update Team Colors'}
+                  </button>
+                </div>
               </div>
 
               <div className="border-t pt-4">

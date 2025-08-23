@@ -5,6 +5,14 @@ import db from "../models/database.js";
 
 const router = express.Router();
 
+// Middleware to only allow database admin routes in development
+router.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Database admin routes are not available in production' });
+  }
+  next();
+});
+
 // Get current database mode and info
 router.get("/status", authenticateToken, requireAdmin, async (req, res) => {
   try {

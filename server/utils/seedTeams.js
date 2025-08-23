@@ -88,14 +88,78 @@ export async function seedTeams() {
         
         console.log(`Added ${team.city} ${team.name} with logo ${logoFilename}`);
       } else {
-        // Update existing team with logo if it doesn't have one
-        await updateTeamLogos();
+        // Update existing team with missing data (colors, logos, conference info)
+        await updateExistingTeam(existingTeam.id, team);
       }
     }
     
     console.log('NFL teams seeding completed');
   } catch (error) {
     console.error('Error seeding teams:', error);
+  }
+}
+
+async function updateExistingTeam(teamId, teamData) {
+  try {
+    // Get current team data
+    const currentTeam = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+    
+    if (!currentTeam) {
+      console.log(`Team with id ${teamId} not found for update`);
+      return;
+    }
+    
+    // Map team codes to logo filenames
+    const logoMap = {
+      'LAR': 'LA.svg',
+      'LAC': 'SD.svg',
+      'LV': 'OAK.svg'
+    };
+    
+    const logoFilename = logoMap[teamData.code] || `${teamData.code}.svg`;
+    const logoPath = `/logos/${logoFilename}`;
+    
+    // Update any missing fields
+    const updates = {};
+    
+    if (!currentTeam.team_conference || currentTeam.team_conference === 'undefined') {
+      updates.team_conference = teamData.conference;
+    }
+    if (!currentTeam.team_division || currentTeam.team_division === 'undefined') {
+      updates.team_division = teamData.division;
+    }
+    if (!currentTeam.team_logo) {
+      updates.team_logo = logoPath;
+    }
+    if (!currentTeam.team_primary_color) {
+      updates.team_primary_color = teamData.primaryColor;
+    }
+    if (!currentTeam.team_secondary_color) {
+      updates.team_secondary_color = teamData.secondaryColor;
+    }
+    if (!currentTeam.team_city || currentTeam.team_city === 'undefined') {
+      updates.team_city = teamData.city;
+    }
+    if (!currentTeam.team_name || currentTeam.team_name === 'undefined') {
+      updates.team_name = teamData.name;
+    }
+    
+    // Only update if there are fields to update
+    if (Object.keys(updates).length > 0) {
+      const updateFields = Object.keys(updates).map(field => `${field} = ?`).join(', ');
+      const updateValues = Object.values(updates);
+      
+      await db.run(
+        `UPDATE football_teams SET ${updateFields}, updated_at = datetime('now') WHERE id = ?`,
+        [...updateValues, teamId]
+      );
+      
+      console.log(`Updated ${teamData.code} with missing fields:`, Object.keys(updates));
+    } else {
+      console.log(`${teamData.code} already has all required data`);
+    }
+  } catch (error) {
+    console.error(`Error updating existing team ${teamData.code}:`, error);
   }
 }
 

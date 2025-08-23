@@ -267,13 +267,13 @@ router.put(
 
       await db.run(
         `
-      UPDATE pickem_games 
-      SET game_name = ?, game_type = ?, updated_at = datetime('now')
+      UPDATE pickem_games
+      SET game_name = ?, type = ?, updated_at = datetime('now')
       WHERE id = ?
     `,
         [
           gameName || existingGame.game_name,
-          gameType || existingGame.game_type,
+          gameType || existingGame.type,
           gameId,
         ]
       );

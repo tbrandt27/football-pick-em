@@ -8,15 +8,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const getDbPath = () => {
-  // Use database switcher with fallback to original path
-  try {
-    return databaseSwitcher.getCurrentDatabasePath();
-  } catch (error) {
-    console.warn("Database switcher not available, using default path");
-    return (
-      process.env.DATABASE_PATH || join(__dirname, "../../database.sqlite")
-    );
+  // Only use database switcher in development
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      return databaseSwitcher.getCurrentDatabasePath();
+    } catch (error) {
+      console.warn("Database switcher not available, using default path");
+    }
   }
+  
+  return (
+    process.env.DATABASE_PATH || join(__dirname, "../../database.sqlite")
+  );
 };
 
 export default class SQLiteProvider extends BaseDatabaseProvider {
