@@ -80,7 +80,10 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
     // Use exact same logic as the working /logos/:filename route in server/index.js
     const explicitLogosPath = process.env.LOGOS_PATH;
     
-    const possibleLogoPaths = explicitLogosPath ? [explicitLogosPath] : [
+    // Always try multiple paths for better reliability in different deployment environments
+    const possibleLogoPaths = [
+      // Try explicit path first if set
+      ...(explicitLogosPath ? [explicitLogosPath] : []),
       // Standard relative path from current working directory
       path.join(process.cwd(), "public/logos"),
       // Path relative to server directory structure

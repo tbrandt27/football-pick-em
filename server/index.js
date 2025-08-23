@@ -73,8 +73,10 @@ app.get("/logos/:filename", (req, res) => {
   // Check for explicit environment variable first
   const explicitLogosPath = process.env.LOGOS_PATH;
   
-  // Try multiple possible paths for the logos directory (same as admin API)
-  const possibleLogoPaths = explicitLogosPath ? [join(explicitLogosPath, filename)] : [
+  // Always try multiple paths for better reliability in different deployment environments
+  const possibleLogoPaths = [
+    // Try explicit path first if set
+    ...(explicitLogosPath ? [join(explicitLogosPath, filename)] : []),
     // Standard relative path from current working directory
     join(process.cwd(), "public/logos", filename),
     // Path relative to server directory structure

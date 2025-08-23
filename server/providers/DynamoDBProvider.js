@@ -524,6 +524,12 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       const whereClause = whereMatch[1];
       const conditions = this._parseWhereClause(whereClause, params);
       
+      // Check if this is a simple GET by primary key (id)
+      if (Object.keys(conditions).length === 1 && conditions.id) {
+        console.log(`[DynamoDB] Using GET operation for primary key lookup: ${conditions.id}`);
+        return this._dynamoGet(tableName, { id: conditions.id });
+      }
+      
       // Determine if we should use Query or Scan
       // This is simplified - you'd want more sophisticated logic
       if (this._canUseQuery(tableName, conditions)) {
@@ -532,8 +538,18 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         return this._dynamoScan(tableName, conditions);
       }
     } else {
-      // No WHERE clause - scan the entire table
-      return this._dynamoScan(tableName);
+      // No WHERE clause - scan the entire table and handle ORDER BY
+      const result = await this._dynamoScan(tableName);
+      
+      // Handle ORDER BY clause for SCAN operations
+      const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
+      if (orderMatch && result.Items) {
+        const orderClause = orderMatch[1];
+        result.Items = this._applySorting(result.Items, orderClause);
+        console.log(`[DynamoDB] Applied ORDER BY sorting: ${orderClause}`);
+      }
+      
+      return result;
     }
   }
 
@@ -799,9 +815,39 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   _canUseQuery(tableName, conditions) {
     // Simplified logic to determine if we can use Query instead of Scan
     // This would depend on your table's key schema
-    return Object.keys(conditions).includes('id') || 
-           Object.keys(conditions).includes('user_id') ||
+    // Don't use Query for simple id lookups (use GET instead)
+    if (Object.keys(conditions).length === 1 && conditions.id) {
+      return false; // Use GET instead
+    }
+    
+    return Object.keys(conditions).includes('user_id') ||
            Object.keys(conditions).includes('game_id');
+  }
+
+  // Helper method to sort query results (since DynamoDB doesn't support ORDER BY)
+  _applySorting(items, orderClause) {
+    const orderFields = orderClause.split(',').map(field => {
+      const trimmed = field.trim();
+      const isDesc = trimmed.toLowerCase().includes('desc');
+      const fieldName = trimmed.replace(/\s+(asc|desc)$/i, '').trim();
+      return { field: fieldName, desc: isDesc };
+    });
+
+    return items.sort((a, b) => {
+      for (const { field, desc } of orderFields) {
+        const aVal = a[field] || '';
+        const bVal = b[field] || '';
+        
+        let comparison = 0;
+        if (aVal < bVal) comparison = -1;
+        else if (aVal > bVal) comparison = 1;
+        
+        if (comparison !== 0) {
+          return desc ? -comparison : comparison;
+        }
+      }
+      return 0;
+    });
   }
 
   _convertToTransactItem(operation) {
