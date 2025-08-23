@@ -55,6 +55,12 @@ export async function seedTeams() {
   console.log('Seeding NFL teams...');
   
   try {
+    // Check if we're using DynamoDB and use native DynamoDB operations if so
+    if (db.getType && db.getType() === 'dynamodb') {
+      return await seedTeamsDynamoDB();
+    }
+    
+    // SQLite/traditional SQL path
     for (const team of footballTeams) {
       const existingTeam = await db.get('SELECT id FROM football_teams WHERE team_code = ?', [team.code]);
       
@@ -96,6 +102,60 @@ export async function seedTeams() {
     console.log('NFL teams seeding completed');
   } catch (error) {
     console.error('Error seeding teams:', error);
+    throw error;
+  }
+}
+
+// DynamoDB-native seeding function to avoid SQL parsing issues
+async function seedTeamsDynamoDB() {
+  console.log('Seeding NFL teams for DynamoDB...');
+  
+  try {
+    for (const team of footballTeams) {
+      // Check if team already exists
+      const existingTeam = await db._dynamoScan('football_teams', { team_code: team.code });
+      
+      if (!existingTeam.Items || existingTeam.Items.length === 0) {
+        // Map team codes to logo filenames
+        const logoMap = {
+          'LAR': 'LA.svg',
+          'LAC': 'SD.svg', // Chargers still use SD logo
+          'LV': 'OAK.svg'  // Raiders still use OAK logo
+        };
+        
+        const logoFilename = logoMap[team.code] || `${team.code}.svg`;
+        const logoPath = `/logos/${logoFilename}`;
+        
+        // Create team item with proper structure for DynamoDB
+        const teamItem = {
+          id: uuidv4(),
+          team_code: team.code,
+          team_name: team.name,
+          team_city: team.city,
+          team_conference: team.conference,
+          team_division: team.division,
+          team_logo: logoPath,
+          team_primary_color: team.primaryColor,
+          team_secondary_color: team.secondaryColor,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        console.log(`[DynamoDB] Creating team ${team.code}:`, teamItem);
+        
+        // Use native DynamoDB PUT operation
+        await db._dynamoPut('football_teams', teamItem);
+        
+        console.log(`Added ${team.city} ${team.name} with logo ${logoFilename}`);
+      } else {
+        console.log(`Team ${team.code} already exists, skipping`);
+      }
+    }
+    
+    console.log('DynamoDB NFL teams seeding completed');
+  } catch (error) {
+    console.error('Error seeding teams in DynamoDB:', error);
+    throw error;
   }
 }
 
@@ -193,7 +253,12 @@ export async function updateTeamColors() {
   console.log('Updating team colors for all teams...');
   
   try {
-    // Get ALL teams to force-update colors (not just those with NULL colors)
+    // Check if we're using DynamoDB and use native DynamoDB operations if so
+    if (db.getType && db.getType() === 'dynamodb') {
+      return await updateTeamColorsDynamoDB();
+    }
+    
+    // SQLite/traditional SQL path
     const teams = await db.all('SELECT id, team_code FROM football_teams');
     
     // Create a map of team colors
@@ -227,11 +292,57 @@ export async function updateTeamColors() {
   }
 }
 
+// DynamoDB-native team colors update function
+async function updateTeamColorsDynamoDB() {
+  console.log('Updating team colors for all teams in DynamoDB...');
+  
+  try {
+    // Get ALL teams using DynamoDB scan
+    const allTeamsResult = await db._dynamoScan('football_teams');
+    const teams = allTeamsResult.Items || [];
+    
+    // Create a map of team colors
+    const colorMap = {};
+    footballTeams.forEach(team => {
+      colorMap[team.code] = {
+        primaryColor: team.primaryColor,
+        secondaryColor: team.secondaryColor
+      };
+    });
+    
+    let updatedCount = 0;
+    for (const team of teams) {
+      const colors = colorMap[team.team_code];
+      if (colors) {
+        // Use DynamoDB native update
+        await db._dynamoUpdate('football_teams', { id: team.id }, {
+          team_primary_color: colors.primaryColor,
+          team_secondary_color: colors.secondaryColor
+        });
+        console.log(`Updated ${team.team_code} with colors ${colors.primaryColor}, ${colors.secondaryColor}`);
+        updatedCount++;
+      } else {
+        console.log(`No color data found for team code: ${team.team_code}`);
+      }
+    }
+    
+    console.log(`DynamoDB team colors update completed. Updated ${updatedCount} teams.`);
+  } catch (error) {
+    console.error('Error updating team colors in DynamoDB:', error);
+    throw error;
+  }
+}
+
 export async function cleanupDuplicateTeams() {
   console.log('Cleaning up duplicate teams...');
   
   try {
-    // Get all teams and identify duplicates
+    // Check if we're using DynamoDB and use native DynamoDB operations if so
+    if (db.getType && db.getType() === 'dynamodb') {
+      return await cleanupDuplicateTeamsDynamoDB();
+    }
+    
+    // SQLite/traditional SQL path
     const allTeams = await db.all('SELECT * FROM football_teams ORDER BY created_at');
     
     // Find teams with undefined/null conference that have valid duplicates
@@ -268,6 +379,67 @@ export async function cleanupDuplicateTeams() {
     console.log(`Cleanup completed. Removed ${teamsToDelete.length} duplicate teams.`);
   } catch (error) {
     console.error('Error cleaning up duplicate teams:', error);
+    throw error;
+  }
+}
+
+// DynamoDB-native cleanup function for corrupted data
+async function cleanupDuplicateTeamsDynamoDB() {
+  console.log('Cleaning up duplicate teams in DynamoDB...');
+  
+  try {
+    // Get all teams using DynamoDB scan
+    const allTeamsResult = await db._dynamoScan('football_teams');
+    const allTeams = allTeamsResult.Items || [];
+    
+    console.log(`Found ${allTeams.length} total items in football_teams table`);
+    
+    // Identify invalid records (those that aren't proper team records)
+    const teamsToDelete = [];
+    const validTeams = [];
+    
+    for (const item of allTeams) {
+      // Check if this is a valid team record
+      const isValidTeam = item.id &&
+                         item.team_code &&
+                         item.team_name &&
+                         item.team_city &&
+                         !item.id.startsWith('/logos/') &&  // Not a logo path
+                         !item.id.startsWith('#');          // Not a color code
+      
+      if (isValidTeam) {
+        validTeams.push(item);
+      } else {
+        teamsToDelete.push(item);
+        console.log(`Marking invalid record for deletion:`, {
+          id: item.id,
+          type: item.id?.startsWith('/logos/') ? 'logo_path' :
+                item.id?.startsWith('#') ? 'color_code' : 'invalid_structure'
+        });
+      }
+    }
+    
+    console.log(`Found ${validTeams.length} valid teams and ${teamsToDelete.length} invalid records`);
+    
+    // Delete invalid records
+    for (const item of teamsToDelete) {
+      try {
+        await db._dynamoDelete('football_teams', { id: item.id });
+        console.log(`Deleted invalid record: ${item.id}`);
+      } catch (error) {
+        console.error(`Failed to delete record ${item.id}:`, error.message);
+      }
+    }
+    
+    console.log(`DynamoDB cleanup completed. Removed ${teamsToDelete.length} invalid records.`);
+    console.log(`Remaining valid teams: ${validTeams.length}`);
+    
+    return {
+      deletedCount: teamsToDelete.length,
+      validTeamsCount: validTeams.length
+    };
+  } catch (error) {
+    console.error('Error cleaning up duplicate teams in DynamoDB:', error);
     throw error;
   }
 }
