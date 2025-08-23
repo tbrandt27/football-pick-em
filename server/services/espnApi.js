@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
+import db from '../models/database.js';
 
 class ESPNService {
   constructor() {
@@ -11,10 +11,7 @@ class ESPNService {
 
   async getDb() {
     if (!this.db) {
-      this.db = await DatabaseProviderFactory.createProvider();
-      if (!this.db.initialized) {
-        await this.db.initialize();
-      }
+      this.db = db.provider; // Use singleton database provider
     }
     return this.db;
   }

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import ISeasonService from '../interfaces/ISeasonService.js';
-import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.js';
+import db from '../../../models/database.js';
 
 /**
  * DynamoDB-specific Season Service
@@ -9,7 +9,7 @@ import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.
 export default class DynamoDBSeasonService extends ISeasonService {
   constructor() {
     super();
-    this.db = DatabaseProviderFactory.createProvider();
+    this.db = db.provider; // Use the singleton database provider
   }
 
   /**

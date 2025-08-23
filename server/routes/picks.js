@@ -2,6 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../middleware/auth.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
+import db from '../models/database.js';
 
 const router = express.Router();
 
@@ -30,8 +31,8 @@ router.get('/', authenticateToken, async (req, res) => {
 
     // TODO: This should be moved to a PickService when it's implemented
     // For now, handle both database types
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let picks = [];
     
@@ -163,8 +164,8 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Get Football game details
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let footballGame;
     if (dbType === 'dynamodb') {
@@ -344,8 +345,8 @@ router.delete('/:pickId', authenticateToken, async (req, res) => {
   try {
     const { pickId } = req.params;
 
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
 
     let pick;
     if (dbType === 'dynamodb') {
@@ -419,8 +420,8 @@ router.get('/game/:gameId/summary', authenticateToken, async (req, res) => {
     // Get participants and calculate summary
     const participants = await gameService.getGameParticipants(gameId);
     const userService = DatabaseServiceFactory.getUserService();
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     const summary = await Promise.all(participants.map(async (participant) => {
       try {

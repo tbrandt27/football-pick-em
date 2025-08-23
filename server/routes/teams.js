@@ -1,16 +1,15 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
-import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
+import db from '../models/database.js';
 
 const router = express.Router();
 
 // Get all NFL teams
 router.get('/', async (req, res) => {
   try {
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    await dbProvider.initialize();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let teams;
     if (dbType === 'dynamodb') {
@@ -46,9 +45,8 @@ router.get('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
     
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    await dbProvider.initialize();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let team;
     if (dbType === 'dynamodb') {
@@ -89,8 +87,8 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
 
     // Check if team code already exists
     let existingTeam;
@@ -167,8 +165,8 @@ router.put('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
       teamSecondaryColor
     } = req.body;
 
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
 
     let existingTeam;
     if (dbType === 'dynamodb') {
@@ -234,8 +232,8 @@ router.delete('/:teamId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { teamId } = req.params;
 
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
 
     let existingTeam;
     if (dbType === 'dynamodb') {
@@ -293,8 +291,8 @@ router.get('/conference/:conference', async (req, res) => {
   try {
     const { conference } = req.params;
     
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let teams;
     if (dbType === 'dynamodb') {
@@ -328,8 +326,8 @@ router.get('/division/:conference/:division', async (req, res) => {
   try {
     const { conference, division } = req.params;
     
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     let teams;
     if (dbType === 'dynamodb') {

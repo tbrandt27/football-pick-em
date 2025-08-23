@@ -1,5 +1,5 @@
 import IUserService from '../interfaces/IUserService.js';
-import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.js';
+import db from '../../../models/database.js';
 
 /**
  * DynamoDB User Service Implementation
@@ -7,7 +7,7 @@ import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.
 export default class DynamoDBUserService extends IUserService {
   constructor() {
     super();
-    this.db = DatabaseProviderFactory.createProvider();
+    this.db = db.provider; // Use the singleton database provider
   }
   /**
    * Get all users (admin only)

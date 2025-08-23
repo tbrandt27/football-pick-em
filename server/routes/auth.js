@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../middleware/auth.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
+import db from '../models/database.js';
 
 const router = express.Router();
 
@@ -89,8 +90,8 @@ router.post('/register-invite', async (req, res) => {
     // For now, we need to handle both database types
     let invitation = null;
     
-    const dbProvider = DatabaseProviderFactory.createProvider();
-    const dbType = DatabaseProviderFactory.getProviderType();
+    const dbProvider = db.provider; // Use singleton database provider
+    const dbType = db.getType();
     
     if (dbType === 'dynamodb') {
       // For DynamoDB, scan invitations and get game info separately
@@ -118,8 +119,8 @@ router.post('/register-invite', async (req, res) => {
       }
     } else {
       // For SQLite, use the existing JOIN query
-      const db = DatabaseProviderFactory.createProvider();
-      invitation = await db.get(`
+      const dbInstance = db.provider; // Use singleton database provider
+      invitation = await dbInstance.get(`
         SELECT gi.*, pg.game_name
         FROM game_invitations gi
         JOIN pickem_games pg ON gi.game_id = pg.id
@@ -169,8 +170,8 @@ router.post('/register-invite', async (req, res) => {
         updated_at: new Date().toISOString()
       });
     } else {
-      const db = DatabaseProviderFactory.createProvider();
-      await db.run(`
+      const dbInstance = db.provider; // Use singleton database provider
+      await dbInstance.run(`
         UPDATE game_invitations
         SET status = 'accepted', updated_at = datetime('now')
         WHERE id = ?

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import IGameService from '../interfaces/IGameService.js';
-import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.js';
+import db from '../../../models/database.js';
 
 /**
  * DynamoDB-specific Game Service
@@ -9,7 +9,7 @@ import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.
 export default class DynamoDBGameService extends IGameService {
   constructor() {
     super();
-    this.db = DatabaseProviderFactory.createProvider();
+    this.db = db.provider; // Use the singleton database provider
   }
 
   /**

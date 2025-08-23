@@ -1,4 +1,4 @@
-import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
+import db from '../models/database.js';
 import espnService from './espnApi.js';
 
 class OnDemandUpdateService {
@@ -12,8 +12,8 @@ class OnDemandUpdateService {
    */
   async areScoresStale(seasonId, week) {
     try {
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
       
       let result;
       
@@ -80,8 +80,8 @@ class OnDemandUpdateService {
    */
   async getLastUpdateTime(seasonId, week) {
     try {
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
       
       let lastUpdate = null;
       
@@ -162,8 +162,8 @@ class OnDemandUpdateService {
    */
   async updateCurrentWeekIfStale() {
     try {
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
       
       let currentSeason;
       

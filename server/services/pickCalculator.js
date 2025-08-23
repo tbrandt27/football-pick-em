@@ -1,4 +1,4 @@
-import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
+import db from '../models/database.js';
 
 class PickCalculatorService {
   /**
@@ -21,8 +21,8 @@ class PickCalculatorService {
         params.push(week);
       }
 
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
 
       let completedGames = [];
       
@@ -167,8 +167,8 @@ class PickCalculatorService {
         params.push(week);
       }
 
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
       
       let stats;
       

@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import DatabaseProviderFactory from "../providers/DatabaseProviderFactory.js";
+import db from "../models/database.js";
 import crypto from "crypto";
 
 // Encryption key for sensitive settings (should match admin.js)
@@ -23,8 +23,8 @@ class EmailService {
 
   async loadSmtpSettings() {
     try {
-      const dbProvider = DatabaseProviderFactory.createProvider();
-      const dbType = DatabaseProviderFactory.getProviderType();
+      const dbProvider = db.provider; // Use singleton database provider
+      const dbType = db.getType();
       
       let settings = [];
       

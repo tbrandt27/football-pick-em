@@ -252,6 +252,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoGet(tableName, key) {
+    // Check if docClient is properly initialized
+    if (!this.docClient) {
+      const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+      console.error(`[DynamoDB] GET failed - docClient not initialized:`, {
+        tableName,
+        key,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient,
+          region: this.region,
+          tablePrefix: this.tablePrefix
+        }
+      });
+      throw error;
+    }
+
     const command = new GetCommand({
       TableName: this.tables[tableName] || tableName,
       Key: key
@@ -262,6 +278,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
   async _dynamoPut(tableName, item) {
     try {
+      // Check if docClient is properly initialized
+      if (!this.docClient) {
+        const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+        console.error(`[DynamoDB] PUT failed - docClient not initialized:`, {
+          tableName,
+          item,
+          clientState: {
+            client: !!this.client,
+            docClient: !!this.docClient,
+            region: this.region,
+            tablePrefix: this.tablePrefix
+          }
+        });
+        throw error;
+      }
+
       console.log(`[DynamoDB] === _dynamoPut START ===`);
       console.log(`[DynamoDB] Input table name: "${tableName}"`);
       console.log(`[DynamoDB] Input item:`, JSON.stringify(item, null, 2));
@@ -378,6 +410,23 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoUpdate(tableName, key, updates) {
+    // Check if docClient is properly initialized
+    if (!this.docClient) {
+      const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+      console.error(`[DynamoDB] UPDATE failed - docClient not initialized:`, {
+        tableName,
+        key,
+        updates,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient,
+          region: this.region,
+          tablePrefix: this.tablePrefix
+        }
+      });
+      throw error;
+    }
+
     const updateExpression = [];
     const expressionAttributeNames = {};
     const expressionAttributeValues = {};
@@ -409,6 +458,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoDelete(tableName, key) {
+    // Check if docClient is properly initialized
+    if (!this.docClient) {
+      const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+      console.error(`[DynamoDB] DELETE failed - docClient not initialized:`, {
+        tableName,
+        key,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient,
+          region: this.region,
+          tablePrefix: this.tablePrefix
+        }
+      });
+      throw error;
+    }
+
     const actualTableName = this.tables[tableName] || tableName;
     console.log(`[DynamoDB] DELETE operation details:`, {
       tableName,
@@ -441,6 +506,23 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoQuery(tableName, conditions, indexName = null) {
+    // Check if docClient is properly initialized
+    if (!this.docClient) {
+      const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+      console.error(`[DynamoDB] QUERY failed - docClient not initialized:`, {
+        tableName,
+        conditions,
+        indexName,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient,
+          region: this.region,
+          tablePrefix: this.tablePrefix
+        }
+      });
+      throw error;
+    }
+
     const keyConditionExpression = [];
     const expressionAttributeNames = {};
     const expressionAttributeValues = {};
@@ -470,6 +552,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoScan(tableName, filters = {}) {
+    // Check if docClient is properly initialized
+    if (!this.docClient) {
+      const error = new Error('DynamoDB docClient is not initialized. Call initialize() first.');
+      console.error(`[DynamoDB] SCAN failed - docClient not initialized:`, {
+        tableName,
+        filters,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient,
+          region: this.region,
+          tablePrefix: this.tablePrefix
+        }
+      });
+      throw error;
+    }
+
     const actualTableName = this.tables[tableName] || tableName;
     const scanParams = {
       TableName: actualTableName
@@ -498,7 +596,8 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       tableName,
       actualTableName,
       filters,
-      hasFilters: Object.keys(filters).length > 0
+      hasFilters: Object.keys(filters).length > 0,
+      clientInitialized: !!this.docClient
     });
 
     const command = new ScanCommand(scanParams);
@@ -515,7 +614,11 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       console.error(`[DynamoDB] SCAN failed:`, {
         tableName: actualTableName,
         error: error.message,
-        code: error.name
+        code: error.name,
+        clientState: {
+          client: !!this.client,
+          docClient: !!this.docClient
+        }
       });
       throw error;
     }
