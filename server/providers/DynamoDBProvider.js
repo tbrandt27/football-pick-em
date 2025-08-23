@@ -544,9 +544,15 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       // Handle ORDER BY clause for SCAN operations
       const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
       if (orderMatch && result.Items) {
-        const orderClause = orderMatch[1];
-        result.Items = this._applySorting(result.Items, orderClause);
-        console.log(`[DynamoDB] Applied ORDER BY sorting: ${orderClause}`);
+        try {
+          const orderClause = orderMatch[1];
+          console.log(`[DynamoDB] Attempting to sort ${result.Items.length} items by: ${orderClause}`);
+          result.Items = this._applySorting(result.Items, orderClause);
+          console.log(`[DynamoDB] Successfully applied ORDER BY sorting: ${orderClause}`);
+        } catch (sortError) {
+          console.error(`[DynamoDB] Error applying ORDER BY sorting:`, sortError);
+          // Return unsorted results rather than failing completely
+        }
       }
       
       return result;
@@ -826,28 +832,48 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
   // Helper method to sort query results (since DynamoDB doesn't support ORDER BY)
   _applySorting(items, orderClause) {
-    const orderFields = orderClause.split(',').map(field => {
-      const trimmed = field.trim();
-      const isDesc = trimmed.toLowerCase().includes('desc');
-      const fieldName = trimmed.replace(/\s+(asc|desc)$/i, '').trim();
-      return { field: fieldName, desc: isDesc };
-    });
+    try {
+      console.log(`[DynamoDB] Parsing ORDER BY clause: "${orderClause}"`);
+      
+      const orderFields = orderClause.split(',').map(field => {
+        const trimmed = field.trim();
+        const isDesc = trimmed.toLowerCase().includes('desc');
+        const fieldName = trimmed.replace(/\s+(asc|desc)$/i, '').trim();
+        console.log(`[DynamoDB] Order field: ${fieldName}, desc: ${isDesc}`);
+        return { field: fieldName, desc: isDesc };
+      });
 
-    return items.sort((a, b) => {
-      for (const { field, desc } of orderFields) {
-        const aVal = a[field] || '';
-        const bVal = b[field] || '';
-        
-        let comparison = 0;
-        if (aVal < bVal) comparison = -1;
-        else if (aVal > bVal) comparison = 1;
-        
-        if (comparison !== 0) {
-          return desc ? -comparison : comparison;
+      const sortedItems = [...items].sort((a, b) => {
+        for (const { field, desc } of orderFields) {
+          const aVal = a[field];
+          const bVal = b[field];
+          
+          // Handle null/undefined values
+          if (aVal == null && bVal == null) continue;
+          if (aVal == null) return desc ? 1 : -1;
+          if (bVal == null) return desc ? -1 : 1;
+          
+          // Convert to string for consistent comparison
+          const aStr = String(aVal);
+          const bStr = String(bVal);
+          
+          let comparison = 0;
+          if (aStr < bStr) comparison = -1;
+          else if (aStr > bStr) comparison = 1;
+          
+          if (comparison !== 0) {
+            return desc ? -comparison : comparison;
+          }
         }
-      }
-      return 0;
-    });
+        return 0;
+      });
+
+      console.log(`[DynamoDB] Sorting complete. Original count: ${items.length}, Sorted count: ${sortedItems.length}`);
+      return sortedItems;
+    } catch (error) {
+      console.error(`[DynamoDB] Error in _applySorting:`, error);
+      throw error;
+    }
   }
 
   _convertToTransactItem(operation) {

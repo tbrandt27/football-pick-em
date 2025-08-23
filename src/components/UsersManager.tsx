@@ -31,8 +31,15 @@ const UsersManager: React.FC = () => {
   const isLoading = useStore($isLoading);
   const [users, setUsers] = useState<User[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [games, setGames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteFormData, setInviteFormData] = useState({
+    email: '',
+    gameId: ''
+  });
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -57,11 +64,14 @@ const UsersManager: React.FC = () => {
       setLoading(true);
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       
-      const [usersResponse, invitationsResponse] = await Promise.all([
+      const [usersResponse, invitationsResponse, gamesResponse] = await Promise.all([
         fetch('/api/admin/users', {
           headers: { Authorization: `Bearer ${token}` }
         }),
         fetch('/api/admin/invitations', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch('/api/admin/games', {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -76,6 +86,11 @@ const UsersManager: React.FC = () => {
       if (invitationsResponse.ok) {
         const invitationData = await invitationsResponse.json();
         setInvitations(invitationData.invitations);
+      }
+
+      if (gamesResponse.ok) {
+        const gamesData = await gamesResponse.json();
+        setGames(gamesData.games || []);
       }
     } catch (err) {
       setError('Failed to load users');
@@ -126,6 +141,48 @@ const UsersManager: React.FC = () => {
     }
   };
 
+  const confirmInvitation = async (invitationId: string, email: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/invitations/${invitationId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // Remove the invitation from the list since it's now confirmed
+        setInvitations(invitations.filter(inv => inv.id !== invitationId));
+        
+        // Show success message with temporary password
+        setError('');
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.innerHTML = `
+          <div class="font-semibold">Account created for ${email}</div>
+          <div>Temporary password: <code class="bg-green-200 px-2 py-1 rounded font-mono">${result.temporaryPassword}</code></div>
+          <div class="text-sm mt-1">Send this password to the user securely</div>
+        `;
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 15000); // Show longer for password
+        }
+        
+        // Reload users to show the new account
+        await loadUsers();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to confirm invitation');
+      }
+    } catch (err) {
+      setError('Failed to confirm invitation');
+    }
+  };
+
   const deleteUser = async (userId: string, userName: string, userEmail: string) => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -152,6 +209,56 @@ const UsersManager: React.FC = () => {
       }
     } catch (err) {
       setError('Failed to delete user');
+    }
+  };
+
+  const handleInviteUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteFormData.email.trim() || !inviteFormData.gameId) return;
+
+    setInviting(true);
+    setError('');
+
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/invite-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: inviteFormData.email.trim(),
+          gameId: inviteFormData.gameId
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setShowInviteForm(false);
+        setInviteFormData({ email: '', gameId: '' });
+        setError('');
+        
+        // Show success message briefly
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.textContent = result.message || 'User invitation sent successfully';
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+        }
+        
+        // Reload data to show any updates
+        await loadUsers();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to send invitation');
+      }
+    } catch (err) {
+      setError('Failed to send invitation');
+    } finally {
+      setInviting(false);
     }
   };
 
@@ -191,6 +298,12 @@ const UsersManager: React.FC = () => {
               <p className="text-lg opacity-90">Manage user accounts and permissions</p>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowInviteForm(true)}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Invite User
+              </button>
               <a
                 href="/admin"
                 className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
@@ -380,21 +493,97 @@ const UsersManager: React.FC = () => {
                         {new Date(invitation.expires_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => {
-                            if (confirm(`Cancel invitation for ${invitation.email}?`)) {
-                              cancelInvitation(invitation.id);
-                            }
-                          }}
-                          className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
-                        >
-                          Cancel
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => {
+                              if (confirm(`Manually confirm invitation for ${invitation.email}?\n\nThis will create a user account with a temporary password.`)) {
+                                confirmInvitation(invitation.id, invitation.email);
+                              }
+                            }}
+                            className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Cancel invitation for ${invitation.email}?`)) {
+                                cancelInvitation(invitation.id);
+                              }
+                            }}
+                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Invite User Modal */}
+        {showInviteForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Invite User to Game</h3>
+              <form onSubmit={handleInviteUser} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={inviteFormData.email}
+                    onChange={(e) => setInviteFormData({...inviteFormData, email: e.target.value})}
+                    placeholder="Enter user's email address"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Assign to Game
+                  </label>
+                  <select
+                    value={inviteFormData.gameId}
+                    onChange={(e) => setInviteFormData({...inviteFormData, gameId: e.target.value})}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select a game...</option>
+                    {games.filter(game => game.is_active).map(game => (
+                      <option key={game.id} value={game.id}>
+                        {game.name || game.game_name} ({game.participant_count} players)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInviteForm(false);
+                      setInviteFormData({ email: '', gameId: '' });
+                      setError('');
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={inviting}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {inviting ? 'Sending...' : 'Send Invitation'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

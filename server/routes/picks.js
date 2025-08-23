@@ -2,6 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../middleware/auth.js';
 import db from '../models/database.js';
+import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 const router = express.Router();
 
@@ -259,41 +260,101 @@ router.get('/game/:gameId/summary', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    let query = `
-      SELECT 
-        u.id as user_id,
-        u.first_name,
-        u.last_name,
-        COUNT(p.id) as total_picks,
-        COUNT(CASE WHEN p.is_correct = 1 THEN 1 END) as correct_picks,
-        ROUND(
-          CAST(COUNT(CASE WHEN p.is_correct = 1 THEN 1 END) AS FLOAT) / 
-          CAST(COUNT(p.id) AS FLOAT) * 100, 2
-        ) as pick_percentage
-      FROM game_participants gp
-      JOIN users u ON gp.user_id = u.id
-      LEFT JOIN picks p ON gp.user_id = p.user_id AND p.game_id = ?
-    `;
-    
-    const params = [gameId, gameId];
-    
-    if (seasonId) {
-      query += ' AND p.season_id = ?';
-      params.push(seasonId);
+    // Handle different database types
+    let summary;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get participants and picks separately, then combine
+      const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+      const userService = DatabaseServiceFactory.getUserService();
+      
+      summary = await Promise.all(participants.map(async (participant) => {
+        const user = await userService.getUserBasicInfo(participant.user_id);
+        if (!user) return null;
+        
+        // Get picks for this user/game
+        let picksQuery = 'SELECT * FROM picks WHERE user_id = ? AND game_id = ?';
+        let picksParams = [participant.user_id, gameId];
+        
+        if (seasonId) {
+          picksQuery += ' AND season_id = ?';
+          picksParams.push(seasonId);
+        }
+        
+        if (week) {
+          picksQuery += ' AND week = ?';
+          picksParams.push(parseInt(week));
+        }
+        
+        const picks = await db.all(picksQuery, picksParams);
+        const totalPicks = picks.length;
+        const correctPicks = picks.filter(p => p.is_correct === true || p.is_correct === 1).length;
+        const pickPercentage = totalPicks > 0 ? Math.round((correctPicks / totalPicks) * 100 * 100) / 100 : 0;
+        
+        return {
+          user_id: user.id || participant.user_id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          total_picks: totalPicks,
+          correct_picks: correctPicks,
+          pick_percentage: pickPercentage
+        };
+      }));
+      
+      // Filter out nulls and sort
+      summary = summary.filter(s => s !== null)
+        .sort((a, b) => {
+          if (b.pick_percentage !== a.pick_percentage) {
+            return b.pick_percentage - a.pick_percentage;
+          }
+          return b.correct_picks - a.correct_picks;
+        });
+    } else {
+      // For SQLite, get participants and users separately to avoid JOIN
+      const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+      const userService = DatabaseServiceFactory.getUserService();
+      
+      summary = await Promise.all(participants.map(async (participant) => {
+        const user = await userService.getUserBasicInfo(participant.user_id);
+        if (!user) return null;
+        
+        // Get picks for this user/game
+        let picksQuery = 'SELECT * FROM picks WHERE user_id = ? AND game_id = ?';
+        let picksParams = [participant.user_id, gameId];
+        
+        if (seasonId) {
+          picksQuery += ' AND season_id = ?';
+          picksParams.push(seasonId);
+        }
+        
+        if (week) {
+          picksQuery += ' AND week = ?';
+          picksParams.push(parseInt(week));
+        }
+        
+        const picks = await db.all(picksQuery, picksParams);
+        const totalPicks = picks.length;
+        const correctPicks = picks.filter(p => p.is_correct === true || p.is_correct === 1).length;
+        const pickPercentage = totalPicks > 0 ? Math.round((correctPicks / totalPicks) * 100 * 100) / 100 : 0;
+        
+        return {
+          user_id: user.id || participant.user_id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          total_picks: totalPicks,
+          correct_picks: correctPicks,
+          pick_percentage: pickPercentage
+        };
+      }));
+      
+      // Filter out nulls and sort
+      summary = summary.filter(s => s !== null)
+        .sort((a, b) => {
+          if (b.pick_percentage !== a.pick_percentage) {
+            return b.pick_percentage - a.pick_percentage;
+          }
+          return b.correct_picks - a.correct_picks;
+        });
     }
-    
-    if (week) {
-      query += ' AND p.week = ?';
-      params.push(parseInt(week));
-    }
-    
-    query += `
-      WHERE gp.game_id = ?
-      GROUP BY u.id, u.first_name, u.last_name
-      ORDER BY pick_percentage DESC, correct_picks DESC
-    `;
-
-    const summary = await db.all(query, params);
 
     res.json({ summary });
   } catch (error) {

@@ -11,14 +11,16 @@ import emailService from "../services/emailService.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.js";
 
 const router = express.Router();
 
 // Get admin dashboard stats
 router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const userService = DatabaseServiceFactory.getUserService();
     const [userCount, gameCount, teamCount, seasonCount] = await Promise.all([
-      db.get("SELECT COUNT(*) as count FROM users"),
+      userService.getUserCount().then(count => ({ count })),
       db.get("SELECT COUNT(*) as count FROM pickem_games"),
       db.get("SELECT COUNT(*) as count FROM football_teams"),
       db.get("SELECT COUNT(*) as count FROM seasons"),
@@ -290,24 +292,52 @@ router.post(
 // Get all users (for user management)
 router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = await db.all(`
-      SELECT 
-        u.id,
-        u.email,
-        u.first_name,
-        u.last_name,
-        u.is_admin,
-        u.email_verified,
-        u.last_login,
-        u.created_at,
-        COUNT(gp.id) as game_count
-      FROM users u
-      LEFT JOIN game_participants gp ON u.id = gp.user_id
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-    `);
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get users and game counts separately
+      const userService = DatabaseServiceFactory.getUserService();
+      const users = await userService.getAllUsers();
+      
+      // For each user, get game count
+      const usersWithGameCount = await Promise.all(
+        users.map(async (user) => {
+          try {
+            const gameParticipations = await db.all('SELECT id FROM game_participants WHERE user_id = ?', [user.id]);
+            return {
+              ...user,
+              game_count: gameParticipations.length
+            };
+          } catch (error) {
+            console.warn(`Could not get game count for user ${user.id}:`, error);
+            return {
+              ...user,
+              game_count: 0
+            };
+          }
+        })
+      );
+      
+      res.json({ users: usersWithGameCount });
+    } else {
+      // For SQLite, use the optimized JOIN query
+      const users = await db.all(`
+        SELECT
+          u.id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          u.is_admin,
+          u.email_verified,
+          u.last_login,
+          u.created_at,
+          COUNT(gp.id) as game_count
+        FROM users u
+        LEFT JOIN game_participants gp ON u.id = gp.user_id
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+      `);
 
-    res.json({ users });
+      res.json({ users });
+    }
   } catch (error) {
     console.error("Get admin users error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -321,23 +351,66 @@ router.get(
   requireAdmin,
   async (req, res) => {
     try {
-      const invitations = await db.all(`
-      SELECT 
-        gi.id,
-        gi.email,
-        gi.status,
-        gi.expires_at,
-        gi.created_at,
-        g.name as game_name,
-        u.first_name || ' ' || u.last_name as invited_by_name
-      FROM game_invitations gi
-      LEFT JOIN pickem_games g ON gi.game_id = g.id
-      LEFT JOIN users u ON gi.invited_by_user_id = u.id
-      WHERE gi.status = 'pending' AND gi.expires_at > datetime('now')
-      ORDER BY gi.created_at DESC
-    `);
+      if (db.getType() === 'dynamodb') {
+        // For DynamoDB, get invitations and related data separately
+        const invitations = await db.all(`
+          SELECT * FROM game_invitations
+          WHERE status = 'pending' AND expires_at > ?
+          ORDER BY created_at DESC
+        `, [new Date().toISOString()]);
 
-      res.json({ invitations });
+        // For each invitation, get game and user info
+        const invitationsWithDetails = await Promise.all(
+          invitations.map(async (invitation) => {
+            let game_name = 'Unknown Game';
+            let invited_by_name = 'Unknown User';
+
+            try {
+              // Get game info
+              const game = await db.get('SELECT game_name FROM pickem_games WHERE id = ?', [invitation.game_id]);
+              if (game) {
+                game_name = game.game_name;
+              }
+
+              // Get inviter info
+              const userService = DatabaseServiceFactory.getUserService();
+              const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
+              if (inviter) {
+                invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
+              }
+            } catch (error) {
+              console.warn(`Could not fetch details for invitation ${invitation.id}:`, error);
+            }
+
+            return {
+              ...invitation,
+              game_name,
+              invited_by_name
+            };
+          })
+        );
+
+        res.json({ invitations: invitationsWithDetails });
+      } else {
+        // For SQLite, use the optimized JOIN query
+        const invitations = await db.all(`
+          SELECT
+            gi.id,
+            gi.email,
+            gi.status,
+            gi.expires_at,
+            gi.created_at,
+            g.game_name as game_name,
+            u.first_name || ' ' || u.last_name as invited_by_name
+          FROM game_invitations gi
+          LEFT JOIN pickem_games g ON gi.game_id = g.id
+          LEFT JOIN users u ON gi.invited_by_user_id = u.id
+          WHERE gi.status = 'pending' AND gi.expires_at > datetime('now')
+          ORDER BY gi.created_at DESC
+        `);
+
+        res.json({ invitations });
+      }
     } catch (error) {
       console.error("Get admin invitations error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -364,7 +437,7 @@ router.delete(
 
       await db.run(
         `
-      UPDATE game_invitations 
+      UPDATE game_invitations
       SET status = 'cancelled', updated_at = datetime('now')
       WHERE id = ?
     `,
@@ -376,6 +449,96 @@ router.delete(
       });
     } catch (error) {
       console.error("Cancel invitation error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Manually confirm invitation (admin creates account for user)
+router.post(
+  "/invitations/:invitationId/confirm",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { invitationId } = req.params;
+      const { firstName, lastName, tempPassword } = req.body;
+
+      if (!firstName || !lastName || !tempPassword) {
+        return res.status(400).json({
+          error: "First name, last name, and temporary password are required"
+        });
+      }
+
+      // Get invitation details
+      const invitation = await db.get(`
+        SELECT gi.*, pg.game_name
+        FROM game_invitations gi
+        JOIN pickem_games pg ON gi.game_id = pg.id
+        WHERE gi.id = ? AND gi.status = 'pending' AND gi.expires_at > datetime('now')
+      `, [invitationId]);
+
+      if (!invitation) {
+        return res.status(404).json({ error: "Invalid or expired invitation" });
+      }
+
+      // Check if user already exists
+      const userService = DatabaseServiceFactory.getUserService();
+      const userExists = await userService.userExists(invitation.email);
+      if (userExists) {
+        return res.status(409).json({ error: "User with this email already exists" });
+      }
+
+      // Hash the temporary password
+      const bcrypt = await import('bcryptjs');
+      const saltRounds = 12;
+      const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
+
+      // Create user account
+      const userId = uuidv4();
+      const emailVerificationToken = uuidv4();
+      
+      const createdUser = await userService.createUser({
+        id: userId,
+        email: invitation.email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        favoriteTeamId: null,
+        emailVerificationToken,
+        emailVerified: true  // Admin-created accounts are pre-verified
+      });
+
+      // Add user to the game
+      await db.run(`
+        INSERT INTO game_participants (id, game_id, user_id, role)
+        VALUES (?, ?, ?, 'player')
+      `, [uuidv4(), invitation.game_id, userId]);
+
+      // Mark invitation as accepted
+      await db.run(`
+        UPDATE game_invitations
+        SET status = 'accepted', updated_at = datetime('now')
+        WHERE id = ?
+      `, [invitation.id]);
+
+      res.json({
+        message: `Account created for ${invitation.email} and added to "${invitation.game_name}". Temporary password: ${tempPassword}`,
+        user: {
+          id: userId,
+          email: invitation.email,
+          firstName,
+          lastName,
+          tempPassword
+        },
+        game: {
+          id: invitation.game_id,
+          name: invitation.game_name
+        }
+      });
+
+    } catch (error) {
+      console.error("Confirm invitation error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -397,7 +560,8 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
         // Get commissioner name
         let commissioner_name = 'Unknown';
         if (game.commissioner_id) {
-          const commissioner = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [game.commissioner_id]);
+          const userService = DatabaseServiceFactory.getUserService();
+          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
           if (commissioner) {
             commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
           }
@@ -487,15 +651,16 @@ async function migrateGameData() {
         // Fix missing commissioner_id
         if (!game.commissioner_id || game.commissioner_id === '') {
           // Find first admin user
-          const adminUsers = await db.all('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
-          if (adminUsers && adminUsers.length > 0) {
-            updates.commissioner_id = adminUsers[0].id;
+          const userService = DatabaseServiceFactory.getUserService();
+          const adminUser = await userService.getFirstAdminUser();
+          if (adminUser) {
+            updates.commissioner_id = adminUser.id;
             needsUpdate = true;
           } else {
             // Find any user
-            const anyUsers = await db.all('SELECT id FROM users LIMIT 1');
-            if (anyUsers && anyUsers.length > 0) {
-              updates.commissioner_id = anyUsers[0].id;
+            const anyUser = await userService.getAnyUser();
+            if (anyUser) {
+              updates.commissioner_id = anyUser.id;
               needsUpdate = true;
             }
           }
@@ -531,9 +696,8 @@ async function migrateGameData() {
       `);
 
       // Update games with NULL commissioner_id - set to first admin user
-      const firstAdmin = await db.get(
-        "SELECT id FROM users WHERE is_admin = 1 LIMIT 1"
-      );
+      const userService = DatabaseServiceFactory.getUserService();
+      const firstAdmin = await userService.getFirstAdminUser();
 
       if (firstAdmin) {
         await db.run(
@@ -617,14 +781,8 @@ router.put(
           .json({ error: "Cannot remove admin status from yourself" });
       }
 
-      await db.run(
-        `
-      UPDATE users 
-      SET is_admin = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [isAdmin ? 1 : 0, userId]
-      );
+      const userService = DatabaseServiceFactory.getUserService();
+      await userService.updateAdminStatus(userId, isAdmin);
 
       res.json({ message: "User admin status updated successfully" });
     } catch (error) {
@@ -651,10 +809,8 @@ router.delete(
       }
 
       // Get user info before deletion
-      const user = await db.get(
-        "SELECT first_name, last_name, email FROM users WHERE id = ?",
-        [userId]
-      );
+      const userService = DatabaseServiceFactory.getUserService();
+      const user = await userService.getUserBasicInfo(userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -676,7 +832,7 @@ router.delete(
       await db.run("UPDATE pickem_games SET commissioner_id = ? WHERE commissioner_id = ?", [req.user.id, userId]);
       
       // Finally delete the user
-      await db.run("DELETE FROM users WHERE id = ?", [userId]);
+      await userService.deleteUser(userId);
 
       res.json({
         message: `User "${user.first_name} ${user.last_name}" (${user.email}) deleted successfully`,
@@ -1589,5 +1745,138 @@ router.post(
     }
   }
 );
+
+// Invite user to game (admin only)
+router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { email, gameId } = req.body;
+
+    if (!email || !gameId) {
+      return res.status(400).json({ error: "Email and game ID are required" });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Get game information
+    const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
+    if (!game) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+
+    // Get admin user information for invitation
+    const userService = DatabaseServiceFactory.getUserService();
+    const inviter = await userService.getUserBasicInfo(req.user.id);
+
+    // Check if user already exists
+    const existingUser = await userService.getUserByEmail(normalizedEmail);
+
+    if (existingUser) {
+      // User exists - add them directly to the game
+
+      // Check if user is already in the game
+      let existingParticipant;
+      if (db.getType() === 'dynamodb') {
+        // For DynamoDB, get all participants and filter in JavaScript
+        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+        existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
+      } else {
+        // For SQLite, use the efficient query
+        existingParticipant = await db.get(
+          `
+          SELECT id FROM game_participants
+          WHERE game_id = ? AND user_id = ?
+        `,
+          [gameId, existingUser.id]
+        );
+      }
+
+      if (existingParticipant) {
+        return res
+          .status(409)
+          .json({ error: "User is already in this game" });
+      }
+
+      // Add user as player
+      const { v4: uuidv4 } = await import("uuid");
+      await db.run(
+        `
+        INSERT INTO game_participants (id, game_id, user_id, role)
+        VALUES (?, ?, ?, 'player')
+      `,
+        [uuidv4(), gameId, existingUser.id]
+      );
+
+      res.json({
+        message: `Successfully added ${existingUser.email} to the game "${game.game_name}"`,
+        type: "direct_add",
+        player: {
+          id: existingUser.id,
+          email: existingUser.email,
+        },
+      });
+    } else {
+      // User doesn't exist - send invitation
+
+      // Check if invitation already exists
+      const existingInvitation = await db.get(
+        `
+        SELECT * FROM game_invitations
+        WHERE game_id = ? AND email = ? AND status = 'pending'
+      `,
+        [gameId, normalizedEmail]
+      );
+
+      if (existingInvitation) {
+        return res
+          .status(409)
+          .json({ error: "Invitation already sent to this email for this game" });
+      }
+
+      // Create invitation
+      const crypto = await import("crypto");
+      const { v4: uuidv4 } = await import("uuid");
+      const inviteToken = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
+      await db.run(
+        `
+        INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+        [
+          uuidv4(),
+          gameId,
+          normalizedEmail,
+          req.user.id,
+          inviteToken,
+          expiresAt.toISOString(),
+        ]
+      );
+
+      // Send invitation email
+      const emailResult = await emailService.sendGameInvitation(
+        normalizedEmail,
+        `${inviter.first_name} ${inviter.last_name}`,
+        game.game_name,
+        inviteToken
+      );
+
+      if (!emailResult.success) {
+        console.error("Failed to send invitation email:", emailResult.error);
+        // Still return success since the invitation was saved to database
+      }
+
+      res.json({
+        message: `Invitation sent to ${normalizedEmail} for game "${game.game_name}". They'll receive an email to join the game.`,
+        type: "invitation_sent",
+        email: normalizedEmail,
+      });
+    }
+  } catch (error) {
+    console.error("Admin invite user error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

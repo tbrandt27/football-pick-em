@@ -4,6 +4,7 @@ import { authenticateToken, requireGameOwner } from "../middleware/auth.js";
 import db from "../models/database.js";
 import emailService from "../services/emailService.js";
 import crypto from "crypto";
+import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.js";
 
 // Utility function to create URL-friendly slugs
 function createGameSlug(gameName) {
@@ -88,7 +89,8 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
       games = await Promise.all(allGames.map(async (game) => {
         let commissioner_name = 'Unknown';
         if (game.commissioner_id) {
-          const commissioner = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [game.commissioner_id]);
+          const userService = DatabaseServiceFactory.getUserService();
+          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
           if (commissioner) {
             commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
           }
@@ -99,12 +101,23 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
         };
       }));
     } else {
-      // For SQLite, use the JOIN query
-      games = await db.all(`
-        SELECT g.*, u.first_name || ' ' || u.last_name as commissioner_name
-        FROM pickem_games g
-        LEFT JOIN users u ON g.commissioner_id = u.id
-      `);
+      // For SQLite, get all games and commissioners separately to avoid JOIN
+      const allGames = await db.all('SELECT * FROM pickem_games');
+      const userService = DatabaseServiceFactory.getUserService();
+      
+      games = await Promise.all(allGames.map(async (game) => {
+        let commissioner_name = 'Unknown';
+        if (game.commissioner_id) {
+          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
+          if (commissioner) {
+            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+          }
+        }
+        return {
+          ...game,
+          commissioner_name
+        };
+      }));
     }
 
     // Find game by matching slug
@@ -145,7 +158,8 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
       const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [game.id]);
       
       participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const user = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [gp.user_id]);
+        const userService = DatabaseServiceFactory.getUserService();
+        const user = await userService.getUserBasicInfo(gp.user_id);
         return {
           ...gp,
           display_name: user ? `${user.first_name} ${user.last_name}` : ''
@@ -155,17 +169,17 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
       // Sort by creation date
       participants.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     } else {
-      // For SQLite, use the JOIN query
-      participants = await db.all(
-        `
-        SELECT gp.*, u.first_name || ' ' || u.last_name as display_name
-        FROM game_participants gp
-        JOIN users u ON gp.user_id = u.id
-        WHERE gp.game_id = ?
-        ORDER BY gp.created_at
-      `,
-        [game.id]
-      );
+      // For SQLite, get participants and users separately to avoid JOIN
+      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ? ORDER BY created_at', [game.id]);
+      const userService = DatabaseServiceFactory.getUserService();
+      
+      participants = await Promise.all(gameParticipants.map(async (gp) => {
+        const user = await userService.getUserBasicInfo(gp.user_id);
+        return {
+          ...gp,
+          display_name: user ? `${user.first_name} ${user.last_name}` : ''
+        };
+      }));
     }
 
     res.json({
@@ -247,7 +261,8 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
       const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
       
       participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const user = await db.get('SELECT id, first_name, last_name, email FROM users WHERE id = ?', [gp.user_id]);
+        const userService = DatabaseServiceFactory.getUserService();
+        const user = await userService.getUserBasicInfo(gp.user_id);
         return {
           role: gp.role,
           id: gp.id,
@@ -267,24 +282,30 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
         return a.first_name.localeCompare(b.first_name);
       });
     } else {
-      // For SQLite, use the JOIN query
-      participants = await db.all(
-        `
-        SELECT
-          gp.role,
-          gp.id,
-          u.id as user_id,
-          u.first_name,
-          u.last_name,
-          u.email,
-          u.first_name || ' ' || u.last_name as display_name
-        FROM game_participants gp
-        JOIN users u ON gp.user_id = u.id
-        WHERE gp.game_id = ?
-        ORDER BY gp.role, u.first_name, u.last_name
-      `,
-        [gameId]
-      );
+      // For SQLite, get participants and users separately to avoid JOIN
+      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+      const userService = DatabaseServiceFactory.getUserService();
+      
+      participants = await Promise.all(gameParticipants.map(async (gp) => {
+        const user = await userService.getUserBasicInfo(gp.user_id);
+        return {
+          role: gp.role,
+          id: gp.id,
+          user_id: gp.user_id,
+          first_name: user?.first_name || '',
+          last_name: user?.last_name || '',
+          email: user?.email || '',
+          display_name: user ? `${user.first_name} ${user.last_name}` : ''
+        };
+      }));
+      
+      // Sort participants
+      participants.sort((a, b) => {
+        if (a.role !== b.role) {
+          return a.role === 'owner' ? -1 : 1;
+        }
+        return a.first_name.localeCompare(b.first_name);
+      });
     }
 
     res.json({
@@ -500,16 +521,11 @@ router.post(
       }
 
       // Get inviter information
-      const inviter = await db.get(
-        "SELECT first_name, last_name FROM users WHERE id = ?",
-        [req.user.id]
-      );
+      const userService = DatabaseServiceFactory.getUserService();
+      const inviter = await userService.getUserBasicInfo(req.user.id);
 
       // Check if user already exists
-      const existingUser = await db.get(
-        "SELECT id, email FROM users WHERE email = ?",
-        [normalizedEmail]
-      );
+      const existingUser = await userService.getUserByEmail(normalizedEmail);
 
       if (existingUser) {
         // User exists - add them directly to the game
@@ -676,5 +692,93 @@ router.delete(
     }
   }
 );
+
+// Get invitations for a specific game (game owner only)
+router.get("/:gameId/invitations", authenticateToken, requireGameOwner, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+
+    // Get invitations for this game
+    let invitations;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get invitations and inviter info separately
+      const gameInvitations = await db.all(
+        'SELECT * FROM game_invitations WHERE game_id = ? AND status = ?',
+        [gameId, 'pending']
+      );
+
+      const userService = DatabaseServiceFactory.getUserService();
+      invitations = await Promise.all(gameInvitations.map(async (invitation) => {
+        let invited_by_name = 'Unknown';
+        if (invitation.invited_by_user_id) {
+          const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
+          if (inviter) {
+            invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
+          }
+        }
+        return {
+          ...invitation,
+          invited_by_name
+        };
+      }));
+    } else {
+      // For SQLite, get invitations and inviter info separately to avoid JOIN
+      const gameInvitations = await db.all(
+        'SELECT * FROM game_invitations WHERE game_id = ? AND status = ? ORDER BY created_at DESC',
+        [gameId, 'pending']
+      );
+
+      const userService = DatabaseServiceFactory.getUserService();
+      invitations = await Promise.all(gameInvitations.map(async (invitation) => {
+        let invited_by_name = 'Unknown';
+        if (invitation.invited_by_user_id) {
+          const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
+          if (inviter) {
+            invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
+          }
+        }
+        return {
+          ...invitation,
+          invited_by_name
+        };
+      }));
+    }
+
+    res.json({ invitations });
+  } catch (error) {
+    console.error("Get game invitations error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Cancel invitation (game owner only)
+router.delete("/:gameId/invitations/:invitationId", authenticateToken, requireGameOwner, async (req, res) => {
+  try {
+    const { gameId, invitationId } = req.params;
+
+    // Verify invitation belongs to this game
+    const invitation = await db.get(
+      "SELECT id FROM game_invitations WHERE id = ? AND game_id = ?",
+      [invitationId, gameId]
+    );
+
+    if (!invitation) {
+      return res.status(404).json({ error: "Invitation not found" });
+    }
+
+    // Update invitation status to cancelled
+    await db.run(
+      `UPDATE game_invitations
+       SET status = 'cancelled', updated_at = ?
+       WHERE id = ?`,
+      [new Date().toISOString(), invitationId]
+    );
+
+    res.json({ message: "Invitation cancelled successfully" });
+  } catch (error) {
+    console.error("Cancel invitation error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

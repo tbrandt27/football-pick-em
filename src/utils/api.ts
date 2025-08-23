@@ -177,6 +177,16 @@ class ApiClient {
     });
   }
 
+  async getGameInvitations(gameId: string) {
+    return this.request<{ invitations: GameInvitation[] }>(`/games/${gameId}/invitations`);
+  }
+
+  async cancelGameInvitation(gameId: string, invitationId: string) {
+    return this.request<{ message: string }>(`/games/${gameId}/invitations/${invitationId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Seasons endpoints
   async getCurrentSeason() {
     return this.request<{ season: Season }>('/seasons/current');
@@ -298,6 +308,18 @@ export interface GameParticipant {
   last_name: string;
   email: string;
   display_name: string;
+}
+
+export interface GameInvitation {
+  id: string;
+  game_id: string;
+  email: string;
+  status: string;
+  invited_by_user_id: string;
+  invited_by_name: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Season {

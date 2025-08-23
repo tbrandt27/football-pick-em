@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import db from '../models/database.js';
+import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -11,7 +12,16 @@ export const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [decoded.userId]);
+    const userService = DatabaseServiceFactory.getUserService();
+    
+    // Primary lookup by userId, fallback to email if needed
+    let user = null;
+    if (decoded.userId) {
+      user = await userService.getUserById(decoded.userId);
+    }
+    if (!user && decoded.email) {
+      user = await userService.getUserByEmail(decoded.email);
+    }
     
     if (!user) {
       return res.status(401).json({ error: 'User not found' });

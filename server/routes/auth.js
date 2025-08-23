@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../models/database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 const router = express.Router();
 
@@ -20,8 +21,9 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await db.get('SELECT id FROM users WHERE email = ?', [email]);
-    if (existingUser) {
+    const userService = DatabaseServiceFactory.getUserService();
+    const userExists = await userService.userExists(email);
+    if (userExists) {
       return res.status(409).json({ error: 'User with this email already exists' });
     }
 
@@ -33,20 +35,16 @@ router.post('/register', async (req, res) => {
     const userId = uuidv4();
     const emailVerificationToken = uuidv4();
     
-    await db.run(`
-      INSERT INTO users (
-        id, email, password, first_name, last_name, favorite_team_id,
-        email_verification_token, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `, [
-      userId,
-      email.toLowerCase(),
-      hashedPassword,
+    const createdUser = await userService.createUser({
+      id: userId,
+      email,
+      password: hashedPassword,
       firstName,
       lastName,
-      favoriteTeamId || null,
-      emailVerificationToken
-    ]);
+      favoriteTeamId,
+      emailVerificationToken,
+      emailVerified: false
+    });
 
     // Generate JWT token
     const token = jwt.sign(
@@ -100,8 +98,9 @@ router.post('/register-invite', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await db.get('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
-    if (existingUser) {
+    const userService = DatabaseServiceFactory.getUserService();
+    const userExists = await userService.userExists(email);
+    if (userExists) {
       return res.status(409).json({ error: 'User with this email already exists' });
     }
 
@@ -113,20 +112,16 @@ router.post('/register-invite', async (req, res) => {
     const userId = uuidv4();
     const emailVerificationToken = uuidv4();
     
-    await db.run(`
-      INSERT INTO users (
-        id, email, password, first_name, last_name, favorite_team_id,
-        email_verification_token, email_verified, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-    `, [
-      userId,
-      email.toLowerCase(),
-      hashedPassword,
+    const createdUser = await userService.createUser({
+      id: userId,
+      email,
+      password: hashedPassword,
       firstName,
       lastName,
-      favoriteTeamId || null,
-      emailVerificationToken
-    ]);
+      favoriteTeamId,
+      emailVerificationToken,
+      emailVerified: true
+    });
 
     // Add user to the game
     await db.run(`
@@ -178,7 +173,8 @@ router.post('/login', async (req, res) => {
     }
 
     // Find user
-    const user = await db.get('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    const userService = DatabaseServiceFactory.getUserService();
+    const user = await userService.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -190,7 +186,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Update last login
-    await db.run('UPDATE users SET last_login = datetime(\"now\") WHERE id = ?', [user.id]);
+    await userService.updateLastLogin(user.id);
 
     // Generate JWT token
     const token = jwt.sign(
@@ -247,38 +243,8 @@ router.put('/update', authenticateToken, async (req, res) => {
     const { favoriteTeamId, firstName, lastName } = req.body;
     const userId = req.user.id;
 
-    // Build update query dynamically based on provided fields
-    const updates = [];
-    const values = [];
-
-    if (firstName !== undefined) {
-      updates.push('first_name = ?');
-      values.push(firstName);
-    }
-    if (lastName !== undefined) {
-      updates.push('last_name = ?');
-      values.push(lastName);
-    }
-    if (favoriteTeamId !== undefined) {
-      updates.push('favorite_team_id = ?');
-      values.push(favoriteTeamId);
-    }
-
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
-    }
-
-    // Add updated_at timestamp and user ID
-    updates.push('updated_at = datetime("now")');
-    values.push(userId);
-
-    await db.run(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
-      values
-    );
-
-    // Fetch updated user
-    const updatedUser = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const userService = DatabaseServiceFactory.getUserService();
+    const updatedUser = await userService.updateUserDynamic(userId, { firstName, lastName, favoriteTeamId });
 
     res.json({
       message: 'User updated successfully',
@@ -308,7 +274,8 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    const user = await db.get('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
+    const userService = DatabaseServiceFactory.getUserService();
+    const user = await userService.getUserByEmail(email);
     if (!user) {
       // Don't reveal whether user exists
       return res.json({ message: 'If an account exists, a reset email has been sent' });
@@ -317,11 +284,7 @@ router.post('/forgot-password', async (req, res) => {
     const resetToken = uuidv4();
     const resetExpires = new Date(Date.now() + 3600000); // 1 hour from now
 
-    await db.run(`
-      UPDATE users 
-      SET password_reset_token = ?, password_reset_expires = ?
-      WHERE id = ?
-    `, [resetToken, resetExpires.toISOString(), user.id]);
+    await userService.setPasswordResetToken(user.id, resetToken, resetExpires);
 
     // TODO: Send reset email
     console.log(`Password reset requested for ${email}. Reset token: ${resetToken}`);
@@ -343,10 +306,8 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Token and new password are required' });
     }
 
-    const user = await db.get(`
-      SELECT id FROM users 
-      WHERE password_reset_token = ? AND password_reset_expires > datetime('now')
-    `, [token]);
+    const userService = DatabaseServiceFactory.getUserService();
+    const user = await userService.getUserByResetToken(token);
 
     if (!user) {
       return res.status(400).json({ error: 'Invalid or expired reset token' });
@@ -355,11 +316,7 @@ router.post('/reset-password', async (req, res) => {
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
-    await db.run(`
-      UPDATE users 
-      SET password = ?, password_reset_token = NULL, password_reset_expires = NULL
-      WHERE id = ?
-    `, [hashedPassword, user.id]);
+    await userService.resetPassword(user.id, hashedPassword);
 
     res.json({ message: 'Password reset successful' });
 

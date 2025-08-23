@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
-import type { PickemGame, GameParticipant, NFLTeam } from '../utils/api';
+import type { PickemGame, GameParticipant, NFLTeam, GameInvitation } from '../utils/api';
 import api from '../utils/api';
 import { UserCircleIcon, ArrowLeftStartOnRectangleIcon, HomeIcon } from '@heroicons/react/24/outline';
 
@@ -16,6 +16,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   
   const [game, setGame] = useState<(PickemGame & { participants: GameParticipant[] }) | null>(null);
   const [favoriteTeam, setFavoriteTeam] = useState<NFLTeam | null>(null);
+  const [invitations, setInvitations] = useState<GameInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -43,9 +44,10 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   const loadGameData = async () => {
     try {
       setLoading(true);
-      const [gameResponse, teamsResponse] = await Promise.all([
+      const [gameResponse, teamsResponse, invitationsResponse] = await Promise.all([
         api.getGame(gameId),
-        api.getTeams()
+        api.getTeams(),
+        api.getGameInvitations(gameId)
       ]);
 
       if (!gameResponse.success || !gameResponse.data) {
@@ -55,6 +57,11 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
 
       setGame(gameResponse.data.game);
       setNewGameName(gameResponse.data.game.game_name);
+
+      // Load invitations
+      if (invitationsResponse.success && invitationsResponse.data) {
+        setInvitations(invitationsResponse.data.invitations);
+      }
 
       // Load favorite team for header styling
       if (user?.favoriteTeamId && teamsResponse.success && teamsResponse.data) {
@@ -89,10 +96,8 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
           setSuccess(`Successfully invited ${inviteEmail}`);
         }
         setInviteEmail('');
-        // Reload game data to show new participant (only for direct adds)
-        if (response.data?.type === 'direct_add') {
-          await loadGameData();
-        }
+        // Reload game data to show new participant and invitations
+        await loadGameData();
         // Clear success message after 5 seconds for invitations (longer message)
         setTimeout(() => setSuccess(''), 5000);
       } else {
@@ -124,6 +129,28 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
       }
     } catch (err) {
       setError('Failed to remove player');
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId: string, email: string) => {
+    if (!confirm(`Are you sure you want to cancel the invitation for ${email}?`)) {
+      return;
+    }
+
+    try {
+      const response = await api.cancelGameInvitation(gameId, invitationId);
+
+      if (response.success) {
+        setSuccess(`Invitation for ${email} cancelled successfully`);
+        // Remove the invitation from the list
+        setInvitations(invitations.filter(inv => inv.id !== invitationId));
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(response.error || 'Failed to cancel invitation');
+      }
+    } catch (err) {
+      setError('Failed to cancel invitation');
     }
   };
 
@@ -354,67 +381,11 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
                 <p className="text-lg font-semibold text-gray-900">{game.participants.length}</p>
               </div>
             </div>
-            
-            {/* Delete Game Section */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="text-sm font-medium text-gray-500 mb-4">Danger Zone</h3>
-              <button
-                onClick={handleDeleteGame}
-                disabled={deletingGame}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-              >
-                {deletingGame ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    <span>Delete Game</span>
-                  </>
-                )}
-              </button>
-              <p className="text-sm text-gray-500 mt-2">
-                This will permanently delete the game, all participants, and all picks. This action cannot be undone.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Invite Players */}
-        <div className="bg-white rounded-lg shadow-md mb-8">
-          <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">Invite Players</h2>
-            <p className="text-gray-600 mt-1">Add players to your game by their email address</p>
-          </div>
-          <div className="p-6">
-            <form onSubmit={handleInvitePlayer} className="flex gap-4">
-              <div className="flex-1">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="Enter player's email address"
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={inviting}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {inviting ? 'Inviting...' : 'Invite Player'}
-              </button>
-            </form>
           </div>
         </div>
 
         {/* Current Participants */}
-        <div className="bg-white rounded-lg shadow-md">
+        <div className="bg-white rounded-lg shadow-md mb-8">
           <div className="p-6 border-b">
             <h2 className="text-2xl font-bold text-gray-800">Current Participants</h2>
             <p className="text-gray-600 mt-1">{game.participants.length} people in this game</p>
@@ -466,6 +437,107 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Invite Players & Pending Invitations */}
+        <div className="bg-white rounded-lg shadow-md mb-8">
+          <div className="p-6 border-b">
+            <h2 className="text-2xl font-bold text-gray-800">Invite Players</h2>
+            <p className="text-gray-600 mt-1">Add players to your game by their email address</p>
+          </div>
+          <div className="p-6">
+            <form onSubmit={handleInvitePlayer} className="flex gap-4">
+              <div className="flex-1">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Enter player's email address"
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={inviting}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {inviting ? 'Inviting...' : 'Invite Player'}
+              </button>
+            </form>
+
+            {/* Pending Invitations */}
+            {invitations.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Pending Invitations ({invitations.length})</h3>
+                <div className="space-y-3">
+                  {invitations.map((invitation) => (
+                    <div
+                      key={invitation.id}
+                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                          <span className="text-yellow-600 font-semibold text-sm">
+                            {invitation.email.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{invitation.email}</p>
+                          <p className="text-sm text-gray-500">
+                            Invited by {invitation.invited_by_name} on{' '}
+                            {new Date(invitation.created_at).toLocaleDateString()}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Expires: {new Date(invitation.expires_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleCancelInvitation(invitation.id, invitation.email)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors"
+                      >
+                        Cancel Invitation
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="bg-gray-50 rounded-lg border border-gray-200 mt-12">
+          <div className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Delete Game</h3>
+                <p className="text-sm text-gray-600">
+                  This will permanently delete the game, all participants, and all picks. This action cannot be undone.
+                </p>
+              </div>
+              <button
+                onClick={handleDeleteGame}
+                disabled={deletingGame}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 ml-4"
+              >
+                {deletingGame ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete Game</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </main>
