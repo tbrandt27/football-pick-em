@@ -85,52 +85,18 @@ router.post('/register-invite', async (req, res) => {
       });
     }
 
-    // Find and validate invitation
-    // TODO: This should be moved to a proper service when invitation service is implemented
-    // For now, we need to handle both database types
-    let invitation = null;
+    // Find and validate invitation using the invitation service
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const invitation = await invitationService.getInvitationByToken(inviteToken);
     
-    const dbProvider = db.provider; // Use singleton database provider
-    const dbType = db.getType();
-    
-    if (dbType === 'dynamodb') {
-      // For DynamoDB, scan invitations and get game info separately
-      const invitationsResult = await dbProvider._dynamoScan('game_invitations', {
-        invite_token: inviteToken,
-        email: email.toLowerCase(),
-        status: 'pending'
-      });
-      
-      if (invitationsResult.Items && invitationsResult.Items.length > 0) {
-        const foundInvitation = invitationsResult.Items[0];
-        
-        // Check if invitation hasn't expired
-        const now = new Date();
-        const expiresAt = new Date(foundInvitation.expires_at);
-        
-        if (expiresAt > now) {
-          // Get game name
-          const gameResult = await dbProvider._dynamoGet('pickem_games', { id: foundInvitation.game_id });
-          invitation = {
-            ...foundInvitation,
-            game_name: gameResult.Item ? gameResult.Item.game_name : 'Unknown Game'
-          };
-        }
-      }
-    } else {
-      // For SQLite, use the existing JOIN query
-      const dbInstance = db.provider; // Use singleton database provider
-      invitation = await dbInstance.get(`
-        SELECT gi.*, pg.game_name
-        FROM game_invitations gi
-        JOIN pickem_games pg ON gi.game_id = pg.id
-        WHERE gi.invite_token = ? AND gi.email = ? AND gi.status = 'pending' AND gi.expires_at > datetime('now')
-      `, [inviteToken, email.toLowerCase()]);
-    }
-
-    if (!invitation) {
+    // Validate invitation exists, matches email, and hasn't expired
+    if (!invitation ||
+        invitation.email !== email.toLowerCase() ||
+        invitation.status !== 'pending' ||
+        invitation.expires_at <= new Date().toISOString()) {
       return res.status(400).json({ error: 'Invalid or expired invitation token' });
     }
+
 
     // Check if user already exists
     const userService = DatabaseServiceFactory.getUserService();
@@ -163,20 +129,7 @@ router.post('/register-invite', async (req, res) => {
     await gameService.addParticipant(invitation.game_id, userId, 'player');
 
     // Mark invitation as accepted
-    // TODO: This should be moved to a proper invitation service
-    if (dbType === 'dynamodb') {
-      await dbProvider._dynamoUpdate('game_invitations', { id: invitation.id }, {
-        status: 'accepted',
-        updated_at: new Date().toISOString()
-      });
-    } else {
-      const dbInstance = db.provider; // Use singleton database provider
-      await dbInstance.run(`
-        UPDATE game_invitations
-        SET status = 'accepted', updated_at = datetime('now')
-        WHERE id = ?
-      `, [invitation.id]);
-    }
+    await invitationService.updateInvitationStatus(invitation.id, 'accepted');
 
     // Generate JWT token
     const token = jwt.sign(

@@ -351,66 +351,10 @@ router.get(
   requireAdmin,
   async (req, res) => {
     try {
-      if (db.getType() === 'dynamodb') {
-        // For DynamoDB, get invitations and related data separately
-        const invitations = await db.all(`
-          SELECT * FROM game_invitations
-          WHERE status = 'pending' AND expires_at > ?
-          ORDER BY created_at DESC
-        `, [new Date().toISOString()]);
-
-        // For each invitation, get game and user info
-        const invitationsWithDetails = await Promise.all(
-          invitations.map(async (invitation) => {
-            let game_name = 'Unknown Game';
-            let invited_by_name = 'Unknown User';
-
-            try {
-              // Get game info
-              const game = await db.get('SELECT game_name FROM pickem_games WHERE id = ?', [invitation.game_id]);
-              if (game) {
-                game_name = game.game_name;
-              }
-
-              // Get inviter info
-              const userService = DatabaseServiceFactory.getUserService();
-              const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
-              if (inviter) {
-                invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
-              }
-            } catch (error) {
-              console.warn(`Could not fetch details for invitation ${invitation.id}:`, error);
-            }
-
-            return {
-              ...invitation,
-              game_name,
-              invited_by_name
-            };
-          })
-        );
-
-        res.json({ invitations: invitationsWithDetails });
-      } else {
-        // For SQLite, use the optimized JOIN query
-        const invitations = await db.all(`
-          SELECT
-            gi.id,
-            gi.email,
-            gi.status,
-            gi.expires_at,
-            gi.created_at,
-            g.game_name as game_name,
-            u.first_name || ' ' || u.last_name as invited_by_name
-          FROM game_invitations gi
-          LEFT JOIN pickem_games g ON gi.game_id = g.id
-          LEFT JOIN users u ON gi.invited_by_user_id = u.id
-          WHERE gi.status = 'pending' AND gi.expires_at > datetime('now')
-          ORDER BY gi.created_at DESC
-        `);
-
-        res.json({ invitations });
-      }
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const invitations = await invitationService.getPendingInvitations();
+      
+      res.json({ invitations });
     } catch (error) {
       console.error("Get admin invitations error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -427,22 +371,8 @@ router.delete(
     try {
       const { invitationId } = req.params;
 
-      const invitation = await db.get(
-        "SELECT email FROM game_invitations WHERE id = ?",
-        [invitationId]
-      );
-      if (!invitation) {
-        return res.status(404).json({ error: "Invitation not found" });
-      }
-
-      await db.run(
-        `
-      UPDATE game_invitations
-      SET status = 'cancelled', updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [invitationId]
-      );
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const invitation = await invitationService.cancelInvitation(invitationId);
 
       res.json({
         message: `Invitation for ${invitation.email} cancelled successfully`,
@@ -471,15 +401,17 @@ router.post(
       }
 
       // Get invitation details
-      const invitation = await db.get(`
-        SELECT gi.*, pg.game_name
-        FROM game_invitations gi
-        JOIN pickem_games pg ON gi.game_id = pg.id
-        WHERE gi.id = ? AND gi.status = 'pending' AND gi.expires_at > datetime('now')
-      `, [invitationId]);
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const invitation = await invitationService.getInvitationById(invitationId);
 
-      if (!invitation) {
+      if (!invitation || invitation.status !== 'pending' || invitation.expires_at <= new Date().toISOString()) {
         return res.status(404).json({ error: "Invalid or expired invitation" });
+      }
+
+      // Get game name
+      const game = await db.get('SELECT game_name FROM pickem_games WHERE id = ?', [invitation.game_id]);
+      if (game) {
+        invitation.game_name = game.game_name;
       }
 
       // Check if user already exists
@@ -495,6 +427,7 @@ router.post(
       const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
 
       // Create user account
+      const { v4: uuidv4 } = await import("uuid");
       const userId = uuidv4();
       const emailVerificationToken = uuidv4();
       
@@ -516,11 +449,7 @@ router.post(
       `, [uuidv4(), invitation.game_id, userId]);
 
       // Mark invitation as accepted
-      await db.run(`
-        UPDATE game_invitations
-        SET status = 'accepted', updated_at = datetime('now')
-        WHERE id = ?
-      `, [invitation.id]);
+      await invitationService.updateInvitationStatus(invitation.id, 'accepted');
 
       res.json({
         message: `Account created for ${invitation.email} and added to "${invitation.game_name}". Temporary password: ${tempPassword}`,
@@ -899,7 +828,8 @@ router.delete(
       await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
       
       // Delete game invitations
-      await db.run("DELETE FROM game_invitations WHERE invited_by_user_id = ? OR email = ?", [userId, user.email]);
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      await invitationService.deleteInvitationsByUser(userId, user.email);
       
       // Remove from game participants
       await db.run("DELETE FROM game_participants WHERE user_id = ?", [userId]);

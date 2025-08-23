@@ -273,13 +273,8 @@ router.post(
         // User doesn't exist - send invitation
 
         // Check if invitation already exists
-        const existingInvitation = await db.get(
-          `
-        SELECT * FROM game_invitations
-        WHERE game_id = ? AND email = ? AND status = 'pending'
-      `,
-          [gameId, normalizedEmail]
-        );
+        const invitationService = DatabaseServiceFactory.getInvitationService();
+        const existingInvitation = await invitationService.checkExistingInvitation(gameId, normalizedEmail);
 
         if (existingInvitation) {
           return res
@@ -292,20 +287,13 @@ router.post(
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
 
-        await db.run(
-          `
-        INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-          [
-            uuidv4(),
-            gameId,
-            normalizedEmail,
-            req.user.id,
-            inviteToken,
-            expiresAt.toISOString(),
-          ]
-        );
+        await invitationService.createInvitation({
+          gameId,
+          email: normalizedEmail,
+          invitedByUserId: req.user.id,
+          inviteToken,
+          expiresAt: expiresAt.toISOString()
+        });
 
         // Send invitation email
         const emailResult = await emailService.sendGameInvitation(
@@ -398,50 +386,23 @@ router.get("/:gameId/invitations", authenticateToken, requireGameOwner, async (r
     const { gameId } = req.params;
 
     // Get invitations for this game
-    let invitations;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get invitations and inviter info separately
-      const gameInvitations = await db.all(
-        'SELECT * FROM game_invitations WHERE game_id = ? AND status = ?',
-        [gameId, 'pending']
-      );
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const gameInvitations = await invitationService.getGameInvitations(gameId);
 
-      const userService = DatabaseServiceFactory.getUserService();
-      invitations = await Promise.all(gameInvitations.map(async (invitation) => {
-        let invited_by_name = 'Unknown';
-        if (invitation.invited_by_user_id) {
-          const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
-          if (inviter) {
-            invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
-          }
+    const userService = DatabaseServiceFactory.getUserService();
+    const invitations = await Promise.all(gameInvitations.map(async (invitation) => {
+      let invited_by_name = 'Unknown';
+      if (invitation.invited_by_user_id) {
+        const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
+        if (inviter) {
+          invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
         }
-        return {
-          ...invitation,
-          invited_by_name
-        };
-      }));
-    } else {
-      // For SQLite, get invitations and inviter info separately to avoid JOIN
-      const gameInvitations = await db.all(
-        'SELECT * FROM game_invitations WHERE game_id = ? AND status = ? ORDER BY created_at DESC',
-        [gameId, 'pending']
-      );
-
-      const userService = DatabaseServiceFactory.getUserService();
-      invitations = await Promise.all(gameInvitations.map(async (invitation) => {
-        let invited_by_name = 'Unknown';
-        if (invitation.invited_by_user_id) {
-          const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
-          if (inviter) {
-            invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
-          }
-        }
-        return {
-          ...invitation,
-          invited_by_name
-        };
-      }));
-    }
+      }
+      return {
+        ...invitation,
+        invited_by_name
+      };
+    }));
 
     res.json({ invitations });
   } catch (error) {
@@ -455,23 +416,16 @@ router.delete("/:gameId/invitations/:invitationId", authenticateToken, requireGa
   try {
     const { gameId, invitationId } = req.params;
 
-    // Verify invitation belongs to this game
-    const invitation = await db.get(
-      "SELECT id FROM game_invitations WHERE id = ? AND game_id = ?",
-      [invitationId, gameId]
-    );
+    // Verify invitation exists and belongs to this game
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const invitation = await invitationService.getInvitationById(invitationId);
 
-    if (!invitation) {
+    if (!invitation || invitation.game_id !== gameId) {
       return res.status(404).json({ error: "Invitation not found" });
     }
 
-    // Update invitation status to cancelled
-    await db.run(
-      `UPDATE game_invitations
-       SET status = 'cancelled', updated_at = ?
-       WHERE id = ?`,
-      [new Date().toISOString(), invitationId]
-    );
+    // Cancel the invitation
+    await invitationService.updateInvitationStatus(invitationId, 'cancelled');
 
     res.json({ message: "Invitation cancelled successfully" });
   } catch (error) {
