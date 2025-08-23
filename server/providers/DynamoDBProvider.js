@@ -623,35 +623,55 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       const setClause = setMatch[1];
       console.log(`[DynamoDB] Parsing SET clause: ${setClause}`);
       
-      // Handle different SET patterns
-      if (setClause.includes('last_login') && setClause.includes('datetime')) {
-        updates.last_login = new Date().toISOString();
-      } else if (setClause.includes('updated_at') && setClause.includes('datetime')) {
-        updates.updated_at = new Date().toISOString();
-      } else {
-        // Parse field = ? patterns
-        const setFields = setClause.split(',').map(s => s.trim());
-        let paramIndex = 0;
+      // Split SET clause by commas, but be careful with nested function calls
+      const setFields = this._parseSetClause(setClause);
+      let paramIndex = 0;
+      
+      // Count WHERE clause parameters to know how many are left for SET
+      const whereParamCount = (whereClause.match(/\?/g) || []).length;
+      const setParamCount = params.length - whereParamCount;
+      
+      console.log(`[DynamoDB] SET parsing details:`, {
+        setFields,
+        setParamCount,
+        whereParamCount,
+        totalParams: params.length
+      });
+      
+      setFields.forEach((field, index) => {
+        const trimmedField = field.trim();
         
-        // Skip WHERE clause parameters when counting SET parameters
-        const whereParamCount = (whereClause.match(/\?/g) || []).length;
-        const setParamCount = params.length - whereParamCount;
-        
-        setFields.forEach((field, index) => {
-          const fieldMatch = field.match(/(\w+)\s*=\s*\?/);
+        // Handle datetime('now') patterns
+        if (trimmedField.includes("datetime('now')")) {
+          const fieldNameMatch = trimmedField.match(/(\w+)\s*=\s*datetime\s*\(\s*['"]now['"]\s*\)/i);
+          if (fieldNameMatch) {
+            updates[fieldNameMatch[1]] = new Date().toISOString();
+            console.log(`[DynamoDB] Mapped datetime('now') for field: ${fieldNameMatch[1]}`);
+          }
+        }
+        // Handle parameter placeholders (?)
+        else if (trimmedField.includes('?')) {
+          const fieldMatch = trimmedField.match(/(\w+)\s*=\s*\?/);
           if (fieldMatch && paramIndex < setParamCount) {
             const fieldName = fieldMatch[1];
             updates[fieldName] = params[paramIndex];
+            console.log(`[DynamoDB] Mapped parameter ${paramIndex} to field: ${fieldName} = ${params[paramIndex]}`);
             paramIndex++;
-          } else if (field.includes('datetime(')) {
-            // Handle datetime functions
-            const fieldNameMatch = field.match(/(\w+)\s*=\s*datetime/);
-            if (fieldNameMatch) {
-              updates[fieldNameMatch[1]] = new Date().toISOString();
+          }
+        }
+        // Handle direct string values
+        else if (trimmedField.includes('=')) {
+          const directMatch = trimmedField.match(/(\w+)\s*=\s*'([^']*)'|(\w+)\s*=\s*"([^"]*)"|(\w+)\s*=\s*(\w+)/);
+          if (directMatch) {
+            const fieldName = directMatch[1] || directMatch[3] || directMatch[5];
+            const fieldValue = directMatch[2] || directMatch[4] || directMatch[6];
+            if (fieldName && fieldValue !== undefined) {
+              updates[fieldName] = fieldValue;
+              console.log(`[DynamoDB] Mapped direct value for field: ${fieldName} = ${fieldValue}`);
             }
           }
-        });
-      }
+        }
+      });
     }
     
     console.log(`[DynamoDB] UPDATE parsed:`, {
@@ -694,6 +714,46 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     console.log(`[DynamoDB] DELETE parsed key:`, key);
     
     return this._dynamoDelete(tableName, key);
+  }
+
+  _parseSetClause(setClause) {
+    // Parse SET clause while respecting function calls like datetime('now')
+    const fields = [];
+    let current = '';
+    let depth = 0;
+    let inQuotes = false;
+    let quoteChar = '';
+    
+    for (let i = 0; i < setClause.length; i++) {
+      const char = setClause[i];
+      
+      if (!inQuotes && (char === '"' || char === "'")) {
+        inQuotes = true;
+        quoteChar = char;
+        current += char;
+      } else if (inQuotes && char === quoteChar) {
+        inQuotes = false;
+        quoteChar = '';
+        current += char;
+      } else if (!inQuotes && char === '(') {
+        depth++;
+        current += char;
+      } else if (!inQuotes && char === ')') {
+        depth--;
+        current += char;
+      } else if (!inQuotes && char === ',' && depth === 0) {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.trim()) {
+      fields.push(current.trim());
+    }
+    
+    return fields;
   }
 
   _parseWhereClause(whereClause, params) {

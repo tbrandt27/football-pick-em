@@ -190,11 +190,11 @@ export async function updateTeamLogos() {
 }
 
 export async function updateTeamColors() {
-  console.log('Updating team colors...');
+  console.log('Updating team colors for all teams...');
   
   try {
-    // Get teams that don't have colors set
-    const teams = await db.all('SELECT id, team_code FROM football_teams WHERE team_primary_color IS NULL OR team_secondary_color IS NULL');
+    // Get ALL teams to force-update colors (not just those with NULL colors)
+    const teams = await db.all('SELECT id, team_code FROM football_teams');
     
     // Create a map of team colors
     const colorMap = {};
@@ -205,20 +205,70 @@ export async function updateTeamColors() {
       };
     });
     
+    let updatedCount = 0;
     for (const team of teams) {
       const colors = colorMap[team.team_code];
       if (colors) {
         await db.run(
-          'UPDATE football_teams SET team_primary_color = ?, team_secondary_color = ? WHERE id = ?',
+          'UPDATE football_teams SET team_primary_color = ?, team_secondary_color = ?, updated_at = datetime(\'now\') WHERE id = ?',
           [colors.primaryColor, colors.secondaryColor, team.id]
         );
         console.log(`Updated ${team.team_code} with colors ${colors.primaryColor}, ${colors.secondaryColor}`);
+        updatedCount++;
+      } else {
+        console.log(`No color data found for team code: ${team.team_code}`);
       }
     }
     
-    console.log('Team colors update completed');
+    console.log(`Team colors update completed. Updated ${updatedCount} teams.`);
   } catch (error) {
     console.error('Error updating team colors:', error);
+    throw error;
+  }
+}
+
+export async function cleanupDuplicateTeams() {
+  console.log('Cleaning up duplicate teams...');
+  
+  try {
+    // Get all teams and identify duplicates
+    const allTeams = await db.all('SELECT * FROM football_teams ORDER BY created_at');
+    
+    // Find teams with undefined/null conference that have valid duplicates
+    const teamsToDelete = [];
+    const validTeamCodes = new Set();
+    
+    // First, identify all valid teams (those with proper conference data)
+    for (const team of allTeams) {
+      if (team.team_conference && team.team_conference !== 'undefined' && team.team_conference !== 'null') {
+        validTeamCodes.add(team.team_code);
+      }
+    }
+    
+    // Then, identify invalid duplicates to remove
+    for (const team of allTeams) {
+      const hasInvalidConference = !team.team_conference ||
+                                  team.team_conference === 'undefined' ||
+                                  team.team_conference === 'null';
+      
+      const hasValidDuplicate = validTeamCodes.has(team.team_code);
+      
+      if (hasInvalidConference && hasValidDuplicate) {
+        teamsToDelete.push(team);
+        console.log(`Marking for deletion: ${team.team_code} (ID: ${team.id}) - invalid conference: ${team.team_conference}`);
+      }
+    }
+    
+    // Delete the invalid duplicates
+    for (const team of teamsToDelete) {
+      await db.run('DELETE FROM football_teams WHERE id = ?', [team.id]);
+      console.log(`Deleted duplicate team: ${team.team_code} (ID: ${team.id})`);
+    }
+    
+    console.log(`Cleanup completed. Removed ${teamsToDelete.length} duplicate teams.`);
+  } catch (error) {
+    console.error('Error cleaning up duplicate teams:', error);
+    throw error;
   }
 }
 

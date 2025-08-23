@@ -1,6 +1,6 @@
 import express from "express";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
-import { seedTeams, updateTeamLogos, updateTeamColors } from "../utils/seedTeams.js";
+import { seedTeams, updateTeamLogos, updateTeamColors, cleanupDuplicateTeams } from "../utils/seedTeams.js";
 import espnService from "../services/espnApi.js";
 import scheduler from "../services/scheduler.js";
 import pickCalculator from "../services/pickCalculator.js";
@@ -79,6 +79,22 @@ router.post(
     } catch (error) {
       console.error("Update team colors error:", error);
       res.status(500).json({ error: "Failed to update team colors" });
+    }
+  }
+);
+
+// Clean up duplicate teams
+router.post(
+  "/cleanup-duplicate-teams",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      await cleanupDuplicateTeams();
+      res.json({ message: "Duplicate teams cleaned up successfully" });
+    } catch (error) {
+      console.error("Cleanup duplicate teams error:", error);
+      res.status(500).json({ error: "Failed to cleanup duplicate teams" });
     }
   }
 );
