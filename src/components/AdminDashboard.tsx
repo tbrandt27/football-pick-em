@@ -128,63 +128,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleUpdateTeamColors = async () => {
-    try {
-      setSyncLoading(true);
-      setError('');
-      
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const response = await fetch('/api/admin/update-team-colors', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSuccessMessage('Team colors updated successfully');
-        loadData(); // Refresh stats
-      } else {
-        setError(data.error || 'Failed to update team colors');
-      }
-    } catch (err) {
-      setError('Failed to update team colors');
-    } finally {
-      setSyncLoading(false);
-    }
-  };
-
-  const handleCleanupDuplicateTeams = async () => {
-    try {
-      setSyncLoading(true);
-      setError('');
-      
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const response = await fetch('/api/admin/cleanup-duplicate-teams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSuccessMessage('Duplicate teams cleaned up successfully');
-        loadData(); // Refresh stats
-      } else {
-        setError(data.error || 'Failed to cleanup duplicate teams');
-      }
-    } catch (err) {
-      setError('Failed to cleanup duplicate teams');
-    } finally {
-      setSyncLoading(false);
-    }
-  };
 
   const handleSyncESPN = async (seasonId: string, week?: number) => {
     try {
@@ -531,20 +474,6 @@ const AdminDashboard: React.FC = () => {
                     className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                   >
                     {syncLoading ? 'Seeding...' : 'Seed NFL Teams'}
-                  </button>
-                  <button
-                    onClick={handleUpdateTeamColors}
-                    disabled={syncLoading}
-                    className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                  >
-                    {syncLoading ? 'Updating...' : 'Update Team Colors'}
-                  </button>
-                  <button
-                    onClick={handleCleanupDuplicateTeams}
-                    disabled={syncLoading}
-                    className="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-                  >
-                    {syncLoading ? 'Cleaning...' : 'Cleanup Duplicate Teams'}
                   </button>
                 </div>
               </div>

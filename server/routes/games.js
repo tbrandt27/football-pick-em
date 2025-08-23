@@ -21,23 +21,49 @@ const router = express.Router();
 // Get all pickem games (users see only games they participate in)
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    // All users (including admins) see only games they participate in on their dashboard
-    const games = await db.all(
-      `
-      SELECT
-        g.*,
-        gp.role as user_role,
-        COUNT(gp2.id) as player_count,
-        COUNT(CASE WHEN gp2.role = 'owner' THEN 1 END) as owner_count
-      FROM game_participants gp
-      JOIN pickem_games g ON gp.game_id = g.id
-      LEFT JOIN game_participants gp2 ON g.id = gp2.game_id
-      WHERE gp.user_id = ?
-      GROUP BY g.id, gp.role
-      ORDER BY g.created_at DESC
-    `,
-      [req.user.id]
-    );
+    // Handle different database types
+    let games;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get user's participations first, then games
+      const userParticipations = await db.all('SELECT * FROM game_participants WHERE user_id = ?', [req.user.id]);
+      
+      games = await Promise.all(userParticipations.map(async (participation) => {
+        // Get the game details
+        const game = await db.get('SELECT * FROM pickem_games WHERE id = ?', [participation.game_id]);
+        if (!game) return null;
+        
+        // Get all participants for counts
+        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [participation.game_id]);
+        
+        return {
+          ...game,
+          user_role: participation.role,
+          player_count: allParticipants.length,
+          owner_count: allParticipants.filter(p => p.role === 'owner').length
+        };
+      }));
+      
+      // Filter out null values and sort by creation date
+      games = games.filter(g => g !== null).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else {
+      // For SQLite, use the optimized JOIN query
+      games = await db.all(
+        `
+        SELECT
+          g.*,
+          gp.role as user_role,
+          COUNT(gp2.id) as player_count,
+          COUNT(CASE WHEN gp2.role = 'owner' THEN 1 END) as owner_count
+        FROM game_participants gp
+        JOIN pickem_games g ON gp.game_id = g.id
+        LEFT JOIN game_participants gp2 ON g.id = gp2.game_id
+        WHERE gp.user_id = ?
+        GROUP BY g.id, gp.role
+        ORDER BY g.created_at DESC
+      `,
+        [req.user.id]
+      );
+    }
 
     res.json({ games });
   } catch (error) {
@@ -53,12 +79,33 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const decodedSlug = decodeURIComponent(gameSlug);
 
-    // Get all games and find the one that matches the slug
-    const games = await db.all(`
-      SELECT g.*, u.first_name || ' ' || u.last_name as commissioner_name
-      FROM pickem_games g
-      LEFT JOIN users u ON g.commissioner_id = u.id
-    `);
+    // Handle different database types
+    let games;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get all games and commissioners separately
+      const allGames = await db.all('SELECT * FROM pickem_games');
+      
+      games = await Promise.all(allGames.map(async (game) => {
+        let commissioner_name = 'Unknown';
+        if (game.commissioner_id) {
+          const commissioner = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [game.commissioner_id]);
+          if (commissioner) {
+            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+          }
+        }
+        return {
+          ...game,
+          commissioner_name
+        };
+      }));
+    } else {
+      // For SQLite, use the JOIN query
+      games = await db.all(`
+        SELECT g.*, u.first_name || ' ' || u.last_name as commissioner_name
+        FROM pickem_games g
+        LEFT JOIN users u ON g.commissioner_id = u.id
+      `);
+    }
 
     // Find game by matching slug
     const game = games.find((g) => createGameSlug(g.game_name) === decodedSlug);
@@ -84,16 +131,34 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
     }
 
     // Get participants
-    const participants = await db.all(
-      `
-      SELECT gp.*, u.first_name || ' ' || u.last_name as display_name
-      FROM game_participants gp
-      JOIN users u ON gp.user_id = u.id
-      WHERE gp.game_id = ?
-      ORDER BY gp.created_at
-    `,
-      [game.id]
-    );
+    let participants;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get participants and users separately
+      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [game.id]);
+      
+      participants = await Promise.all(gameParticipants.map(async (gp) => {
+        const user = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [gp.user_id]);
+        return {
+          ...gp,
+          display_name: user ? `${user.first_name} ${user.last_name}` : ''
+        };
+      }));
+      
+      // Sort by creation date
+      participants.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    } else {
+      // For SQLite, use the JOIN query
+      participants = await db.all(
+        `
+        SELECT gp.*, u.first_name || ' ' || u.last_name as display_name
+        FROM game_participants gp
+        JOIN users u ON gp.user_id = u.id
+        WHERE gp.game_id = ?
+        ORDER BY gp.created_at
+      `,
+        [game.id]
+      );
+    }
 
     res.json({
       game: {
@@ -116,7 +181,7 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
     // Check if user has access to this game
     const participant = await db.get(
       `
-      SELECT role FROM game_participants 
+      SELECT role FROM game_participants
       WHERE game_id = ? AND user_id = ?
     `,
       [gameId, req.user.id]
@@ -126,42 +191,85 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const game = await db.get(
-      `
-      SELECT 
-        g.*,
-        COUNT(gp.id) as player_count,
-        COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
-      FROM pickem_games g
-      LEFT JOIN game_participants gp ON g.id = gp.game_id
-      WHERE g.id = ?
-      GROUP BY g.id
-    `,
-      [gameId]
-    );
+    // Handle different database types
+    let game;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get game directly and calculate counts separately
+      game = await db.get('SELECT * FROM pickem_games WHERE id = ?', [gameId]);
+      
+      if (game) {
+        // Get participant counts manually
+        const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+        game.player_count = participants.length;
+        game.owner_count = participants.filter(p => p.role === 'owner').length;
+      }
+    } else {
+      // For SQLite, use the optimized query
+      game = await db.get(
+        `
+        SELECT
+          g.*,
+          COUNT(gp.id) as player_count,
+          COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
+        FROM pickem_games g
+        LEFT JOIN game_participants gp ON g.id = gp.game_id
+        WHERE g.id = ?
+        GROUP BY g.id
+      `,
+        [gameId]
+      );
+    }
 
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
 
     // Get participants
-    const participants = await db.all(
-      `
-      SELECT 
-        gp.role,
-        gp.id,
-        u.id as user_id,
-        u.first_name,
-        u.last_name,
-        u.email,
-        u.first_name || ' ' || u.last_name as display_name
-      FROM game_participants gp
-      JOIN users u ON gp.user_id = u.id
-      WHERE gp.game_id = ?
-      ORDER BY gp.role, u.first_name, u.last_name
-    `,
-      [gameId]
-    );
+    let participants;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get participants and users separately
+      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+      
+      participants = await Promise.all(gameParticipants.map(async (gp) => {
+        const user = await db.get('SELECT id, first_name, last_name, email FROM users WHERE id = ?', [gp.user_id]);
+        return {
+          role: gp.role,
+          id: gp.id,
+          user_id: gp.user_id,
+          first_name: user?.first_name || '',
+          last_name: user?.last_name || '',
+          email: user?.email || '',
+          display_name: user ? `${user.first_name} ${user.last_name}` : ''
+        };
+      }));
+      
+      // Sort participants
+      participants.sort((a, b) => {
+        if (a.role !== b.role) {
+          return a.role === 'owner' ? -1 : 1;
+        }
+        return a.first_name.localeCompare(b.first_name);
+      });
+    } else {
+      // For SQLite, use the JOIN query
+      participants = await db.all(
+        `
+        SELECT
+          gp.role,
+          gp.id,
+          u.id as user_id,
+          u.first_name,
+          u.last_name,
+          u.email,
+          u.first_name || ' ' || u.last_name as display_name
+        FROM game_participants gp
+        JOIN users u ON gp.user_id = u.id
+        WHERE gp.game_id = ?
+        ORDER BY gp.role, u.first_name, u.last_name
+      `,
+        [gameId]
+      );
+    }
 
     res.json({
       game: {
@@ -218,11 +326,11 @@ router.post("/", authenticateToken, async (req, res) => {
     // Convert gameType to match database values
     const dbGameType = gameType === "week" ? "weekly" : "survivor";
 
-    // Create the game (note: using game_name column, not name)
+    // Create the game (note: using game_name column, not name) - set as active by default
     await db.run(
       `
-      INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id, is_active)
+      VALUES (?, ?, ?, ?, ?, 1)
     `,
       [gameId, gameName, dbGameType, req.user.id, currentSeason.id]
     );
@@ -236,19 +344,32 @@ router.post("/", authenticateToken, async (req, res) => {
       [uuidv4(), gameId, req.user.id]
     );
 
-    const newGame = await db.get(
-      `
-      SELECT
-        g.*,
-        COUNT(gp.id) as player_count,
-        COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
-      FROM pickem_games g
-      LEFT JOIN game_participants gp ON g.id = gp.game_id
-      WHERE g.id = ?
-      GROUP BY g.id
-    `,
-      [gameId]
-    );
+    // Get the newly created game with counts
+    let newGame;
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, get game directly and calculate counts
+      newGame = await db.get('SELECT * FROM pickem_games WHERE id = ?', [gameId]);
+      if (newGame) {
+        const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+        newGame.player_count = participants.length;
+        newGame.owner_count = participants.filter(p => p.role === 'owner').length;
+      }
+    } else {
+      // For SQLite, use the optimized query
+      newGame = await db.get(
+        `
+        SELECT
+          g.*,
+          COUNT(gp.id) as player_count,
+          COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
+        FROM pickem_games g
+        LEFT JOIN game_participants gp ON g.id = gp.game_id
+        WHERE g.id = ?
+        GROUP BY g.id
+      `,
+        [gameId]
+      );
+    }
 
     res.status(201).json({
       message: "Game created successfully",

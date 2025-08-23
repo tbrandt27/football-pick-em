@@ -256,7 +256,7 @@ router.put('/:seasonId', authenticateToken, requireAdmin, async (req, res) => {
         key: { id: seasonId },
         item: {
           season: season || existingSeason.season,
-          is_current: isCurrent !== undefined ? isCurrent : existingSeason.is_current
+          is_current: isCurrent !== undefined ? Boolean(isCurrent) : Boolean(existingSeason.is_current)
         }
       });
     } else {
@@ -323,7 +323,7 @@ router.put('/:seasonId/current', authenticateToken, requireAdmin, async (req, re
           action: 'update',
           table: 'seasons',
           key: { id: s.id },
-          item: { is_current: s.id === seasonId }
+          item: { is_current: s.id === seasonId ? true : false }
         });
       }
     } else {

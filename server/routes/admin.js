@@ -1,6 +1,6 @@
 import express from "express";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
-import { seedTeams, updateTeamLogos, updateTeamColors, cleanupDuplicateTeams } from "../utils/seedTeams.js";
+import { seedTeams, updateTeamLogos } from "../utils/seedTeams.js";
 import espnService from "../services/espnApi.js";
 import scheduler from "../services/scheduler.js";
 import pickCalculator from "../services/pickCalculator.js";
@@ -70,37 +70,6 @@ router.post(
   }
 );
 
-// Update team colors
-router.post(
-  "/update-team-colors",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      await updateTeamColors();
-      res.json({ message: "Team colors updated successfully" });
-    } catch (error) {
-      console.error("Update team colors error:", error);
-      res.status(500).json({ error: "Failed to update team colors" });
-    }
-  }
-);
-
-// Clean up duplicate teams
-router.post(
-  "/cleanup-duplicate-teams",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      await cleanupDuplicateTeams();
-      res.json({ message: "Duplicate teams cleaned up successfully" });
-    } catch (error) {
-      console.error("Cleanup duplicate teams error:", error);
-      res.status(500).json({ error: "Failed to cleanup duplicate teams" });
-    }
-  }
-);
 
 // Get available team logos
 router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
@@ -401,23 +370,68 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
     // First, let's migrate any games that might have NULL names or commissioner_ids
     await migrateGameData();
 
-    const games = await db.all(`
-      SELECT 
-        g.*,
-        g.game_name as name,
-        u.first_name || ' ' || u.last_name as commissioner_name,
-        s.season as season_year,
-        s.is_current as season_is_current,
-        COUNT(DISTINCT gp.id) as participant_count
-      FROM pickem_games g
-      LEFT JOIN users u ON g.commissioner_id = u.id
-      LEFT JOIN seasons s ON g.season_id = s.id
-      LEFT JOIN game_participants gp ON g.id = gp.game_id
-      GROUP BY g.id
-      ORDER BY g.created_at DESC
-    `);
+    // Handle different database types
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, we need to do separate queries and aggregate in JavaScript
+      const games = await db.all('SELECT * FROM pickem_games ORDER BY created_at DESC');
+      
+      // For each game, get the additional data
+      const gamesWithDetails = await Promise.all(games.map(async (game) => {
+        // Get commissioner name
+        let commissioner_name = 'Unknown';
+        if (game.commissioner_id) {
+          const commissioner = await db.get('SELECT first_name, last_name FROM users WHERE id = ?', [game.commissioner_id]);
+          if (commissioner) {
+            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+          }
+        }
+        
+        // Get season info
+        let season_year = null;
+        let season_is_current = false;
+        if (game.season_id) {
+          const season = await db.get('SELECT season, is_current FROM seasons WHERE id = ?', [game.season_id]);
+          if (season) {
+            season_year = season.season;
+            season_is_current = Boolean(season.is_current);
+          }
+        }
+        
+        // Get participant count
+        const participants = await db.all('SELECT id FROM game_participants WHERE game_id = ?', [game.id]);
+        const participant_count = participants.length;
+        
+        return {
+          ...game,
+          name: game.game_name || 'Unnamed Game',
+          commissioner_name,
+          season_year,
+          season_is_current,
+          participant_count
+        };
+      }));
+      
+      res.json({ games: gamesWithDetails });
+    } else {
+      // For SQLite, use the optimized JOIN query
+      const games = await db.all(`
+        SELECT
+          g.*,
+          COALESCE(g.game_name, 'Unnamed Game') as name,
+          u.first_name || ' ' || u.last_name as commissioner_name,
+          s.season as season_year,
+          s.is_current as season_is_current,
+          COUNT(DISTINCT gp.id) as participant_count
+        FROM pickem_games g
+        LEFT JOIN users u ON g.commissioner_id = u.id
+        LEFT JOIN seasons s ON g.season_id = s.id
+        LEFT JOIN game_participants gp ON g.id = gp.game_id
+        GROUP BY g.id
+        ORDER BY g.created_at DESC
+      `);
 
-    res.json({ games });
+      res.json({ games });
+    }
   } catch (error) {
     console.error("Get admin games error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -427,43 +441,105 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
 // Helper function to migrate old game data
 async function migrateGameData() {
   try {
-    // Update games with NULL game_name
-    await db.run(`
-      UPDATE pickem_games 
-      SET game_name = CASE 
-        WHEN type = 'weekly' AND weekly_week IS NOT NULL THEN 'Week ' || weekly_week || ' Picks'
-        WHEN type = 'survivor' THEN 'Survivor Pool'
-        ELSE 'Pick''em Game'
-      END
-      WHERE game_name IS NULL OR game_name = ''
-    `);
-
-    // Update games with NULL commissioner_id - set to first admin user
-    const firstAdmin = await db.get(
-      "SELECT id FROM users WHERE is_admin = 1 LIMIT 1"
-    );
-
-    if (firstAdmin) {
-      await db.run(
-        `
-        UPDATE pickem_games 
-        SET commissioner_id = ?
-        WHERE commissioner_id IS NULL OR commissioner_id = ''
-      `,
-        [firstAdmin.id]
-      );
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, handle migrations differently
+      const games = await db.all('SELECT * FROM pickem_games');
+      
+      for (const game of games) {
+        let needsUpdate = false;
+        const updates = {};
+        
+        // Fix missing game_name
+        if (!game.game_name || game.game_name === '') {
+          if (game.type === 'weekly' && game.weekly_week) {
+            updates.game_name = `Week ${game.weekly_week} Picks`;
+          } else if (game.type === 'survivor') {
+            updates.game_name = 'Survivor Pool';
+          } else {
+            updates.game_name = 'Pick\'em Game';
+          }
+          needsUpdate = true;
+        }
+        
+        // Fix missing is_active
+        if (game.is_active === null || game.is_active === undefined) {
+          updates.is_active = true;
+          needsUpdate = true;
+        }
+        
+        // Fix missing commissioner_id
+        if (!game.commissioner_id || game.commissioner_id === '') {
+          // Find first admin user
+          const adminUsers = await db.all('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
+          if (adminUsers && adminUsers.length > 0) {
+            updates.commissioner_id = adminUsers[0].id;
+            needsUpdate = true;
+          } else {
+            // Find any user
+            const anyUsers = await db.all('SELECT id FROM users LIMIT 1');
+            if (anyUsers && anyUsers.length > 0) {
+              updates.commissioner_id = anyUsers[0].id;
+              needsUpdate = true;
+            }
+          }
+        }
+        
+        if (needsUpdate) {
+          await db.run({
+            action: 'update',
+            table: 'pickem_games',
+            key: { id: game.id },
+            item: updates
+          });
+        }
+      }
     } else {
-      // If no admin user, try to find any user
-      const anyUser = await db.get("SELECT id FROM users LIMIT 1");
-      if (anyUser) {
+      // For SQLite, use SQL queries
+      // Update games with NULL game_name
+      await db.run(`
+        UPDATE pickem_games
+        SET game_name = CASE
+          WHEN type = 'weekly' AND weekly_week IS NOT NULL THEN 'Week ' || weekly_week || ' Picks'
+          WHEN type = 'survivor' THEN 'Survivor Pool'
+          ELSE 'Pick''em Game'
+        END
+        WHERE game_name IS NULL OR game_name = ''
+      `);
+
+      // Update games with NULL is_active - set to active by default
+      await db.run(`
+        UPDATE pickem_games
+        SET is_active = 1
+        WHERE is_active IS NULL
+      `);
+
+      // Update games with NULL commissioner_id - set to first admin user
+      const firstAdmin = await db.get(
+        "SELECT id FROM users WHERE is_admin = 1 LIMIT 1"
+      );
+
+      if (firstAdmin) {
         await db.run(
           `
-          UPDATE pickem_games 
+          UPDATE pickem_games
           SET commissioner_id = ?
           WHERE commissioner_id IS NULL OR commissioner_id = ''
         `,
-          [anyUser.id]
+          [firstAdmin.id]
         );
+      } else {
+        // If no admin user, try to find any user
+        const anyUser = await db.get("SELECT id FROM users LIMIT 1");
+        if (anyUser) {
+          await db.run(
+            `
+            UPDATE pickem_games
+            SET commissioner_id = ?
+            WHERE commissioner_id IS NULL OR commissioner_id = ''
+          `,
+            [anyUser.id]
+          );
+        }
       }
     }
   } catch (error) {
@@ -618,7 +694,7 @@ router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
           game_count,
           football_games_count,
           year: parseInt(season.season), // Convert to integer
-          is_active: season.is_current
+          is_active: Boolean(season.is_current)
         };
       }));
       
@@ -685,7 +761,7 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
           game_count: 0,
           football_games_count: 0,
           year: parseInt(season.season),
-          is_active: season.is_current
+          is_active: Boolean(season.is_current)
         };
       }
     } else {
@@ -965,20 +1041,49 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      let season;
+      if (db.getType && db.getType() === 'dynamodb') {
+        season = await db.get({
+          action: 'get',
+          table: 'seasons',
+          key: { id: seasonId }
+        });
+      } else {
+        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
+          seasonId,
+        ]);
+      }
+      
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      // Unset all current seasons
-      await db.run("UPDATE seasons SET is_current = 0");
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB: scan and update all seasons
+        const allSeasonsResult = await db.all({
+          action: 'scan',
+          table: 'seasons'
+        });
+        const allSeasons = allSeasonsResult || [];
+        
+        for (const s of allSeasons) {
+          await db.run({
+            action: 'update',
+            table: 'seasons',
+            key: { id: s.id },
+            item: { is_current: s.id === seasonId ? true : false }
+          });
+        }
+      } else {
+        // SQLite: bulk updates
+        // Unset all current seasons
+        await db.run("UPDATE seasons SET is_current = 0");
 
-      // Set this season as current
-      await db.run("UPDATE seasons SET is_current = 1 WHERE id = ?", [
-        seasonId,
-      ]);
+        // Set this season as current
+        await db.run("UPDATE seasons SET is_current = 1 WHERE id = ?", [
+          seasonId,
+        ]);
+      }
 
       res.json({ message: "Current season updated successfully" });
     } catch (error) {
@@ -997,17 +1102,38 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      let season;
+      if (db.getType && db.getType() === 'dynamodb') {
+        season = await db.get({
+          action: 'get',
+          table: 'seasons',
+          key: { id: seasonId }
+        });
+      } else {
+        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
+          seasonId,
+        ]);
+      }
+      
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      // Unset this season as current
-      await db.run("UPDATE seasons SET is_current = 0 WHERE id = ?", [
-        seasonId,
-      ]);
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB: update specific season
+        await db.run({
+          action: 'update',
+          table: 'seasons',
+          key: { id: seasonId },
+          item: { is_current: false }
+        });
+      } else {
+        // SQLite: update season
+        // Unset this season as current
+        await db.run("UPDATE seasons SET is_current = 0 WHERE id = ?", [
+          seasonId,
+        ]);
+      }
 
       res.json({ message: "Season unset as current successfully" });
     } catch (error) {
@@ -1040,21 +1166,40 @@ router.put(
         return res.status(404).json({ error: "Team not found" });
       }
 
-      await db.run(
-        `
-      UPDATE football_teams
-      SET team_city = ?, team_name = ?, team_primary_color = ?, team_secondary_color = ?, team_logo = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [
-          team_city,
-          team_name,
-          team_primary_color,
-          team_secondary_color,
-          team_logo,
-          teamId,
-        ]
-      );
+      // Handle different database types
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB update
+        await db.run({
+          action: 'update',
+          table: 'football_teams',
+          key: { id: teamId },
+          item: {
+            team_city,
+            team_name,
+            team_primary_color,
+            team_secondary_color,
+            team_logo,
+            updated_at: new Date().toISOString()
+          }
+        });
+      } else {
+        // SQLite update
+        await db.run(
+          `
+        UPDATE football_teams
+        SET team_city = ?, team_name = ?, team_primary_color = ?, team_secondary_color = ?, team_logo = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `,
+          [
+            team_city,
+            team_name,
+            team_primary_color,
+            team_secondary_color,
+            team_logo,
+            teamId,
+          ]
+        );
+      }
 
       res.json({ message: "Team updated successfully" });
     } catch (error) {
