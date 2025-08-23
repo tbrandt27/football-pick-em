@@ -10,10 +10,25 @@ const router = express.Router();
 // Get all seasons
 router.get('/', async (req, res) => {
   try {
-    const seasons = await db.all(`
-      SELECT * FROM seasons 
-      ORDER BY season DESC
-    `);
+    let seasons;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: scan all seasons
+      const seasonsResult = await db.all({
+        action: 'scan',
+        table: 'seasons'
+      });
+      seasons = seasonsResult || [];
+      
+      // Sort by season DESC
+      seasons.sort((a, b) => b.season.localeCompare(a.season));
+    } else {
+      // SQLite: direct SQL query
+      seasons = await db.all(`
+        SELECT * FROM seasons
+        ORDER BY season DESC
+      `);
+    }
 
     res.json({ seasons });
   } catch (error) {
@@ -69,8 +84,20 @@ router.get('/status', async (req, res) => {
 router.get('/:seasonId', async (req, res) => {
   try {
     const { seasonId } = req.params;
+    let season;
     
-    const season = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: get by ID
+      const seasonResult = await db.get({
+        action: 'get',
+        table: 'seasons',
+        key: { id: seasonId }
+      });
+      season = seasonResult;
+    } else {
+      // SQLite: direct SQL query
+      season = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    }
     
     if (!season) {
       return res.status(404).json({ error: 'Season not found' });
@@ -93,7 +120,21 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Check if season already exists
-    const existingSeason = await db.get('SELECT id FROM seasons WHERE season = ?', [season]);
+    let existingSeason;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: scan for existing season
+      const seasonsResult = await db.all({
+        action: 'scan',
+        table: 'seasons',
+        conditions: { season: season }
+      });
+      existingSeason = seasonsResult && seasonsResult.length > 0 ? seasonsResult[0] : null;
+    } else {
+      // SQLite: direct SQL query
+      existingSeason = await db.get('SELECT id FROM seasons WHERE season = ?', [season]);
+    }
+    
     if (existingSeason) {
       return res.status(409).json({ error: 'Season already exists' });
     }
@@ -163,7 +204,21 @@ router.put('/:seasonId', authenticateToken, requireAdmin, async (req, res) => {
     const { seasonId } = req.params;
     const { season, isCurrent } = req.body;
 
-    const existingSeason = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    let existingSeason;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: get by ID
+      const seasonResult = await db.get({
+        action: 'get',
+        table: 'seasons',
+        key: { id: seasonId }
+      });
+      existingSeason = seasonResult;
+    } else {
+      // SQLite: direct SQL query
+      existingSeason = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    }
+    
     if (!existingSeason) {
       return res.status(404).json({ error: 'Season not found' });
     }
@@ -237,7 +292,21 @@ router.put('/:seasonId/current', authenticateToken, requireAdmin, async (req, re
   try {
     const { seasonId } = req.params;
 
-    const season = await db.get('SELECT id FROM seasons WHERE id = ?', [seasonId]);
+    let season;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: get by ID
+      const seasonResult = await db.get({
+        action: 'get',
+        table: 'seasons',
+        key: { id: seasonId }
+      });
+      season = seasonResult;
+    } else {
+      // SQLite: direct SQL query
+      season = await db.get('SELECT id FROM seasons WHERE id = ?', [seasonId]);
+    }
+    
     if (!season) {
       return res.status(404).json({ error: 'Season not found' });
     }
@@ -279,20 +348,58 @@ router.delete('/:seasonId', authenticateToken, requireAdmin, async (req, res) =>
   try {
     const { seasonId } = req.params;
 
-    const existingSeason = await db.get('SELECT id FROM seasons WHERE id = ?', [seasonId]);
+    let existingSeason;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: get by ID
+      const seasonResult = await db.get({
+        action: 'get',
+        table: 'seasons',
+        key: { id: seasonId }
+      });
+      existingSeason = seasonResult;
+    } else {
+      // SQLite: direct SQL query
+      existingSeason = await db.get('SELECT id FROM seasons WHERE id = ?', [seasonId]);
+    }
+    
     if (!existingSeason) {
       return res.status(404).json({ error: 'Season not found' });
     }
 
     // Check if season has associated games
-    const gameCount = await db.get('SELECT COUNT(*) as count FROM football_games WHERE season_id = ?', [seasonId]);
+    let gameCount;
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: scan for games with this season_id
+      const gamesResult = await db.all({
+        action: 'scan',
+        table: 'football_games',
+        conditions: { season_id: seasonId }
+      });
+      gameCount = { count: (gamesResult || []).length };
+    } else {
+      // SQLite: count games
+      gameCount = await db.get('SELECT COUNT(*) as count FROM football_games WHERE season_id = ?', [seasonId]);
+    }
+    
     if (gameCount.count > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete season that has associated games' 
+      return res.status(400).json({
+        error: 'Cannot delete season that has associated games'
       });
     }
 
-    await db.run('DELETE FROM seasons WHERE id = ?', [seasonId]);
+    // Delete the season
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB: delete item
+      await db.run({
+        action: 'delete',
+        table: 'seasons',
+        key: { id: seasonId }
+      });
+    } else {
+      // SQLite: delete query
+      await db.run('DELETE FROM seasons WHERE id = ?', [seasonId]);
+    }
 
     res.json({ message: 'Season deleted successfully' });
 

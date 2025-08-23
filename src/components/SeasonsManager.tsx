@@ -6,7 +6,7 @@ import { HomeIcon } from '@heroicons/react/24/outline';
 interface Season {
   id: string;
   year: number;
-  is_active: boolean;
+  is_current: boolean;
   created_at: string;
   game_count: number;
   football_games_count: number;
@@ -145,10 +145,10 @@ const SeasonsManager: React.FC = () => {
       });
 
       if (response.ok) {
-        // Update all seasons - set this one as active, others as inactive
+        // Update all seasons - set this one as current, others as not current
         setSeasons(seasons.map(s => ({
           ...s,
-          is_active: s.id === seasonId
+          is_current: s.id === seasonId
         })));
       } else {
         setError('Failed to set current season');
@@ -170,10 +170,10 @@ const SeasonsManager: React.FC = () => {
       });
 
       if (response.ok) {
-        // Update the season to be inactive
+        // Update the season to be not current
         setSeasons(seasons.map(s => ({
           ...s,
-          is_active: s.id === seasonId ? false : s.is_active
+          is_current: s.id === seasonId ? false : s.is_current
         })));
       } else {
         setError('Failed to unset current season');
@@ -339,11 +339,11 @@ const SeasonsManager: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        season.is_active 
-                          ? 'bg-green-100 text-green-800' 
+                        season.is_current
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {season.is_active ? 'Active' : 'Inactive'}
+                        {season.is_current ? 'Current' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -357,7 +357,7 @@ const SeasonsManager: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                      <div className="flex flex-wrap gap-2">
-                       {season.is_active ? (
+                       {season.is_current ? (
                          <button
                            onClick={() => unsetCurrentSeason(season.id)}
                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
