@@ -176,6 +176,19 @@ export default class DynamoDBUserService extends IUserService {
   }
 
   /**
+   * Update user email verification status
+   * @param {string} userId - User ID
+   * @param {boolean} emailVerified - Email verification status
+   * @returns {Promise<void>}
+   */
+  async updateEmailVerified(userId, emailVerified) {
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      email_verified: emailVerified,
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  /**
    * Update user's last login timestamp
    * @param {string} userId - User ID
    * @returns {Promise<void>}

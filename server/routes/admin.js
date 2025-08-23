@@ -839,6 +839,35 @@ router.put(
   }
 );
 
+// Manually verify user email (admin only)
+router.put(
+  "/users/:userId/verify-email",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      // Get user info before verification
+      const userService = DatabaseServiceFactory.getUserService();
+      const user = await userService.getUserBasicInfo(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Update email_verified status
+      await userService.updateEmailVerified(userId, true);
+
+      res.json({
+        message: `Email verified for ${user.first_name} ${user.last_name} (${user.email})`,
+      });
+    } catch (error) {
+      console.error("Verify user email error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Delete user (admin only)
 router.delete(
   "/users/:userId",

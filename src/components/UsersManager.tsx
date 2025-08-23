@@ -123,6 +123,42 @@ const UsersManager: React.FC = () => {
     }
   };
 
+  const verifyUserEmail = async (userId: string, userName: string, userEmail: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/users/${userId}/verify-email`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setUsers(users.map(u =>
+          u.id === userId ? { ...u, email_verified: true } : u
+        ));
+        
+        // Show success message briefly
+        setError('');
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.textContent = result.message || `Email verified for ${userName}`;
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to verify email');
+      }
+    } catch (err) {
+      setError('Failed to verify email');
+    }
+  };
+
   const cancelInvitation = async (invitationId: string) => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -385,7 +421,20 @@ const UsersManager: React.FC = () => {
                         {userData.email_verified ? (
                           <span className="text-green-600">✓ Verified</span>
                         ) : (
-                          <span className="text-yellow-600">⚠ Unverified</span>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-yellow-600">⚠ Unverified</span>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Manually verify email for ${userData.first_name} ${userData.last_name}?\n\nThis will mark their email as verified without requiring them to click a verification link.`)) {
+                                  verifyUserEmail(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
+                                }
+                              }}
+                              className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-1 rounded text-xs font-medium"
+                              title="Manually verify email"
+                            >
+                              Verify
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -443,13 +492,13 @@ const UsersManager: React.FC = () => {
         </div>
 
         {/* Pending Invitations */}
-        {invitations.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md mt-8">
-            <div className="p-6 border-b">
-              <h2 className="text-2xl font-bold text-gray-800">Pending Invitations</h2>
-              <p className="text-gray-600">Total: {invitations.length} pending invitations</p>
-            </div>
-            
+        <div className="bg-white rounded-lg shadow-md mt-8">
+          <div className="p-6 border-b">
+            <h2 className="text-2xl font-bold text-gray-800">Pending Invitations</h2>
+            <p className="text-gray-600">Total: {invitations.length} pending invitations</p>
+          </div>
+          
+          {invitations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -521,8 +570,24 @@ const UsersManager: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="p-6 text-center">
+              <div className="text-gray-500 mb-4">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m13-8l-4 4m0 0l-4-4m4 4V3" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Invitations</h3>
+              <p className="text-gray-500 mb-4">There are currently no pending user invitations.</p>
+              <button
+                onClick={() => setShowInviteForm(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Invite a User
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Invite User Modal */}
         {showInviteForm && (

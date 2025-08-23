@@ -132,6 +132,20 @@ export default class SQLiteUserService extends IUserService {
   }
 
   /**
+   * Update user email verification status
+   * @param {string} userId - User ID
+   * @param {boolean} emailVerified - Email verification status
+   * @returns {Promise<void>}
+   */
+  async updateEmailVerified(userId, emailVerified) {
+    await db.run(`
+      UPDATE users
+      SET email_verified = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `, [emailVerified ? 1 : 0, userId]);
+  }
+
+  /**
    * Update user's last login timestamp
    * @param {string} userId - User ID
    * @returns {Promise<void>}
