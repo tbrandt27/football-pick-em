@@ -262,11 +262,13 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
   async _dynamoPut(tableName, item) {
     try {
-      console.log(`[DynamoDB] _dynamoPut called with:`, {
-        tableName,
-        item,
-        itemKeys: Object.keys(item),
-        itemValues: item
+      console.log(`[DynamoDB] === _dynamoPut START ===`);
+      console.log(`[DynamoDB] Input table name: "${tableName}"`);
+      console.log(`[DynamoDB] Input item:`, JSON.stringify(item, null, 2));
+      console.log(`[DynamoDB] Item keys:`, Object.keys(item));
+      console.log(`[DynamoDB] Item type validation:`, {
+        id: { value: item.id, type: typeof item.id, present: !!item.id },
+        game_name: { value: item.game_name, type: typeof item.game_name, present: !!item.game_name }
       });
       
       // Add timestamps
@@ -278,53 +280,99 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       };
 
       const actualTableName = this.tables[tableName] || tableName;
-      console.log(`[DynamoDB] PUT operation details:`, {
-        tableName,
+      console.log(`[DynamoDB] Table name mapping:`, {
+        inputTableName: tableName,
         actualTableName,
-        originalItem: item,
-        itemWithTimestamps,
-        tableMapping: this.tables[tableName] ? 'Found' : 'Not found',
-        allTables: Object.keys(this.tables)
+        mappingFound: !!this.tables[tableName],
+        tablePrefix: this.tablePrefix,
+        availableMappings: Object.keys(this.tables)
       });
 
+      console.log(`[DynamoDB] Item with timestamps:`, JSON.stringify(itemWithTimestamps, null, 2));
+
       // Validate required fields based on table
-      if (tableName === 'pickem_games' && (!item.id || !item.game_name)) {
-        throw new Error(`Missing required fields for pickem_games: id=${!!item.id}, game_name=${!!item.game_name}`);
+      if (tableName === 'pickem_games') {
+        console.log(`[DynamoDB] Validating pickem_games required fields:`);
+        const validations = {
+          id: { required: true, present: !!item.id, value: item.id },
+          game_name: { required: true, present: !!item.game_name, value: item.game_name },
+          type: { required: false, present: !!item.type, value: item.type },
+          commissioner_id: { required: false, present: !!item.commissioner_id, value: item.commissioner_id },
+          season_id: { required: false, present: !!item.season_id, value: item.season_id },
+          is_active: { required: false, present: item.is_active !== undefined, value: item.is_active }
+        };
+        
+        console.log(`[DynamoDB] Field validations:`, validations);
+        
+        if (!item.id) {
+          throw new Error(`Missing required field 'id' for pickem_games table. Current value: ${item.id}`);
+        }
+        if (!item.game_name) {
+          throw new Error(`Missing required field 'game_name' for pickem_games table. Current value: ${item.game_name}`);
+        }
+        
+        console.log(`[DynamoDB] All required fields validated successfully`);
       }
 
+      console.log(`[DynamoDB] Creating PutCommand...`);
       const command = new PutCommand({
         TableName: actualTableName,
         Item: itemWithTimestamps
       });
       
-      console.log(`[DynamoDB] Sending PUT command:`, {
-        tableName: actualTableName,
-        command: {
-          TableName: command.input.TableName,
-          Item: command.input.Item
-        }
+      console.log(`[DynamoDB] PutCommand created:`, {
+        TableName: command.input.TableName,
+        Item: command.input.Item,
+        ItemKeys: Object.keys(command.input.Item),
+        commandType: command.constructor.name
       });
       
+      console.log(`[DynamoDB] Sending PUT command to DynamoDB...`);
+      const startTime = Date.now();
+      
       const result = await this.docClient.send(command);
-      console.log(`[DynamoDB] PUT successful:`, {
+      
+      const duration = Date.now() - startTime;
+      console.log(`[DynamoDB] PUT completed in ${duration}ms`);
+      console.log(`[DynamoDB] PUT result:`, {
         tableName: actualTableName,
         itemId: item.id,
         httpStatusCode: result.$metadata?.httpStatusCode,
         requestId: result.$metadata?.requestId,
-        result
+        cfId: result.$metadata?.cfId,
+        attempts: result.$metadata?.attempts,
+        totalRetryDelay: result.$metadata?.totalRetryDelay
       });
+      
+      console.log(`[DynamoDB] === _dynamoPut SUCCESS ===`);
       return { id: item.id };
     } catch (error) {
-      console.error(`[DynamoDB] PUT failed:`, {
+      console.error(`[DynamoDB] === _dynamoPut FAILED ===`);
+      console.error(`[DynamoDB] Error details:`, {
         tableName,
         actualTableName: this.tables[tableName] || tableName,
-        item,
-        error: error.message,
-        code: error.name,
+        inputItem: item,
+        errorMessage: error.message,
+        errorCode: error.name,
+        errorType: error.constructor.name,
         httpStatusCode: error.$metadata?.httpStatusCode,
-        fullError: error,
-        stack: error.stack
+        requestId: error.$metadata?.requestId,
+        retryable: error.$retryable,
+        time: error.time
       });
+      
+      console.error(`[DynamoDB] Full error object:`, error);
+      console.error(`[DynamoDB] Error stack:`, error.stack);
+      
+      // Check for specific DynamoDB errors
+      if (error.name === 'ResourceNotFoundException') {
+        console.error(`[DynamoDB] Table not found! Available tables:`, Object.values(this.tables));
+      } else if (error.name === 'ValidationException') {
+        console.error(`[DynamoDB] Validation error - check item structure`);
+      } else if (error.name === 'AccessDeniedException') {
+        console.error(`[DynamoDB] Access denied - check AWS credentials and permissions`);
+      }
+      
       throw error;
     }
   }
@@ -571,42 +619,82 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     
     const tableName = tableMatch[1];
     
-    console.log(`[DynamoDB] Parsing INSERT for table: ${tableName}`);
-    console.log(`[DynamoDB] SQL: ${sql.substring(0, 200)}`);
+    console.log(`[DynamoDB] === INSERT PARSING START ===`);
+    console.log(`[DynamoDB] Table: ${tableName}`);
+    console.log(`[DynamoDB] Full SQL: ${sql}`);
     console.log(`[DynamoDB] Params:`, params);
+    console.log(`[DynamoDB] Table match:`, tableMatch);
+    console.log(`[DynamoDB] Columns match:`, columnsMatch);
+    console.log(`[DynamoDB] Values match:`, valuesMatch);
     
     // If we have column names and values, map them properly
     if (columnsMatch && valuesMatch) {
-      const columns = columnsMatch[1]
+      const columnString = columnsMatch[1];
+      console.log(`[DynamoDB] Raw column string: "${columnString}"`);
+      
+      const columns = columnString
         .split(',')
         .map(col => col.trim())
         .filter(col => col.length > 0);
+      
+      console.log(`[DynamoDB] Parsed columns:`, columns);
+      console.log(`[DynamoDB] Column count: ${columns.length}, Param count: ${params.length}`);
       
       const item = {};
       
       // Map parameters to column names
       columns.forEach((column, index) => {
         if (index < params.length) {
-          item[column] = params[index];
+          const value = params[index];
+          item[column] = value;
+          console.log(`[DynamoDB] Mapping column[${index}] "${column}" = ${JSON.stringify(value)} (type: ${typeof value})`);
+        } else {
+          console.log(`[DynamoDB] WARNING: No parameter for column[${index}] "${column}"`);
         }
       });
       
-      console.log(`[DynamoDB] Mapped item:`, item);
+      console.log(`[DynamoDB] Final mapped item:`, JSON.stringify(item, null, 2));
       
       // Ensure we have an ID
       if (!item.id) {
-        item.id = uuidv4();
+        const newId = uuidv4();
+        item.id = newId;
+        console.log(`[DynamoDB] Generated new ID: ${newId}`);
+      } else {
+        console.log(`[DynamoDB] Using provided ID: ${item.id}`);
       }
       
+      // Validate required fields for specific tables
+      if (tableName === 'pickem_games') {
+        console.log(`[DynamoDB] Validating pickem_games required fields:`);
+        console.log(`[DynamoDB] - id: ${item.id ? 'present' : 'MISSING'}`);
+        console.log(`[DynamoDB] - game_name: ${item.game_name ? 'present' : 'MISSING'}`);
+        
+        if (!item.id) {
+          throw new Error(`Missing required field 'id' for pickem_games table`);
+        }
+        if (!item.game_name) {
+          throw new Error(`Missing required field 'game_name' for pickem_games table`);
+        }
+      }
+      
+      console.log(`[DynamoDB] === INSERT PARSING END - CALLING _dynamoPut ===`);
       return this._dynamoPut(tableName, item);
     } else {
+      console.log(`[DynamoDB] No column/values match found - using fallback parsing`);
+      
       // Fallback: assume the item is passed as the first parameter (object)
       const item = params[0] || {};
       
+      console.log(`[DynamoDB] Fallback item:`, item);
+      
       if (!item.id) {
-        item.id = uuidv4();
+        const newId = uuidv4();
+        item.id = newId;
+        console.log(`[DynamoDB] Generated fallback ID: ${newId}`);
       }
       
+      console.log(`[DynamoDB] === FALLBACK INSERT - CALLING _dynamoPut ===`);
       return this._dynamoPut(tableName, item);
     }
   }

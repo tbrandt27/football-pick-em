@@ -339,43 +339,109 @@ router.post("/", authenticateToken, async (req, res) => {
 
     // Get current season - ensure only one active season
     // Handle both SQLite (is_current = 1) and DynamoDB (is_current = true)
+    console.log(`[Game Creation] Looking up current season, database type: ${db.getType && db.getType()}`);
+    
     let currentSeason;
     if (db.getType && db.getType() === 'dynamodb') {
       // For DynamoDB, get all seasons and filter in code
-      const allSeasons = await db.all('SELECT * FROM seasons');
-      currentSeason = allSeasons.find(s => s.is_current === true || s.is_current === 1);
+      console.log(`[Game Creation] Fetching all seasons from DynamoDB`);
+      try {
+        const allSeasons = await db.all('SELECT * FROM seasons');
+        console.log(`[Game Creation] Found ${allSeasons.length} seasons:`, allSeasons.map(s => ({
+          id: s.id,
+          year: s.year,
+          is_current: s.is_current,
+          is_current_type: typeof s.is_current,
+          name: s.name
+        })));
+        
+        currentSeason = allSeasons.find(s => s.is_current === true || s.is_current === 1 || s.is_current === "1");
+        console.log(`[Game Creation] Current season found:`, currentSeason ? {
+          id: currentSeason.id,
+          year: currentSeason.year,
+          is_current: currentSeason.is_current,
+          name: currentSeason.name
+        } : 'None');
+      } catch (seasonError) {
+        console.error(`[Game Creation] Error fetching seasons from DynamoDB:`, seasonError);
+        throw seasonError;
+      }
     } else {
       // For SQLite, use SQL with numeric 1
-      currentSeason = await db.get(
-        "SELECT id FROM seasons WHERE is_current = 1"
-      );
+      console.log(`[Game Creation] Fetching current season from SQLite`);
+      try {
+        currentSeason = await db.get(
+          "SELECT id FROM seasons WHERE is_current = 1"
+        );
+        console.log(`[Game Creation] SQLite current season:`, currentSeason);
+      } catch (seasonError) {
+        console.error(`[Game Creation] Error fetching current season from SQLite:`, seasonError);
+        throw seasonError;
+      }
     }
+    
     if (!currentSeason) {
+      console.error(`[Game Creation] No current season found - returning error to client`);
       return res.status(400).json({
         error: "No current season set. Please contact an administrator.",
       });
     }
+    
+    console.log(`[Game Creation] Using current season:`, {
+      id: currentSeason.id,
+      year: currentSeason.year,
+      is_current: currentSeason.is_current
+    });
 
     // Convert gameType to match database values
     const dbGameType = gameType === "week" ? "weekly" : "survivor";
 
     // Create the game (note: using game_name column, not name) - set as active by default
-    await db.run(
-      `
-      INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id, is_active)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `,
-      [gameId, gameName, dbGameType, req.user.id, currentSeason.id]
-    );
+    console.log(`[Game Creation] Creating game with data:`, {
+      gameId,
+      gameName,
+      dbGameType,
+      commissionerId: req.user.id,
+      seasonId: currentSeason.id,
+      databaseType: db.getType()
+    });
+    
+    try {
+      await db.run(
+        `
+        INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id, is_active)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `,
+        [gameId, gameName, dbGameType, req.user.id, currentSeason.id]
+      );
+      console.log(`[Game Creation] Game created successfully in database`);
+    } catch (gameCreateError) {
+      console.error(`[Game Creation] Failed to create game:`, gameCreateError);
+      throw gameCreateError;
+    }
 
     // Add creator as owner
-    await db.run(
-      `
-      INSERT INTO game_participants (id, game_id, user_id, role)
-      VALUES (?, ?, ?, 'owner')
-    `,
-      [uuidv4(), gameId, req.user.id]
-    );
+    const participantId = uuidv4();
+    console.log(`[Game Creation] Adding participant:`, {
+      participantId,
+      gameId,
+      userId: req.user.id,
+      role: 'owner'
+    });
+    
+    try {
+      await db.run(
+        `
+        INSERT INTO game_participants (id, game_id, user_id, role)
+        VALUES (?, ?, ?, 'owner')
+      `,
+        [participantId, gameId, req.user.id]
+      );
+      console.log(`[Game Creation] Participant added successfully`);
+    } catch (participantError) {
+      console.error(`[Game Creation] Failed to add participant:`, participantError);
+      throw participantError;
+    }
 
     // Get the newly created game with counts
     let newGame;
