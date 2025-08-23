@@ -6,6 +6,7 @@ import SQLiteSeasonService from './sqlite/SQLiteSeasonService.js';
 import SQLiteUserService from './sqlite/SQLiteUserService.js';
 import SQLiteInvitationService from './sqlite/SQLiteInvitationService.js';
 import SQLitePickService from './sqlite/SQLitePickService.js';
+import SQLiteNFLDataService from './sqlite/SQLiteNFLDataService.js';
 
 // DynamoDB implementations
 import DynamoDBGameService from './dynamodb/DynamoDBGameService.js';
@@ -13,6 +14,7 @@ import DynamoDBSeasonService from './dynamodb/DynamoDBSeasonService.js';
 import DynamoDBUserService from './dynamodb/DynamoDBUserService.js';
 import DynamoDBInvitationService from './dynamodb/DynamoDBInvitationService.js';
 import DynamoDBPickService from './dynamodb/DynamoDBPickService.js';
+import DynamoDBNFLDataService from './dynamodb/DynamoDBNFLDataService.js';
 
 /**
  * Database Service Factory
@@ -149,6 +151,32 @@ export default class DatabaseServiceFactory {
         case 'sqlite':
         default:
           service = new SQLiteInvitationService();
+          break;
+      }
+      
+      this._services.set(cacheKey, service);
+    }
+    
+    return this._services.get(cacheKey);
+  }
+
+  /**
+   * Get NFL Data Service for current database type
+   * @returns {INFLDataService} Database-specific NFL data service
+   */
+  static getNFLDataService() {
+    const cacheKey = 'nflDataService';
+    if (!this._services.has(cacheKey)) {
+      const dbType = DatabaseProviderFactory.getProviderType();
+      let service;
+      
+      switch (dbType) {
+        case 'dynamodb':
+          service = new DynamoDBNFLDataService();
+          break;
+        case 'sqlite':
+        default:
+          service = new SQLiteNFLDataService();
           break;
       }
       
