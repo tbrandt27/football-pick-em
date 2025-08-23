@@ -25,21 +25,28 @@ export default class DynamoDBInvitationService extends IInvitationService {
     }
 
     // Filter pending and non-expired invitations in JavaScript since DynamoDB doesn't support complex WHERE clauses in Scan
-    const pendingInvitations = invitationsResult.Items.filter(invitation => 
+    const pendingInvitations = invitationsResult.Items.filter(invitation =>
       invitation.status === 'pending' && invitation.expires_at > now
     );
 
     // For each invitation, get game and user info
     const invitationsWithDetails = await Promise.all(
       pendingInvitations.map(async (invitation) => {
-        let game_name = 'Unknown Game';
+        let game_name = 'Admin Invitation';
         let invited_by_name = 'Unknown User';
 
         try {
-          // Get game info
-          const gameResult = await this.db._dynamoGet('pickem_games', { id: invitation.game_id });
-          if (gameResult.Item) {
-            game_name = gameResult.Item.game_name;
+          // Check if this is an admin invitation
+          if (invitation.is_admin_invitation) {
+            game_name = 'Admin Invitation';
+          } else if (invitation.game_id) {
+            // Get game info for regular invitations
+            const gameResult = await this.db._dynamoGet('pickem_games', { id: invitation.game_id });
+            if (gameResult.Item) {
+              game_name = gameResult.Item.game_name;
+            } else {
+              game_name = 'Unknown Game';
+            }
           }
 
           // Get inviter info
@@ -60,7 +67,7 @@ export default class DynamoDBInvitationService extends IInvitationService {
     );
 
     // Sort by created_at DESC
-    return invitationsWithDetails.sort((a, b) => 
+    return invitationsWithDetails.sort((a, b) =>
       new Date(b.created_at || 0) - new Date(a.created_at || 0)
     );
   }
@@ -138,6 +145,41 @@ export default class DynamoDBInvitationService extends IInvitationService {
       email,
       invitedByUserId,
       inviteToken,
+      expiresAt,
+      isAdminInvitation = false
+    } = invitationData;
+
+    const invitationId = uuidv4();
+    const now = new Date().toISOString();
+
+    const invitationItem = {
+      id: invitationId,
+      game_id: gameId || null,
+      email: email.toLowerCase(),
+      invited_by_user_id: invitedByUserId,
+      invite_token: inviteToken,
+      status: 'pending',
+      expires_at: expiresAt,
+      is_admin_invitation: isAdminInvitation,
+      created_at: now,
+      updated_at: now
+    };
+
+    await this.db._dynamoPut('game_invitations', invitationItem);
+
+    return invitationItem;
+  }
+
+  /**
+   * Create an admin-only invitation (no game required)
+   * @param {Object} invitationData - Invitation data
+   * @returns {Promise<Object>} Created invitation
+   */
+  async createAdminInvitation(invitationData) {
+    const {
+      email,
+      invitedByUserId,
+      inviteToken,
       expiresAt
     } = invitationData;
 
@@ -146,12 +188,13 @@ export default class DynamoDBInvitationService extends IInvitationService {
 
     const invitationItem = {
       id: invitationId,
-      game_id: gameId,
+      game_id: null, // No game for admin invitations
       email: email.toLowerCase(),
       invited_by_user_id: invitedByUserId,
       invite_token: inviteToken,
       status: 'pending',
       expires_at: expiresAt,
+      is_admin_invitation: true,
       created_at: now,
       updated_at: now
     };
@@ -159,6 +202,29 @@ export default class DynamoDBInvitationService extends IInvitationService {
     await this.db._dynamoPut('game_invitations', invitationItem);
 
     return invitationItem;
+  }
+
+  /**
+   * Check if invitation exists for email (for admin invitations)
+   * @param {string} email - Email address
+   * @returns {Promise<Object|null>} Existing pending admin invitation
+   */
+  async checkExistingAdminInvitation(email) {
+    // Scan for existing admin invitation
+    const result = await this.db._dynamoScan('game_invitations');
+    
+    if (!result.Items) {
+      return null;
+    }
+
+    // Filter for this email, pending status, and admin invitation
+    const existingInvitation = result.Items.find(invitation =>
+      invitation.email === email.toLowerCase() &&
+      invitation.status === 'pending' &&
+      invitation.is_admin_invitation === true
+    );
+
+    return existingInvitation || null;
   }
 
   /**

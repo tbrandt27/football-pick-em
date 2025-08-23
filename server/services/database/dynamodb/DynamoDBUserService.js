@@ -120,7 +120,8 @@ export default class DynamoDBUserService extends IUserService {
       lastName,
       favoriteTeamId,
       emailVerificationToken,
-      emailVerified = false
+      emailVerified = false,
+      isAdmin = false
     } = userData;
 
     const now = new Date().toISOString();
@@ -133,7 +134,7 @@ export default class DynamoDBUserService extends IUserService {
       favorite_team_id: favoriteTeamId || null,
       email_verification_token: emailVerificationToken,
       email_verified: emailVerified,
-      is_admin: false,
+      is_admin: isAdmin,
       created_at: now,
       updated_at: now
     };
@@ -155,8 +156,7 @@ export default class DynamoDBUserService extends IUserService {
     await this.db._dynamoUpdate('users', { id: userId }, {
       first_name: firstName,
       last_name: lastName,
-      favorite_team_id: favoriteTeamId || null,
-      updated_at: new Date().toISOString()
+      favorite_team_id: favoriteTeamId || null
     });
 
     return await this.getUserById(userId);
@@ -170,8 +170,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateAdminStatus(userId, isAdmin) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      is_admin: isAdmin,
-      updated_at: new Date().toISOString()
+      is_admin: isAdmin
     });
   }
 
@@ -183,8 +182,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateEmailVerified(userId, emailVerified) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      email_verified: emailVerified,
-      updated_at: new Date().toISOString()
+      email_verified: emailVerified
     });
   }
 
@@ -377,8 +375,6 @@ export default class DynamoDBUserService extends IUserService {
     if (Object.keys(updateItem).length === 0) {
       throw new Error('No valid fields to update');
     }
-
-    updateItem.updated_at = new Date().toISOString();
 
     await this.db._dynamoUpdate('users', { id: userId }, updateItem);
 

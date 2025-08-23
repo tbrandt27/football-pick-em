@@ -80,8 +80,8 @@ router.post('/register-invite', async (req, res) => {
 
     // Validate required fields
     if (!email || !password || !firstName || !lastName || !inviteToken) {
-      return res.status(400).json({ 
-        error: 'Email, password, first name, last name, and invite token are required' 
+      return res.status(400).json({
+        error: 'Email, password, first name, last name, and invite token are required'
       });
     }
 
@@ -96,7 +96,6 @@ router.post('/register-invite', async (req, res) => {
         invitation.expires_at <= new Date().toISOString()) {
       return res.status(400).json({ error: 'Invalid or expired invitation token' });
     }
-
 
     // Check if user already exists
     const userService = DatabaseServiceFactory.getUserService();
@@ -113,6 +112,9 @@ router.post('/register-invite', async (req, res) => {
     const userId = uuidv4();
     const emailVerificationToken = uuidv4();
     
+    // Determine if this should be an admin user
+    const isAdminInvitation = invitation.is_admin_invitation || false;
+    
     const createdUser = await userService.createUser({
       id: userId,
       email,
@@ -121,12 +123,15 @@ router.post('/register-invite', async (req, res) => {
       lastName,
       favoriteTeamId,
       emailVerificationToken,
-      emailVerified: true
+      emailVerified: true,
+      isAdmin: isAdminInvitation
     });
 
-    // Add user to the game using the game service
-    const gameService = DatabaseServiceFactory.getGameService();
-    await gameService.addParticipant(invitation.game_id, userId, 'player');
+    // Only add to game if this is not an admin invitation
+    if (!isAdminInvitation && invitation.game_id) {
+      const gameService = DatabaseServiceFactory.getGameService();
+      await gameService.addParticipant(invitation.game_id, userId, 'player');
+    }
 
     // Mark invitation as accepted
     await invitationService.updateInvitationStatus(invitation.id, 'accepted');
@@ -138,8 +143,15 @@ router.post('/register-invite', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    let successMessage;
+    if (isAdminInvitation) {
+      successMessage = 'Admin account created successfully! You now have administrative privileges.';
+    } else {
+      successMessage = `Account created successfully! You've been added to "${invitation.game_name}".`;
+    }
+
     res.status(201).json({
-      message: `Account created successfully! You've been added to "${invitation.game_name}".`,
+      message: successMessage,
       token,
       user: {
         id: userId,
@@ -147,7 +159,7 @@ router.post('/register-invite', async (req, res) => {
         firstName,
         lastName,
         favoriteTeamId: favoriteTeamId || null,
-        isAdmin: false,
+        isAdmin: isAdminInvitation,
         emailVerified: true
       }
     });

@@ -152,6 +152,34 @@ export default class DynamoDBGameService extends IGameService {
   }
 
   /**
+   * Get game by ID without access control (for admin operations)
+   * @param {string} gameId - Game ID
+   * @returns {Promise<Object|null>} Game information
+   */
+  async getGameByIdForAdmin(gameId) {
+    const gameResult = await this.db._dynamoGet('pickem_games', { id: gameId });
+    
+    if (!gameResult.Item) {
+      return null;
+    }
+
+    const game = gameResult.Item;
+
+    // Get participants
+    const participants = await this.getGameParticipants(gameId);
+    
+    const playerCount = participants.length;
+    const ownerCount = participants.filter(p => p.role === 'owner').length;
+
+    return {
+      ...game,
+      participants,
+      player_count: playerCount,
+      owner_count: ownerCount
+    };
+  }
+
+  /**
    * Create a new game
    * @param {Object} gameData - Game creation data
    * @returns {Promise<Object>} Created game

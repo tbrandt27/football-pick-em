@@ -96,7 +96,40 @@ export default class SQLiteGameService extends IGameService {
 
     const game = await db.get(
       `
-      SELECT 
+      SELECT
+        g.*,
+        COUNT(gp.id) as player_count,
+        COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
+      FROM pickem_games g
+      LEFT JOIN game_participants gp ON g.id = gp.game_id
+      WHERE g.id = ?
+      GROUP BY g.id
+    `,
+      [gameId]
+    );
+
+    if (!game) {
+      return null;
+    }
+
+    // Get participants
+    const participants = await this.getGameParticipants(gameId);
+
+    return {
+      ...game,
+      participants,
+    };
+  }
+
+  /**
+   * Get game by ID without access control (for admin operations)
+   * @param {string} gameId - Game ID
+   * @returns {Promise<Object|null>} Game information
+   */
+  async getGameByIdForAdmin(gameId) {
+    const game = await db.get(
+      `
+      SELECT
         g.*,
         COUNT(gp.id) as player_count,
         COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count

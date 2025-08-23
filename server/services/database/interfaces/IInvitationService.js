@@ -43,10 +43,38 @@ export default class IInvitationService {
   /**
    * Create a new invitation
    * @param {Object} invitationData - Invitation data
+   * @param {string} [invitationData.gameId] - Game ID (optional for admin invitations)
+   * @param {string} invitationData.email - Email address
+   * @param {string} invitationData.invitedByUserId - ID of user sending invitation
+   * @param {string} invitationData.inviteToken - Invitation token
+   * @param {string} invitationData.expiresAt - Expiration date
+   * @param {boolean} [invitationData.isAdminInvitation] - Whether this is an admin-only invitation
    * @returns {Promise<Object>} Created invitation
    */
   async createInvitation(invitationData) {
     throw new Error('createInvitation must be implemented');
+  }
+
+  /**
+   * Create an admin-only invitation (no game required)
+   * @param {Object} invitationData - Invitation data
+   * @param {string} invitationData.email - Email address
+   * @param {string} invitationData.invitedByUserId - ID of admin sending invitation
+   * @param {string} invitationData.inviteToken - Invitation token
+   * @param {string} invitationData.expiresAt - Expiration date
+   * @returns {Promise<Object>} Created invitation
+   */
+  async createAdminInvitation(invitationData) {
+    throw new Error('createAdminInvitation must be implemented');
+  }
+
+  /**
+   * Check if invitation exists for email (for admin invitations)
+   * @param {string} email - Email address
+   * @returns {Promise<Object|null>} Existing pending admin invitation
+   */
+  async checkExistingAdminInvitation(email) {
+    throw new Error('checkExistingAdminInvitation must be implemented');
   }
 
   /**

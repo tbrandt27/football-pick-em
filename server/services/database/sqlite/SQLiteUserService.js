@@ -77,14 +77,15 @@ export default class SQLiteUserService extends IUserService {
       lastName,
       favoriteTeamId,
       emailVerificationToken,
-      emailVerified = false
+      emailVerified = false,
+      isAdmin = false
     } = userData;
 
     await db.run(`
       INSERT INTO users (
         id, email, password, first_name, last_name, favorite_team_id,
-        email_verification_token, email_verified, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        email_verification_token, email_verified, is_admin, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `, [
       id,
       email.toLowerCase(),
@@ -93,7 +94,8 @@ export default class SQLiteUserService extends IUserService {
       lastName,
       favoriteTeamId || null,
       emailVerificationToken,
-      emailVerified ? 1 : 0
+      emailVerified ? 1 : 0,
+      isAdmin ? 1 : 0
     ]);
 
     return await this.getUserById(id);

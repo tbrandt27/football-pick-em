@@ -33,6 +33,15 @@ export default class IGameService {
   }
 
   /**
+   * Get game by ID without access control (for admin operations)
+   * @param {string} gameId - Game ID
+   * @returns {Promise<Object|null>} Game information
+   */
+  async getGameByIdForAdmin(gameId) {
+    throw new Error('getGameByIdForAdmin must be implemented');
+  }
+
+  /**
    * Create a new game
    * @param {Object} gameData - Game creation data
    * @param {string} gameData.gameName - Name of the game

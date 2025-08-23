@@ -311,6 +311,7 @@ const AdminDashboard: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold">Admin Dashboard</h1>
               <p className="text-lg opacity-90">NFL Pickem Administration</p>
+              <p className="text-sm opacity-75">Version 0.9.10</p>
             </div>
             <div className="flex items-center space-x-4">
               <a

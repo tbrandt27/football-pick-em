@@ -279,19 +279,66 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
     await this.run(`
       CREATE TABLE IF NOT EXISTS game_invitations (
         id TEXT PRIMARY KEY,
-        game_id TEXT NOT NULL,
+        game_id TEXT,
         email TEXT NOT NULL,
         invited_by_user_id TEXT NOT NULL,
         invite_token TEXT UNIQUE NOT NULL,
         status TEXT DEFAULT 'pending',
         expires_at DATETIME NOT NULL,
+        is_admin_invitation BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (game_id) REFERENCES pickem_games (id),
-        FOREIGN KEY (invited_by_user_id) REFERENCES users (id),
-        UNIQUE (game_id, email)
+        FOREIGN KEY (invited_by_user_id) REFERENCES users (id)
       )
     `);
+
+    // Add is_admin_invitation column to existing game_invitations table if it doesn't exist
+    try {
+      await this.run(`ALTER TABLE game_invitations ADD COLUMN is_admin_invitation BOOLEAN DEFAULT 0`);
+    } catch (e) {} // Column might already exist
+
+    // Update game_id to allow NULL for admin invitations by recreating constraint
+    try {
+      // First, check if we need to update the constraint
+      const tableInfo = await this.all(`PRAGMA table_info(game_invitations)`);
+      const gameIdColumn = tableInfo.find(col => col.name === 'game_id');
+      
+      if (gameIdColumn && gameIdColumn.notnull === 1) {
+        // Need to recreate table to allow NULL game_id
+        await this.run(`
+          CREATE TABLE IF NOT EXISTS game_invitations_new (
+            id TEXT PRIMARY KEY,
+            game_id TEXT,
+            email TEXT NOT NULL,
+            invited_by_user_id TEXT NOT NULL,
+            invite_token TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'pending',
+            expires_at DATETIME NOT NULL,
+            is_admin_invitation BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (game_id) REFERENCES pickem_games (id),
+            FOREIGN KEY (invited_by_user_id) REFERENCES users (id)
+          )
+        `);
+        
+        // Copy existing data
+        await this.run(`
+          INSERT INTO game_invitations_new
+          SELECT id, game_id, email, invited_by_user_id, invite_token, status, expires_at,
+                 COALESCE(is_admin_invitation, 0), created_at, updated_at
+          FROM game_invitations
+        `);
+        
+        // Drop old table and rename new one
+        await this.run(`DROP TABLE game_invitations`);
+        await this.run(`ALTER TABLE game_invitations_new RENAME TO game_invitations`);
+      }
+    } catch (e) {
+      // If recreation fails, just continue - the column addition might be enough
+      console.log("Note: Could not update game_invitations constraint, but column was added");
+    }
 
     console.log("SQLite database tables initialized");
   }

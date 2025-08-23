@@ -35,11 +35,24 @@ const UsersManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showInviteForm, setShowInviteForm] = useState(false);
+  const [showAdminInviteForm, setShowAdminInviteForm] = useState(false);
   const [inviteFormData, setInviteFormData] = useState({
     email: '',
     gameId: ''
   });
+  const [adminInviteEmail, setAdminInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [invitingAdmin, setInvitingAdmin] = useState(false);
+  const [showConfirmInviteModal, setShowConfirmInviteModal] = useState(false);
+  const [confirmInviteData, setConfirmInviteData] = useState({
+    invitationId: '',
+    email: '',
+    firstName: '',
+    lastName: '',
+    tempPassword: ''
+  });
+  const [confirmingInvitation, setConfirmingInvitation] = useState(false);
+  const [sendingPasswordReset, setSendingPasswordReset] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -177,29 +190,65 @@ const UsersManager: React.FC = () => {
     }
   };
 
-  const confirmInvitation = async (invitationId: string, email: string) => {
+  const openConfirmInviteModal = (invitationId: string, email: string) => {
+    setConfirmInviteData({
+      invitationId,
+      email,
+      firstName: '',
+      lastName: '',
+      tempPassword: ''
+    });
+    setShowConfirmInviteModal(true);
+  };
+
+  const confirmInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirmInviteData.firstName.trim() || !confirmInviteData.lastName.trim() || !confirmInviteData.tempPassword.trim()) {
+      setError('First name, last name, and temporary password are required');
+      return;
+    }
+
+    setConfirmingInvitation(true);
+    setError('');
+
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const response = await fetch(`/api/admin/invitations/${invitationId}/confirm`, {
+      const response = await fetch(`/api/admin/invitations/${confirmInviteData.invitationId}/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({
+          firstName: confirmInviteData.firstName.trim(),
+          lastName: confirmInviteData.lastName.trim(),
+          tempPassword: confirmInviteData.tempPassword.trim()
+        })
       });
 
       if (response.ok) {
         const result = await response.json();
         // Remove the invitation from the list since it's now confirmed
-        setInvitations(invitations.filter(inv => inv.id !== invitationId));
+        setInvitations(invitations.filter(inv => inv.id !== confirmInviteData.invitationId));
+        
+        // Close modal
+        setShowConfirmInviteModal(false);
+        setConfirmInviteData({
+          invitationId: '',
+          email: '',
+          firstName: '',
+          lastName: '',
+          tempPassword: ''
+        });
         
         // Show success message with temporary password
         setError('');
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.innerHTML = `
-          <div class="font-semibold">Account created for ${email}</div>
-          <div>Temporary password: <code class="bg-green-200 px-2 py-1 rounded font-mono">${result.temporaryPassword}</code></div>
+          <div class="font-semibold">Account created for ${confirmInviteData.email}</div>
+          <div>Name: ${confirmInviteData.firstName} ${confirmInviteData.lastName}</div>
+          <div>Temporary password: <code class="bg-green-200 px-2 py-1 rounded font-mono">${confirmInviteData.tempPassword}</code></div>
           <div class="text-sm mt-1">Send this password to the user securely</div>
         `;
         const errorDiv = document.querySelector('.bg-red-100');
@@ -216,6 +265,8 @@ const UsersManager: React.FC = () => {
       }
     } catch (err) {
       setError('Failed to confirm invitation');
+    } finally {
+      setConfirmingInvitation(false);
     }
   };
 
@@ -298,6 +349,92 @@ const UsersManager: React.FC = () => {
     }
   };
 
+  const handleInviteAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminInviteEmail.trim()) return;
+
+    setInvitingAdmin(true);
+    setError('');
+
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/invite-admin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: adminInviteEmail.trim()
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setShowAdminInviteForm(false);
+        setAdminInviteEmail('');
+        setError('');
+        
+        // Show success message briefly
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.textContent = result.message || 'Admin invitation sent successfully';
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+        }
+        
+        // Reload data to show any updates
+        await loadUsers();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to send admin invitation');
+      }
+    } catch (err) {
+      setError('Failed to send admin invitation');
+    } finally {
+      setInvitingAdmin(false);
+    }
+  };
+
+  const sendPasswordReset = async (userId: string, userName: string, userEmail: string) => {
+    setSendingPasswordReset(userId);
+    setError('');
+
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Show success message briefly
+        const successDiv = document.createElement('div');
+        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.textContent = result.message || `Password reset email sent to ${userName}`;
+        const errorDiv = document.querySelector('.bg-red-100');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to send password reset email');
+      }
+    } catch (err) {
+      setError('Failed to send password reset email');
+    } finally {
+      setSendingPasswordReset(null);
+    }
+  };
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
@@ -339,6 +476,12 @@ const UsersManager: React.FC = () => {
                 className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Invite User
+              </button>
+              <button
+                onClick={() => setShowAdminInviteForm(true)}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Invite Admin
               </button>
               <a
                 href="/admin"
@@ -544,11 +687,7 @@ const UsersManager: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
                           <button
-                            onClick={() => {
-                              if (confirm(`Manually confirm invitation for ${invitation.email}?\n\nThis will create a user account with a temporary password.`)) {
-                                confirmInvitation(invitation.id, invitation.email);
-                              }
-                            }}
+                            onClick={() => openConfirmInviteModal(invitation.id, invitation.email)}
                             className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
                           >
                             Confirm
@@ -579,12 +718,20 @@ const UsersManager: React.FC = () => {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Invitations</h3>
               <p className="text-gray-500 mb-4">There are currently no pending user invitations.</p>
-              <button
-                onClick={() => setShowInviteForm(true)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Invite a User
-              </button>
+              <div className="flex space-x-3 justify-center">
+                <button
+                  onClick={() => setShowInviteForm(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  Invite a User
+                </button>
+                <button
+                  onClick={() => setShowAdminInviteForm(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  Invite an Admin
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -646,6 +793,173 @@ const UsersManager: React.FC = () => {
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {inviting ? 'Sending...' : 'Send Invitation'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Invite Admin Modal */}
+        {showAdminInviteForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Invite Admin User</h3>
+              <form onSubmit={handleInviteAdmin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={adminInviteEmail}
+                    onChange={(e) => setAdminInviteEmail(e.target.value)}
+                    placeholder="Enter admin user's email address"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">
+                        Admin Invitation
+                      </h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>This will invite the user to become an administrator with full access to manage users, games, and system settings.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAdminInviteForm(false);
+                      setAdminInviteEmail('');
+                      setError('');
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={invitingAdmin}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {invitingAdmin ? 'Sending...' : 'Send Admin Invitation'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Confirm Invitation Modal */}
+        {showConfirmInviteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Confirm Invitation</h3>
+              <p className="text-gray-600 mb-4">
+                Create account for <strong>{confirmInviteData.email}</strong>
+              </p>
+              
+              <form onSubmit={confirmInvitation} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmInviteData.firstName}
+                    onChange={(e) => setConfirmInviteData({...confirmInviteData, firstName: e.target.value})}
+                    placeholder="Enter first name"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmInviteData.lastName}
+                    onChange={(e) => setConfirmInviteData({...confirmInviteData, lastName: e.target.value})}
+                    placeholder="Enter last name"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Temporary Password
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmInviteData.tempPassword}
+                    onChange={(e) => setConfirmInviteData({...confirmInviteData, tempPassword: e.target.value})}
+                    placeholder="Enter temporary password"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    This password will be shown to you after account creation.
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800">
+                        Account Creation
+                      </h3>
+                      <div className="mt-2 text-sm text-blue-700">
+                        <p>This will create a user account with the provided details and the user will be added to the invited game.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConfirmInviteModal(false);
+                      setConfirmInviteData({
+                        invitationId: '',
+                        email: '',
+                        firstName: '',
+                        lastName: '',
+                        tempPassword: ''
+                      });
+                      setError('');
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={confirmingInvitation}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {confirmingInvitation ? 'Creating Account...' : 'Create Account'}
                   </button>
                 </div>
               </form>

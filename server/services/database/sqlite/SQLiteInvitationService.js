@@ -23,7 +23,11 @@ export default class SQLiteInvitationService extends IInvitationService {
         gi.status,
         gi.expires_at,
         gi.created_at,
-        g.game_name as game_name,
+        gi.is_admin_invitation,
+        CASE
+          WHEN gi.is_admin_invitation = 1 THEN 'Admin Invitation'
+          ELSE g.game_name
+        END as game_name,
         u.first_name || ' ' || u.last_name as invited_by_name
       FROM game_invitations gi
       LEFT JOIN pickem_games g ON gi.game_id = g.id
@@ -91,24 +95,71 @@ export default class SQLiteInvitationService extends IInvitationService {
       email,
       invitedByUserId,
       inviteToken,
+      expiresAt,
+      isAdminInvitation = false
+    } = invitationData;
+
+    const invitationId = uuidv4();
+
+    await this.db.run(`
+      INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at, is_admin_invitation)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      invitationId,
+      gameId || null,
+      email.toLowerCase(),
+      invitedByUserId,
+      inviteToken,
+      expiresAt,
+      isAdminInvitation ? 1 : 0
+    ]);
+
+    return await this.getInvitationById(invitationId);
+  }
+
+  /**
+   * Create an admin-only invitation (no game required)
+   * @param {Object} invitationData - Invitation data
+   * @returns {Promise<Object>} Created invitation
+   */
+  async createAdminInvitation(invitationData) {
+    const {
+      email,
+      invitedByUserId,
+      inviteToken,
       expiresAt
     } = invitationData;
 
     const invitationId = uuidv4();
 
     await this.db.run(`
-      INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at, is_admin_invitation)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
       invitationId,
-      gameId,
+      null, // No game for admin invitations
       email.toLowerCase(),
       invitedByUserId,
       inviteToken,
-      expiresAt
+      expiresAt,
+      1 // Mark as admin invitation
     ]);
 
     return await this.getInvitationById(invitationId);
+  }
+
+  /**
+   * Check if invitation exists for email (for admin invitations)
+   * @param {string} email - Email address
+   * @returns {Promise<Object|null>} Existing pending admin invitation
+   */
+  async checkExistingAdminInvitation(email) {
+    const invitation = await this.db.get(`
+      SELECT * FROM game_invitations
+      WHERE email = ? AND status = 'pending' AND is_admin_invitation = 1
+    `, [email.toLowerCase()]);
+
+    return invitation || null;
   }
 
   /**

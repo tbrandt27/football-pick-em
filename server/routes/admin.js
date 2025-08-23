@@ -410,12 +410,42 @@ router.post(
         return res.status(404).json({ error: "Invalid or expired invitation" });
       }
 
-      // Get game name
-      const gameService = DatabaseServiceFactory.getGameService();
-      const game = await gameService.getGameById(invitation.game_id);
-      if (game) {
-        invitation.game_name = game.game_name;
+      // Get game name - handle both regular and admin invitations
+      let gameName = 'Admin Invitation';
+      if (invitation.game_id) {
+        // This is a regular game invitation - use admin bypass method
+        const gameService = DatabaseServiceFactory.getGameService();
+        try {
+          // Try the new admin method first
+          if (gameService.getGameByIdForAdmin) {
+            const game = await gameService.getGameByIdForAdmin(invitation.game_id);
+            if (game) {
+              gameName = game.game_name;
+            }
+          } else {
+            // Fallback to direct database access for admin operations
+            if (db.getType() === 'dynamodb') {
+              const gameResult = await db.get({
+                action: 'get',
+                table: 'pickem_games',
+                key: { id: invitation.game_id }
+              });
+              if (gameResult && gameResult.Item) {
+                gameName = gameResult.Item.game_name;
+              }
+            } else {
+              const game = await db.get("SELECT game_name FROM pickem_games WHERE id = ?", [invitation.game_id]);
+              if (game) {
+                gameName = game.game_name;
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`Could not get game name for invitation ${invitationId}:`, error);
+          // Use default name for admin invitations or when game lookup fails
+        }
       }
+      invitation.game_name = gameName;
 
       // Check if user already exists
       const userService = DatabaseServiceFactory.getUserService();
@@ -445,8 +475,11 @@ router.post(
         emailVerified: true  // Admin-created accounts are pre-verified
       });
 
-      // Add user to the game
-      await gameService.addParticipant(invitation.game_id, userId, 'player');
+      // Add user to the game (only for regular game invitations)
+      if (invitation.game_id) {
+        const gameService = DatabaseServiceFactory.getGameService();
+        await gameService.addParticipant(invitation.game_id, userId, 'player');
+      }
 
       // Mark invitation as accepted
       await invitationService.updateInvitationStatus(invitation.id, 'accepted');
@@ -1691,6 +1724,116 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
     }
   } catch (error) {
     console.error("Admin invite user error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Invite admin user (admin only)
+router.post("/invite-admin", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Get admin user information for invitation
+    const userService = DatabaseServiceFactory.getUserService();
+    const inviter = await userService.getUserBasicInfo(req.user.id);
+
+    // Check if user already exists
+    const existingUser = await userService.getUserByEmail(normalizedEmail);
+    if (existingUser) {
+      return res.status(409).json({ error: "User with this email already exists" });
+    }
+
+    // Check if admin invitation already exists
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const existingInvitation = await invitationService.checkExistingAdminInvitation(normalizedEmail);
+    if (existingInvitation) {
+      return res.status(409).json({
+        error: "Admin invitation already sent to this email"
+      });
+    }
+
+    // Create admin invitation
+    const crypto = await import("crypto");
+    const { v4: uuidv4 } = await import("uuid");
+    const inviteToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
+    const invitation = await invitationService.createAdminInvitation({
+      email: normalizedEmail,
+      invitedByUserId: req.user.id,
+      inviteToken,
+      expiresAt: expiresAt.toISOString()
+    });
+
+    // Send invitation email
+    const emailResult = await emailService.sendAdminInvitation(
+      normalizedEmail,
+      `${inviter.first_name} ${inviter.last_name}`,
+      inviteToken
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send admin invitation email:", emailResult.error);
+      // Still return success since the invitation was saved to database
+    }
+
+    res.json({
+      message: `Admin invitation sent to ${normalizedEmail}. They'll receive an email to create their admin account.`,
+      type: "admin_invitation_sent",
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    console.error("Admin invite user error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send password reset email for a user (admin only)
+router.post("/users/:userId/reset-password", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Get user info
+    const userService = DatabaseServiceFactory.getUserService();
+    const user = await userService.getUserBasicInfo(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Generate reset token
+    const { v4: uuidv4 } = await import("uuid");
+    const resetToken = uuidv4();
+    const resetExpires = new Date(Date.now() + 3600000); // 1 hour from now
+
+    await userService.setPasswordResetToken(userId, resetToken, resetExpires);
+
+    // Send reset email
+    const emailResult = await emailService.sendPasswordReset(
+      user.email,
+      `${user.first_name} ${user.last_name}`,
+      resetToken
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send password reset email:", emailResult.error);
+      return res.status(500).json({
+        error: "Failed to send password reset email. Please check email configuration."
+      });
+    }
+
+    res.json({
+      message: `Password reset email sent to ${user.email}`,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("Admin password reset error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
