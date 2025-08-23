@@ -537,6 +537,9 @@ router.delete(
     try {
       const { gameId } = req.params;
 
+      console.log(`[Game Deletion] Starting deletion for game: ${gameId}`);
+      console.log(`[Game Deletion] Database type: ${db.getType()}`);
+
       const existingGame = await db.get(
         "SELECT id FROM pickem_games WHERE id = ?",
         [gameId]
@@ -545,15 +548,59 @@ router.delete(
         return res.status(404).json({ error: "Game not found" });
       }
 
-      // Delete related records manually to handle foreign key constraints
-      await db.run("DELETE FROM picks WHERE game_id = ?", [gameId]);
-      await db.run("DELETE FROM weekly_standings WHERE game_id = ?", [gameId]);
-      await db.run("DELETE FROM game_invitations WHERE game_id = ?", [gameId]);
-      await db.run("DELETE FROM game_participants WHERE game_id = ?", [gameId]);
+      // Handle deletion differently for DynamoDB vs SQLite
+      if (db.getType() === 'dynamodb') {
+        console.log(`[Game Deletion] Using DynamoDB deletion strategy`);
+        
+        // For DynamoDB, we need to find records by game_id and delete them by their primary key (id)
+        
+        // Delete picks
+        console.log(`[Game Deletion] Deleting picks...`);
+        const picks = await db.all("SELECT id FROM picks WHERE game_id = ?", [gameId]);
+        console.log(`[Game Deletion] Found ${picks.length} picks to delete`);
+        for (const pick of picks) {
+          await db.run("DELETE FROM picks WHERE id = ?", [pick.id]);
+        }
+        
+        // Delete weekly standings
+        console.log(`[Game Deletion] Deleting weekly standings...`);
+        const standings = await db.all("SELECT id FROM weekly_standings WHERE game_id = ?", [gameId]);
+        console.log(`[Game Deletion] Found ${standings.length} weekly standings to delete`);
+        for (const standing of standings) {
+          await db.run("DELETE FROM weekly_standings WHERE id = ?", [standing.id]);
+        }
+        
+        // Delete game invitations
+        console.log(`[Game Deletion] Deleting game invitations...`);
+        const invitations = await db.all("SELECT id FROM game_invitations WHERE game_id = ?", [gameId]);
+        console.log(`[Game Deletion] Found ${invitations.length} invitations to delete`);
+        for (const invitation of invitations) {
+          await db.run("DELETE FROM game_invitations WHERE id = ?", [invitation.id]);
+        }
+        
+        // Delete game participants
+        console.log(`[Game Deletion] Deleting game participants...`);
+        const participants = await db.all("SELECT id FROM game_participants WHERE game_id = ?", [gameId]);
+        console.log(`[Game Deletion] Found ${participants.length} participants to delete`);
+        for (const participant of participants) {
+          await db.run("DELETE FROM game_participants WHERE id = ?", [participant.id]);
+        }
+        
+        console.log(`[Game Deletion] All related records deleted, now deleting game itself`);
+      } else {
+        console.log(`[Game Deletion] Using SQLite deletion strategy`);
+        
+        // For SQLite, use direct deletion by foreign key
+        await db.run("DELETE FROM picks WHERE game_id = ?", [gameId]);
+        await db.run("DELETE FROM weekly_standings WHERE game_id = ?", [gameId]);
+        await db.run("DELETE FROM game_invitations WHERE game_id = ?", [gameId]);
+        await db.run("DELETE FROM game_participants WHERE game_id = ?", [gameId]);
+      }
       
-      // Finally delete the game itself
+      // Finally delete the game itself (same for both databases since we're deleting by primary key)
       await db.run("DELETE FROM pickem_games WHERE id = ?", [gameId]);
 
+      console.log(`[Game Deletion] Game ${gameId} deleted successfully`);
       res.json({ message: "Game deleted successfully" });
     } catch (error) {
       console.error("Delete game error:", error);
