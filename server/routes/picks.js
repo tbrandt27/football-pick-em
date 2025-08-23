@@ -63,20 +63,9 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'You are not a participant in this game' });
     }
 
-    // Get football game details using database provider directly
-    // TODO: This should be moved to a FootballGameService when implemented
-    const dbProvider = db.provider;
-    const dbType = db.getType();
-    
-    let footballGame;
-    if (dbType === 'dynamodb') {
-      const gameResult = await dbProvider._dynamoGet('football_games', { id: footballGameId });
-      footballGame = gameResult.Item;
-    } else {
-      footballGame = await dbProvider.get(`
-        SELECT * FROM football_games WHERE id = ?
-      `, [footballGameId]);
-    }
+    // Get football game details using NFL Data Service
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    const footballGame = await nflDataService.getFootballGameById(footballGameId);
 
     if (!footballGame) {
       return res.status(404).json({ error: 'Football game not found' });

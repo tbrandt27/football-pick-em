@@ -225,4 +225,13 @@ export default class SQLiteSeasonService extends ISeasonService {
       ORDER BY s.season DESC
     `);
   }
+
+  /**
+   * Get season by year
+   * @param {string} year - Season year
+   * @returns {Promise<Object|null>} Season or null
+   */
+  async getSeasonByYear(year) {
+    return await db.get('SELECT * FROM seasons WHERE season = ?', [year]);
+  }
 }

@@ -67,4 +67,32 @@ export default class INFLDataService {
   async getCurrentSeason() {
     throw new Error('getCurrentSeason must be implemented');
   }
+
+  /**
+   * Get football games by season and week
+   * @param {string} seasonId - Season ID
+   * @param {number} week - Week number
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeasonAndWeek(seasonId, week) {
+    throw new Error('getGamesBySeasonAndWeek must be implemented');
+  }
+
+  /**
+   * Get football games by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeason(seasonId) {
+    throw new Error('getGamesBySeason must be implemented');
+  }
+
+  /**
+   * Get football game by ID
+   * @param {string} gameId - Football game ID
+   * @returns {Promise<Object|null>} Football game or null
+   */
+  async getFootballGameById(gameId) {
+    throw new Error('getFootballGameById must be implemented');
+  }
 }

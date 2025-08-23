@@ -50,18 +50,34 @@ export default class DynamoDBSeasonService extends ISeasonService {
   }
 
   /**
+   * Get season by year
+   * @param {string} year - Season year
+   * @returns {Promise<Object|null>} Season or null
+   */
+  async getSeasonByYear(year) {
+    const result = await this.db._dynamoScan('seasons', { season: year });
+    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+  }
+
+  /**
    * Create a new season
-   * @param {Object} seasonData - Season data
-   * @param {string} seasonData.season - Season year/identifier
-   * @param {boolean} [seasonData.isCurrent] - Whether this is the current season
+   * @param {Object|string} seasonData - Season data or year string
+   * @param {string} seasonData.season - Season year/identifier (if object)
+   * @param {boolean} [seasonData.isCurrent] - Whether this is the current season (if object)
    * @returns {Promise<Object>} Created season
    */
   async createSeason(seasonData) {
-    const { season, isCurrent = false } = seasonData;
+    // Handle both string and object inputs for compatibility
+    let season, isCurrent = false;
+    if (typeof seasonData === 'string') {
+      season = seasonData;
+    } else {
+      season = seasonData.season;
+      isCurrent = seasonData.isCurrent || false;
+    }
 
     // Check if season already exists
-    const allSeasons = await this.getAllSeasons();
-    const existingSeason = allSeasons.find(s => s.season === season);
+    const existingSeason = await this.getSeasonByYear(season);
     if (existingSeason) {
       throw new Error('Season already exists');
     }
@@ -70,18 +86,22 @@ export default class DynamoDBSeasonService extends ISeasonService {
     if (isCurrent) {
       const currentSeason = await this.getCurrentSeason();
       if (currentSeason) {
-        await this.db._dynamoUpdate('seasons', 
-          { id: currentSeason.id }, 
+        await this.db._dynamoUpdate('seasons',
+          { id: currentSeason.id },
           { is_current: false }
         );
       }
     }
 
-    const seasonId = uuidv4();
+    const seasonId = "season-" + Date.now();
     const seasonItem = {
       id: seasonId,
       season,
-      is_current: isCurrent
+      is_current: isCurrent,
+      game_count: 0,
+      football_games_count: 0,
+      year: parseInt(season),
+      is_active: Boolean(isCurrent)
     };
     
     await this.db._dynamoPut('seasons', seasonItem);

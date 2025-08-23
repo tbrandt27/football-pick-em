@@ -759,49 +759,10 @@ router.delete(
 // Get all seasons (for season management)
 router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Handle different database types
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, we need to do separate queries and aggregate in JavaScript
-      const seasons = await db.all('SELECT * FROM seasons ORDER BY season DESC');
-      
-      // For each season, get the game counts
-      const seasonsWithCounts = await Promise.all(seasons.map(async (season) => {
-        // Get pickem game count
-        const pickemGames = await db.all('SELECT id FROM pickem_games WHERE season_id = ?', [season.id]);
-        const game_count = pickemGames.length;
-        
-        // Get football game count
-        const footballGames = await db.all('SELECT id FROM football_games WHERE season_id = ?', [season.id]);
-        const football_games_count = footballGames.length;
-        
-        return {
-          ...season,
-          game_count,
-          football_games_count,
-          year: parseInt(season.season), // Convert to integer
-          is_active: Boolean(season.is_current)
-        };
-      }));
-      
-      res.json({ seasons: seasonsWithCounts });
-    } else {
-      // For SQLite, use the optimized JOIN query
-      const seasons = await db.all(`
-        SELECT
-          s.*,
-          COUNT(DISTINCT pg.id) as game_count,
-          COUNT(DISTINCT ng.id) as football_games_count,
-          CAST(s.season AS INTEGER) as year,
-          s.is_current as is_active
-        FROM seasons s
-        LEFT JOIN pickem_games pg ON s.id = pg.season_id
-        LEFT JOIN football_games ng ON s.id = ng.season_id
-        GROUP BY s.id
-        ORDER BY s.season DESC
-      `);
-
-      res.json({ seasons });
-    }
+    const seasonService = DatabaseServiceFactory.getSeasonService();
+    const seasons = await seasonService.getAllSeasonsWithCounts();
+    
+    res.json({ seasons });
   } catch (error) {
     console.error("Get admin seasons error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -817,54 +778,15 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Year is required" });
     }
 
+    const seasonService = DatabaseServiceFactory.getSeasonService();
+    
     // Check if season already exists
-    const existingSeason = await db.get(
-      "SELECT id FROM seasons WHERE season = ?",
-      [year.toString()]
-    );
+    const existingSeason = await seasonService.getSeasonByYear(year.toString());
     if (existingSeason) {
       return res.status(409).json({ error: "Season already exists" });
     }
 
-    const seasonId = "season-" + Date.now();
-
-    await db.run(
-      `
-      INSERT INTO seasons (id, season, is_current)
-      VALUES (?, ?, 0)
-    `,
-      [seasonId, year.toString()]
-    );
-
-    let newSeason;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get the season and add counts manually
-      const season = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
-      if (season) {
-        newSeason = {
-          ...season,
-          game_count: 0,
-          football_games_count: 0,
-          year: parseInt(season.season),
-          is_active: Boolean(season.is_current)
-        };
-      }
-    } else {
-      // For SQLite, use the optimized query
-      newSeason = await db.get(
-        `
-        SELECT
-          *,
-          0 as game_count,
-          0 as football_games_count,
-          CAST(season AS INTEGER) as year,
-          is_current as is_active
-        FROM seasons
-        WHERE id = ?
-      `,
-        [seasonId]
-      );
-    }
+    const newSeason = await seasonService.createSeason(year.toString());
 
     res.status(201).json({
       message: "Season created successfully",

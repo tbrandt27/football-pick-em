@@ -174,4 +174,13 @@ export default class IGameService {
   async updateCommissionerForGamesWithoutCommissioner(userId) {
     throw new Error('updateCommissionerForGamesWithoutCommissioner must be implemented');
   }
+
+  /**
+   * Get game count by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<number>} Number of games in season
+   */
+  async getGameCountBySeason(seasonId) {
+    throw new Error('getGameCountBySeason must be implemented');
+  }
 }

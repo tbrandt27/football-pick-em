@@ -102,4 +102,24 @@ export default class IPickService {
   async bulkUpdatePickCorrectness(updates) {
     throw new Error('bulkUpdatePickCorrectness must be implemented');
   }
+
+  /**
+   * Update all picks for a completed game
+   * @param {string} footballGameId - Football game ID
+   * @param {string|null} winningTeamId - Winning team ID (null for ties)
+   * @returns {Promise<{updatedCount: number}>} Number of picks updated
+   */
+  async updatePicksForGame(footballGameId, winningTeamId) {
+    throw new Error('updatePicksForGame must be implemented');
+  }
+
+  /**
+   * Get pick statistics for a season
+   * @param {string} seasonId - Season ID
+   * @param {number|null} [week] - Specific week (optional)
+   * @returns {Promise<Object>} Pick statistics
+   */
+  async getPicksStatsBySeason(seasonId, week = null) {
+    throw new Error('getPicksStatsBySeason must be implemented');
+  }
 }

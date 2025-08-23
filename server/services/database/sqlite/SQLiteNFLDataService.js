@@ -187,8 +187,47 @@ export default class SQLiteNFLDataService extends INFLDataService {
    */
   async getCurrentSeason() {
     return await db.get(`
-      SELECT * FROM seasons 
+      SELECT * FROM seasons
       WHERE is_current = 1
     `);
+  }
+
+  /**
+   * Get football games by season and week
+   * @param {string} seasonId - Season ID
+   * @param {number} week - Week number
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeasonAndWeek(seasonId, week) {
+    return await db.all(`
+      SELECT * FROM football_games
+      WHERE season_id = ? AND week = ?
+      ORDER BY start_time
+    `, [seasonId, parseInt(week)]);
+  }
+
+  /**
+   * Get football games by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeason(seasonId) {
+    return await db.all(`
+      SELECT * FROM football_games
+      WHERE season_id = ?
+      ORDER BY week, start_time
+    `, [seasonId]);
+  }
+
+  /**
+   * Get football game by ID
+   * @param {string} gameId - Football game ID
+   * @returns {Promise<Object|null>} Football game or null
+   */
+  async getFootballGameById(gameId) {
+    return await db.get(`
+      SELECT * FROM football_games
+      WHERE id = ?
+    `, [gameId]);
   }
 }

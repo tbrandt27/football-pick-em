@@ -211,10 +211,9 @@ router.post(
 
       const normalizedEmail = userEmail.toLowerCase();
 
-      // Get game information
-      const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [
-        gameId,
-      ]);
+      // Get game information using service layer
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameById(gameId, req.user.id);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
@@ -229,22 +228,8 @@ router.post(
       if (existingUser) {
         // User exists - add them directly to the game
 
-        // Check if user is already in the game
-        let existingParticipant;
-        if (db.getType() === 'dynamodb') {
-          // For DynamoDB, get all participants and filter in JavaScript
-          const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-          existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
-        } else {
-          // For SQLite, use the efficient query
-          existingParticipant = await db.get(
-            `
-          SELECT id FROM game_participants
-          WHERE game_id = ? AND user_id = ?
-        `,
-            [gameId, existingUser.id]
-          );
-        }
+        // Check if user is already in the game using service layer
+        const existingParticipant = await gameService.getParticipant(gameId, existingUser.id);
 
         if (existingParticipant) {
           return res
@@ -252,14 +237,8 @@ router.post(
             .json({ error: "User is already in this game" });
         }
 
-        // Add user as player
-        await db.run(
-          `
-        INSERT INTO game_participants (id, game_id, user_id, role)
-        VALUES (?, ?, ?, 'player')
-      `,
-          [uuidv4(), gameId, existingUser.id]
-        );
+        // Add user as player using service layer
+        await gameService.addParticipant(gameId, existingUser.id, 'player');
 
         res.json({
           message: "Player added successfully",
@@ -330,21 +309,8 @@ router.delete(
     try {
       const { gameId, userId } = req.params;
 
-      let participant;
-      if (db.getType() === 'dynamodb') {
-        // For DynamoDB, get all participants and filter in JavaScript
-        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-        participant = allParticipants.find(p => p.user_id === userId);
-      } else {
-        // For SQLite, use the efficient query
-        participant = await db.get(
-          `
-        SELECT id, role FROM game_participants
-        WHERE game_id = ? AND user_id = ?
-      `,
-          [gameId, userId]
-        );
-      }
+      const gameService = DatabaseServiceFactory.getGameService();
+      const participant = await gameService.getParticipant(gameId, userId);
 
       if (!participant) {
         return res.status(404).json({ error: "User is not in this game" });
@@ -355,22 +321,8 @@ router.delete(
         return res.status(400).json({ error: "Cannot remove game owner" });
       }
 
-      await db.run(
-        `
-      DELETE FROM game_participants 
-      WHERE game_id = ? AND user_id = ?
-    `,
-        [gameId, userId]
-      );
-
-      // Also remove any picks for this user in this game
-      await db.run(
-        `
-      DELETE FROM picks 
-      WHERE user_id = ? AND game_id = ?
-    `,
-        [userId, gameId]
-      );
+      // Remove participant and their picks using service layer
+      await gameService.removeParticipant(gameId, userId);
 
       res.json({ message: "Player removed successfully" });
     } catch (error) {

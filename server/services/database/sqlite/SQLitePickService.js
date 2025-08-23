@@ -281,4 +281,91 @@ export default class SQLitePickService extends IPickService {
       throw error;
     }
   }
+
+  /**
+   * Update all picks for a completed game
+   * @param {string} footballGameId - Football game ID
+   * @param {string|null} winningTeamId - Winning team ID (null for ties)
+   * @returns {Promise<{updatedCount: number}>} Number of picks updated
+   */
+  async updatePicksForGame(footballGameId, winningTeamId) {
+    return new Promise((resolve, reject) => {
+      if (winningTeamId) {
+        this.db.run(`
+          UPDATE picks
+          SET is_correct = CASE
+            WHEN pick_team_id = ? THEN 1
+            ELSE 0
+          END,
+          updated_at = datetime('now')
+          WHERE football_game_id = ?
+        `, [winningTeamId, footballGameId], function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ updatedCount: this.changes });
+          }
+        });
+      } else {
+        // Handle tie games - mark all picks as incorrect
+        this.db.run(`
+          UPDATE picks
+          SET is_correct = 0,
+          updated_at = datetime('now')
+          WHERE football_game_id = ?
+        `, [footballGameId], function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ updatedCount: this.changes });
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Get pick statistics for a season
+   * @param {string} seasonId - Season ID
+   * @param {number|null} [week] - Specific week (optional)
+   * @returns {Promise<Object>} Pick statistics
+   */
+  async getPicksStatsBySeason(seasonId, week = null) {
+    return new Promise((resolve, reject) => {
+      let whereClause = 'WHERE season_id = ?';
+      let params = [seasonId];
+      
+      if (week) {
+        whereClause += ' AND week = ?';
+        params.push(week);
+      }
+
+      this.db.get(`
+        SELECT
+          COUNT(*) as total_picks,
+          COUNT(CASE WHEN is_correct = 1 THEN 1 END) as correct_picks,
+          COUNT(CASE WHEN is_correct = 0 THEN 1 END) as incorrect_picks,
+          COUNT(CASE WHEN is_correct IS NULL THEN 1 END) as pending_picks,
+          ROUND(
+            (COUNT(CASE WHEN is_correct = 1 THEN 1 END) * 100.0) /
+            NULLIF(COUNT(CASE WHEN is_correct IS NOT NULL THEN 1 END), 0),
+            2
+          ) as accuracy_percentage
+        FROM picks
+        ${whereClause}
+      `, params, (err, result) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(result || {
+            total_picks: 0,
+            correct_picks: 0,
+            incorrect_picks: 0,
+            pending_picks: 0,
+            accuracy_percentage: 0
+          });
+        }
+      });
+    });
+  }
 }

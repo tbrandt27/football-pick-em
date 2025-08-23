@@ -161,4 +161,40 @@ export default class DynamoDBNFLDataService extends INFLDataService {
 
     return result.Items && result.Items.length > 0 ? result.Items[0] : null;
   }
+
+  /**
+   * Get football games by season and week
+   * @param {string} seasonId - Season ID
+   * @param {number} week - Week number
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeasonAndWeek(seasonId, week) {
+    const gamesResult = await this.db._dynamoScan('football_games', {
+      season_id: seasonId,
+      week: parseInt(week)
+    });
+    return gamesResult.Items || [];
+  }
+
+  /**
+   * Get football games by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Array>} Football games
+   */
+  async getGamesBySeason(seasonId) {
+    const gamesResult = await this.db._dynamoScan('football_games', {
+      season_id: seasonId
+    });
+    return gamesResult.Items || [];
+  }
+
+  /**
+   * Get football game by ID
+   * @param {string} gameId - Football game ID
+   * @returns {Promise<Object|null>} Football game or null
+   */
+  async getFootballGameById(gameId) {
+    const gameResult = await this.db._dynamoGet('football_games', { id: gameId });
+    return gameResult.Item || null;
+  }
 }

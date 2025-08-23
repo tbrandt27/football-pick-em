@@ -455,4 +455,14 @@ export default class SQLiteGameService extends IGameService {
       [userId]
     );
   }
+
+  /**
+   * Get game count by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<number>} Number of games in season
+   */
+  async getGameCountBySeason(seasonId) {
+    const result = await db.get('SELECT COUNT(*) as count FROM pickem_games WHERE season_id = ?', [seasonId]);
+    return result ? result.count : 0;
+  }
 }

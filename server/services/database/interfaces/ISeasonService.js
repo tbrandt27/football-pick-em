@@ -29,6 +29,15 @@ export default class ISeasonService {
   }
 
   /**
+   * Get season by year
+   * @param {string} year - Season year
+   * @returns {Promise<Object|null>} Season or null
+   */
+  async getSeasonByYear(year) {
+    throw new Error('getSeasonByYear must be implemented');
+  }
+
+  /**
    * Create a new season
    * @param {Object} seasonData - Season data
    * @param {string} seasonData.season - Season year/identifier

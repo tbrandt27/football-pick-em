@@ -308,4 +308,63 @@ export default class DynamoDBPickService extends IPickService {
       }
     }
   }
+
+  /**
+   * Update all picks for a completed game
+   * @param {string} footballGameId - Football game ID
+   * @param {string|null} winningTeamId - Winning team ID (null for ties)
+   * @returns {Promise<{updatedCount: number}>} Number of picks updated
+   */
+  async updatePicksForGame(footballGameId, winningTeamId) {
+    // Get all picks for this football game
+    const picksResult = await this.db._dynamoScan('picks', { football_game_id: footballGameId });
+    const picks = picksResult.Items || [];
+    
+    let updatedCount = 0;
+    
+    for (const pick of picks) {
+      try {
+        const isCorrect = winningTeamId ? (pick.pick_team_id === winningTeamId ? 1 : 0) : 0;
+        await this.db._dynamoUpdate('picks', { id: pick.id }, {
+          is_correct: isCorrect,
+          updated_at: new Date().toISOString()
+        });
+        updatedCount++;
+      } catch (error) {
+        console.error(`Failed to update pick ${pick.id}:`, error);
+      }
+    }
+    
+    return { updatedCount };
+  }
+
+  /**
+   * Get pick statistics for a season
+   * @param {string} seasonId - Season ID
+   * @param {number|null} [week] - Specific week (optional)
+   * @returns {Promise<Object>} Pick statistics
+   */
+  async getPicksStatsBySeason(seasonId, week = null) {
+    // Build scan conditions
+    let pickConditions = { season_id: seasonId };
+    if (week) pickConditions.week = parseInt(week);
+    
+    const picksResult = await this.db._dynamoScan('picks', pickConditions);
+    const picks = picksResult.Items || [];
+    
+    const totalPicks = picks.length;
+    const correctPicks = picks.filter(p => p.is_correct === 1 || p.is_correct === true).length;
+    const incorrectPicks = picks.filter(p => p.is_correct === 0 || p.is_correct === false).length;
+    const pendingPicks = picks.filter(p => p.is_correct === null || p.is_correct === undefined).length;
+    const completedPicks = correctPicks + incorrectPicks;
+    const accuracyPercentage = completedPicks > 0 ? Math.round((correctPicks / completedPicks) * 100 * 100) / 100 : 0;
+    
+    return {
+      total_picks: totalPicks,
+      correct_picks: correctPicks,
+      incorrect_picks: incorrectPicks,
+      pending_picks: pendingPicks,
+      accuracy_percentage: accuracyPercentage
+    };
+  }
 }

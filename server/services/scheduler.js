@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import espnService from './espnApi.js';
 import pickCalculator from './pickCalculator.js';
-import db from '../models/database.js';
+import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 
 class SchedulerService {
   constructor() {
@@ -52,7 +52,8 @@ class SchedulerService {
    */
   async getCurrentSeason() {
     try {
-      const season = await db.get('SELECT * FROM seasons WHERE is_current = 1');
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getCurrentSeason();
       return season;
     } catch (error) {
       console.error('Failed to get current season:', error);

@@ -1,5 +1,5 @@
-import db from '../models/database.js';
 import espnService from './espnApi.js';
+import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 
 class OnDemandUpdateService {
   constructor() {
@@ -12,44 +12,23 @@ class OnDemandUpdateService {
    */
   async areScoresStale(seasonId, week) {
     try {
-      const dbProvider = db.provider; // Use singleton database provider
-      const dbType = db.getType();
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const games = await nflDataService.getGamesBySeasonAndWeek(seasonId, week);
       
-      let result;
+      const totalGames = games.length;
+      const updatedGames = games.filter(game => game.scores_updated_at).length;
+      const lastUpdate = games.reduce((latest, game) => {
+        if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
+          return game.scores_updated_at;
+        }
+        return latest;
+      }, null);
       
-      if (dbType === 'dynamodb') {
-        // For DynamoDB, scan games and calculate manually
-        const gamesResult = await dbProvider._dynamoScan('football_games', {
-          season_id: seasonId,
-          week: week
-        });
-        const games = gamesResult.Items || [];
-        
-        const totalGames = games.length;
-        const updatedGames = games.filter(game => game.scores_updated_at).length;
-        const lastUpdate = games.reduce((latest, game) => {
-          if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
-            return game.scores_updated_at;
-          }
-          return latest;
-        }, null);
-        
-        result = {
-          total_games: totalGames,
-          updated_games: updatedGames,
-          last_update: lastUpdate
-        };
-      } else {
-        // For SQLite, use the existing query
-        result = await dbProvider.get(`
-          SELECT
-            COUNT(*) as total_games,
-            COUNT(scores_updated_at) as updated_games,
-            MAX(scores_updated_at) as last_update
-          FROM football_games
-          WHERE season_id = ? AND week = ?
-        `, [seasonId, week]);
-      }
+      const result = {
+        total_games: totalGames,
+        updated_games: updatedGames,
+        last_update: lastUpdate
+      };
 
       if (!result || result.total_games === 0) {
         return true; // No games found, consider stale
@@ -64,9 +43,9 @@ class OnDemandUpdateService {
       }
 
       // Check if last update was more than threshold minutes ago
-      const lastUpdate = new Date(result.last_update);
+      const lastUpdateDate = new Date(result.last_update);
       const now = new Date();
-      const minutesSinceUpdate = (now - lastUpdate) / (1000 * 60);
+      const minutesSinceUpdate = (now - lastUpdateDate) / (1000 * 60);
 
       return minutesSinceUpdate > this.staleThresholdMinutes;
     } catch (error) {
@@ -80,37 +59,17 @@ class OnDemandUpdateService {
    */
   async getLastUpdateTime(seasonId, week) {
     try {
-      const dbProvider = db.provider; // Use singleton database provider
-      const dbType = db.getType();
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const games = await nflDataService.getGamesBySeasonAndWeek(seasonId, week);
       
-      let lastUpdate = null;
-      
-      if (dbType === 'dynamodb') {
-        // For DynamoDB, scan games and find the latest update
-        const gamesResult = await dbProvider._dynamoScan('football_games', {
-          season_id: seasonId,
-          week: week
-        });
-        const games = gamesResult.Items || [];
-        
-        lastUpdate = games.reduce((latest, game) => {
-          if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
-            return game.scores_updated_at;
-          }
-          return latest;
-        }, null);
-      } else {
-        // For SQLite, use the existing query
-        const result = await dbProvider.get(`
-          SELECT MAX(scores_updated_at) as last_update
-          FROM football_games
-          WHERE season_id = ? AND week = ? AND scores_updated_at IS NOT NULL
-        `, [seasonId, week]);
-        
-        lastUpdate = result?.last_update || null;
-      }
+      const latestUpdate = games.reduce((latest, game) => {
+        if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
+          return game.scores_updated_at;
+        }
+        return latest;
+      }, null);
 
-      return lastUpdate;
+      return latestUpdate;
     } catch (error) {
       console.error('Error getting last update time:', error);
       return null;
@@ -162,19 +121,8 @@ class OnDemandUpdateService {
    */
   async updateCurrentWeekIfStale() {
     try {
-      const dbProvider = db.provider; // Use singleton database provider
-      const dbType = db.getType();
-      
-      let currentSeason;
-      
-      if (dbType === 'dynamodb') {
-        // For DynamoDB, scan for current season
-        const seasonsResult = await dbProvider._dynamoScan('seasons', { is_current: true });
-        currentSeason = seasonsResult.Items && seasonsResult.Items.length > 0 ? seasonsResult.Items[0] : null;
-      } else {
-        // For SQLite, use existing query
-        currentSeason = await dbProvider.get('SELECT * FROM seasons WHERE is_current = 1');
-      }
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const currentSeason = await seasonService.getCurrentSeason();
       
       if (!currentSeason) {
         throw new Error('No current season set');
@@ -202,9 +150,9 @@ class OnDemandUpdateService {
       return 'Never updated';
     }
 
-    const lastUpdate = new Date(lastUpdateString);
+    const lastUpdateDate = new Date(lastUpdateString);
     const now = new Date();
-    const minutesAgo = Math.floor((now - lastUpdate) / (1000 * 60));
+    const minutesAgo = Math.floor((now - lastUpdateDate) / (1000 * 60));
 
     if (minutesAgo < 1) {
       return 'Just now';
@@ -219,7 +167,7 @@ class OnDemandUpdateService {
       } else if (hoursAgo < 24) {
         return `${hoursAgo} hours ago`;
       } else {
-        return lastUpdate.toLocaleDateString() + ' ' + lastUpdate.toLocaleTimeString([], {
+        return lastUpdateDate.toLocaleDateString() + ' ' + lastUpdateDate.toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
         });
