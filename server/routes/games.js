@@ -4,6 +4,7 @@ import { authenticateToken, requireGameOwner } from "../middleware/auth.js";
 import emailService from "../services/emailService.js";
 import crypto from "crypto";
 import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.js";
+import db from "../models/database.js";
 
 // Utility function to create URL-friendly slugs
 function createGameSlug(gameName) {
@@ -100,48 +101,9 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const gameId = uuidv4();
 
-    // Get current season - ensure only one active season
-    // Handle both SQLite (is_current = 1) and DynamoDB (is_current = true)
-    console.log(`[Game Creation] Looking up current season, database type: ${db.getType && db.getType()}`);
-    
-    let currentSeason;
-    if (db.getType && db.getType() === 'dynamodb') {
-      // For DynamoDB, get all seasons and filter in code
-      console.log(`[Game Creation] Fetching all seasons from DynamoDB`);
-      try {
-        const allSeasons = await db.all('SELECT * FROM seasons');
-        console.log(`[Game Creation] Found ${allSeasons.length} seasons:`, allSeasons.map(s => ({
-          id: s.id,
-          year: s.year,
-          is_current: s.is_current,
-          is_current_type: typeof s.is_current,
-          name: s.name
-        })));
-        
-        currentSeason = allSeasons.find(s => s.is_current === true || s.is_current === 1 || s.is_current === "1");
-        console.log(`[Game Creation] Current season found:`, currentSeason ? {
-          id: currentSeason.id,
-          year: currentSeason.year,
-          is_current: currentSeason.is_current,
-          name: currentSeason.name
-        } : 'None');
-      } catch (seasonError) {
-        console.error(`[Game Creation] Error fetching seasons from DynamoDB:`, seasonError);
-        throw seasonError;
-      }
-    } else {
-      // For SQLite, use SQL with numeric 1
-      console.log(`[Game Creation] Fetching current season from SQLite`);
-      try {
-        currentSeason = await db.get(
-          "SELECT id FROM seasons WHERE is_current = 1"
-        );
-        console.log(`[Game Creation] SQLite current season:`, currentSeason);
-      } catch (seasonError) {
-        console.error(`[Game Creation] Error fetching current season from SQLite:`, seasonError);
-        throw seasonError;
-      }
-    }
+    // Get current season using the service layer
+    const seasonService = DatabaseServiceFactory.getSeasonService();
+    const currentSeason = await seasonService.getCurrentSeason();
     
     if (!currentSeason) {
       console.error(`[Game Creation] No current season found - returning error to client`);
@@ -169,69 +131,14 @@ router.post("/", authenticateToken, async (req, res) => {
       databaseType: db.getType()
     });
     
-    try {
-      await db.run(
-        `
-        INSERT INTO pickem_games (id, game_name, type, commissioner_id, season_id, is_active)
-        VALUES (?, ?, ?, ?, ?, 1)
-      `,
-        [gameId, gameName, dbGameType, req.user.id, currentSeason.id]
-      );
-      console.log(`[Game Creation] Game created successfully in database`);
-    } catch (gameCreateError) {
-      console.error(`[Game Creation] Failed to create game:`, gameCreateError);
-      throw gameCreateError;
-    }
-
-    // Add creator as owner
-    const participantId = uuidv4();
-    console.log(`[Game Creation] Adding participant:`, {
-      participantId,
-      gameId,
-      userId: req.user.id,
-      role: 'owner'
+    // Create the game using the service layer
+    const gameService = DatabaseServiceFactory.getGameService();
+    const newGame = await gameService.createGame({
+      gameName,
+      gameType,
+      commissionerId: req.user.id,
+      seasonId: currentSeason.id
     });
-    
-    try {
-      await db.run(
-        `
-        INSERT INTO game_participants (id, game_id, user_id, role)
-        VALUES (?, ?, ?, 'owner')
-      `,
-        [participantId, gameId, req.user.id]
-      );
-      console.log(`[Game Creation] Participant added successfully`);
-    } catch (participantError) {
-      console.error(`[Game Creation] Failed to add participant:`, participantError);
-      throw participantError;
-    }
-
-    // Get the newly created game with counts
-    let newGame;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get game directly and calculate counts
-      newGame = await db.get('SELECT * FROM pickem_games WHERE id = ?', [gameId]);
-      if (newGame) {
-        const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-        newGame.player_count = participants.length;
-        newGame.owner_count = participants.filter(p => p.role === 'owner').length;
-      }
-    } else {
-      // For SQLite, use the optimized query
-      newGame = await db.get(
-        `
-        SELECT
-          g.*,
-          COUNT(gp.id) as player_count,
-          COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
-        FROM pickem_games g
-        LEFT JOIN game_participants gp ON g.id = gp.game_id
-        WHERE g.id = ?
-        GROUP BY g.id
-      `,
-        [gameId]
-      );
-    }
 
     res.status(201).json({
       message: "Game created successfully",
@@ -253,32 +160,8 @@ router.put(
       const { gameId } = req.params;
       const { gameName, gameType } = req.body;
 
-      const existingGame = await db.get(
-        "SELECT * FROM pickem_games WHERE id = ?",
-        [gameId]
-      );
-      if (!existingGame) {
-        return res.status(404).json({ error: "Game not found" });
-      }
-
-      await db.run(
-        `
-      UPDATE pickem_games
-      SET game_name = ?, type = ?, updated_at = ?
-      WHERE id = ?
-    `,
-        [
-          gameName || existingGame.game_name,
-          gameType || existingGame.type,
-          new Date().toISOString(),
-          gameId,
-        ]
-      );
-
-      const updatedGame = await db.get(
-        "SELECT * FROM pickem_games WHERE id = ?",
-        [gameId]
-      );
+      const gameService = DatabaseServiceFactory.getGameService();
+      const updatedGame = await gameService.updateGame(gameId, { gameName, gameType });
 
       res.json({
         message: "Game updated successfully",
@@ -300,68 +183,8 @@ router.delete(
     try {
       const { gameId } = req.params;
 
-      console.log(`[Game Deletion] Starting deletion for game: ${gameId}`);
-      console.log(`[Game Deletion] Database type: ${db.getType()}`);
-
-      const existingGame = await db.get(
-        "SELECT id FROM pickem_games WHERE id = ?",
-        [gameId]
-      );
-      if (!existingGame) {
-        return res.status(404).json({ error: "Game not found" });
-      }
-
-      // Handle deletion differently for DynamoDB vs SQLite
-      if (db.getType() === 'dynamodb') {
-        console.log(`[Game Deletion] Using DynamoDB deletion strategy`);
-        
-        // For DynamoDB, we need to find records by game_id and delete them by their primary key (id)
-        
-        // Delete picks
-        console.log(`[Game Deletion] Deleting picks...`);
-        const picks = await db.all("SELECT id FROM picks WHERE game_id = ?", [gameId]);
-        console.log(`[Game Deletion] Found ${picks.length} picks to delete`);
-        for (const pick of picks) {
-          await db.run("DELETE FROM picks WHERE id = ?", [pick.id]);
-        }
-        
-        // Delete weekly standings
-        console.log(`[Game Deletion] Deleting weekly standings...`);
-        const standings = await db.all("SELECT id FROM weekly_standings WHERE game_id = ?", [gameId]);
-        console.log(`[Game Deletion] Found ${standings.length} weekly standings to delete`);
-        for (const standing of standings) {
-          await db.run("DELETE FROM weekly_standings WHERE id = ?", [standing.id]);
-        }
-        
-        // Delete game invitations
-        console.log(`[Game Deletion] Deleting game invitations...`);
-        const invitations = await db.all("SELECT id FROM game_invitations WHERE game_id = ?", [gameId]);
-        console.log(`[Game Deletion] Found ${invitations.length} invitations to delete`);
-        for (const invitation of invitations) {
-          await db.run("DELETE FROM game_invitations WHERE id = ?", [invitation.id]);
-        }
-        
-        // Delete game participants
-        console.log(`[Game Deletion] Deleting game participants...`);
-        const participants = await db.all("SELECT id FROM game_participants WHERE game_id = ?", [gameId]);
-        console.log(`[Game Deletion] Found ${participants.length} participants to delete`);
-        for (const participant of participants) {
-          await db.run("DELETE FROM game_participants WHERE id = ?", [participant.id]);
-        }
-        
-        console.log(`[Game Deletion] All related records deleted, now deleting game itself`);
-      } else {
-        console.log(`[Game Deletion] Using SQLite deletion strategy`);
-        
-        // For SQLite, use direct deletion by foreign key
-        await db.run("DELETE FROM picks WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM weekly_standings WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM game_invitations WHERE game_id = ?", [gameId]);
-        await db.run("DELETE FROM game_participants WHERE game_id = ?", [gameId]);
-      }
-      
-      // Finally delete the game itself (same for both databases since we're deleting by primary key)
-      await db.run("DELETE FROM pickem_games WHERE id = ?", [gameId]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      await gameService.deleteGame(gameId);
 
       console.log(`[Game Deletion] Game ${gameId} deleted successfully`);
       res.json({ message: "Game deleted successfully" });
