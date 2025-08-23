@@ -125,6 +125,39 @@ export async function updateTeamLogos() {
   }
 }
 
+export async function updateTeamColors() {
+  console.log('Updating team colors...');
+  
+  try {
+    // Get teams that don't have colors set
+    const teams = await db.all('SELECT id, team_code FROM football_teams WHERE team_primary_color IS NULL OR team_secondary_color IS NULL');
+    
+    // Create a map of team colors
+    const colorMap = {};
+    footballTeams.forEach(team => {
+      colorMap[team.code] = {
+        primaryColor: team.primaryColor,
+        secondaryColor: team.secondaryColor
+      };
+    });
+    
+    for (const team of teams) {
+      const colors = colorMap[team.team_code];
+      if (colors) {
+        await db.run(
+          'UPDATE football_teams SET team_primary_color = ?, team_secondary_color = ? WHERE id = ?',
+          [colors.primaryColor, colors.secondaryColor, team.id]
+        );
+        console.log(`Updated ${team.team_code} with colors ${colors.primaryColor}, ${colors.secondaryColor}`);
+      }
+    }
+    
+    console.log('Team colors update completed');
+  } catch (error) {
+    console.error('Error updating team colors:', error);
+  }
+}
+
 // Run seeding if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedTeams().then(() => {

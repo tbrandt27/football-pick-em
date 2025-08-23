@@ -79,12 +79,14 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     const startTime = Date.now();
     
     try {
-      console.log(`[DynamoDB:${operationId}] Starting RUN operation:`, typeof operation === 'string' ? operation.substring(0, 100) : operation);
+      console.log(`[DynamoDB:${operationId}] Starting RUN operation:`, typeof operation === 'string' ? operation.substring(0, 200) : operation);
+      console.log(`[DynamoDB:${operationId}] RUN params:`, params);
       
       const result = await this._executeOperation(operation, params);
       const duration = Date.now() - startTime;
       
       console.log(`[DynamoDB:${operationId}] RUN completed in ${duration}ms`);
+      console.log(`[DynamoDB:${operationId}] RUN result:`, result);
       
       return {
         id: result.id || (result.Attributes && result.Attributes.id),
@@ -93,7 +95,12 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[DynamoDB:${operationId}] RUN failed after ${duration}ms:`, error.message);
-      console.error(`[DynamoDB:${operationId}] Operation details:`, { operation: typeof operation === 'string' ? operation.substring(0, 200) : operation, params });
+      console.error(`[DynamoDB:${operationId}] Full error:`, error);
+      console.error(`[DynamoDB:${operationId}] Operation details:`, {
+        operation: typeof operation === 'string' ? operation.substring(0, 500) : operation,
+        params,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -176,14 +183,31 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
   // Convert SQL-like operation strings to DynamoDB operations
   async _executeOperation(operation, params = []) {
-    // Handle raw SQL strings by parsing them or using operation objects
-    if (typeof operation === 'string') {
-      return this._executeSQLString(operation, params);
-    } else if (typeof operation === 'object') {
-      return this._executeOperationObject(operation);
+    try {
+      console.log(`[DynamoDB] _executeOperation called with:`, {
+        operationType: typeof operation,
+        operation: typeof operation === 'string' ? operation.substring(0, 300) : operation,
+        paramsLength: params.length,
+        params
+      });
+      
+      // Handle raw SQL strings by parsing them or using operation objects
+      if (typeof operation === 'string') {
+        return this._executeSQLString(operation, params);
+      } else if (typeof operation === 'object') {
+        return this._executeOperationObject(operation);
+      }
+      
+      throw new Error(`Unsupported operation type: ${typeof operation}`);
+    } catch (error) {
+      console.error(`[DynamoDB] _executeOperation error:`, {
+        error: error.message,
+        operation: typeof operation === 'string' ? operation.substring(0, 300) : operation,
+        params,
+        stack: error.stack
+      });
+      throw error;
     }
-    
-    throw new Error(`Unsupported operation type: ${typeof operation}`);
   }
 
   async _executeSQLString(sql, params) {
@@ -237,46 +261,69 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoPut(tableName, item) {
-    // Add timestamps
-    const now = new Date().toISOString();
-    const itemWithTimestamps = {
-      ...item,
-      created_at: item.created_at || now,
-      updated_at: now
-    };
-
-    const actualTableName = this.tables[tableName] || tableName;
-    console.log(`[DynamoDB] PUT operation details:`, {
-      tableName,
-      actualTableName,
-      itemId: item.id,
-      hasRequiredFields: {
-        id: !!item.id,
-        email: !!item.email
-      }
-    });
-
-    const command = new PutCommand({
-      TableName: actualTableName,
-      Item: itemWithTimestamps
-    });
-    
     try {
+      console.log(`[DynamoDB] _dynamoPut called with:`, {
+        tableName,
+        item,
+        itemKeys: Object.keys(item),
+        itemValues: item
+      });
+      
+      // Add timestamps
+      const now = new Date().toISOString();
+      const itemWithTimestamps = {
+        ...item,
+        created_at: item.created_at || now,
+        updated_at: now
+      };
+
+      const actualTableName = this.tables[tableName] || tableName;
+      console.log(`[DynamoDB] PUT operation details:`, {
+        tableName,
+        actualTableName,
+        originalItem: item,
+        itemWithTimestamps,
+        tableMapping: this.tables[tableName] ? 'Found' : 'Not found',
+        allTables: Object.keys(this.tables)
+      });
+
+      // Validate required fields based on table
+      if (tableName === 'pickem_games' && (!item.id || !item.game_name)) {
+        throw new Error(`Missing required fields for pickem_games: id=${!!item.id}, game_name=${!!item.game_name}`);
+      }
+
+      const command = new PutCommand({
+        TableName: actualTableName,
+        Item: itemWithTimestamps
+      });
+      
+      console.log(`[DynamoDB] Sending PUT command:`, {
+        tableName: actualTableName,
+        command: {
+          TableName: command.input.TableName,
+          Item: command.input.Item
+        }
+      });
+      
       const result = await this.docClient.send(command);
       console.log(`[DynamoDB] PUT successful:`, {
         tableName: actualTableName,
         itemId: item.id,
         httpStatusCode: result.$metadata?.httpStatusCode,
-        requestId: result.$metadata?.requestId
+        requestId: result.$metadata?.requestId,
+        result
       });
       return { id: item.id };
     } catch (error) {
       console.error(`[DynamoDB] PUT failed:`, {
-        tableName: actualTableName,
-        itemId: item.id,
+        tableName,
+        actualTableName: this.tables[tableName] || tableName,
+        item,
         error: error.message,
         code: error.name,
-        httpStatusCode: error.$metadata?.httpStatusCode
+        httpStatusCode: error.$metadata?.httpStatusCode,
+        fullError: error,
+        stack: error.stack
       });
       throw error;
     }

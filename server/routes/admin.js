@@ -1,6 +1,6 @@
 import express from "express";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
-import { seedTeams, updateTeamLogos } from "../utils/seedTeams.js";
+import { seedTeams, updateTeamLogos, updateTeamColors } from "../utils/seedTeams.js";
 import espnService from "../services/espnApi.js";
 import scheduler from "../services/scheduler.js";
 import pickCalculator from "../services/pickCalculator.js";
@@ -67,6 +67,22 @@ router.post(
   }
 );
 
+// Update team colors
+router.post(
+  "/update-team-colors",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      await updateTeamColors();
+      res.json({ message: "Team colors updated successfully" });
+    } catch (error) {
+      console.error("Update team colors error:", error);
+      res.status(500).json({ error: "Failed to update team colors" });
+    }
+  }
+);
+
 // Get available team logos
 router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -77,70 +93,36 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
-    // Check for explicit environment variable first
+    // Use exact same logic as the working /logos/:filename route in server/index.js
     const explicitLogosPath = process.env.LOGOS_PATH;
     
-    // Try multiple possible paths for the logos directory
-    const possiblePaths = explicitLogosPath ? [explicitLogosPath] : [
+    const possibleLogoPaths = explicitLogosPath ? [explicitLogosPath] : [
       // Standard relative path from current working directory
       path.join(process.cwd(), "public/logos"),
       // Path relative to server directory structure
+      path.join(__dirname, "../public/logos"),
       path.join(__dirname, "../../public/logos"),
-      path.join(__dirname, "../../../public/logos"),
       // Path relative to project root in different deployment scenarios
-      path.resolve("public/logos"),
-      path.resolve("./public/logos"),
-      // Additional paths for containerized/different deployment structures
       path.join(process.env.APP_ROOT || process.cwd(), "public/logos"),
       "/app/public/logos", // Common Docker path
       "/var/app/current/public/logos", // AWS App Runner path
     ];
 
     let logosPath = null;
-    const existingPaths = [];
-    
-    console.log("Current working directory:", process.cwd());
-    console.log("Module filename:", __filename);
-    console.log("Module directory:", __dirname);
-    
-    for (const testPath of possiblePaths) {
-      console.log(`Testing path: ${testPath}`);
-      try {
-        if (fs.existsSync(testPath)) {
-          logosPath = testPath;
-          existingPaths.push(testPath);
-          console.log(`✓ Found logos directory at: ${testPath}`);
-          break;
-        } else {
-          console.log(`✗ Path does not exist: ${testPath}`);
-        }
-      } catch (err) {
-        console.log(`✗ Error checking path ${testPath}:`, err.message);
+    for (const testPath of possibleLogoPaths) {
+      if (fs.existsSync(testPath)) {
+        logosPath = testPath;
+        console.log(`Admin API: Found logos directory at ${testPath}`);
+        break;
       }
     }
 
     if (!logosPath) {
-      console.error("Logos directory not found. Tried paths:", possiblePaths);
-      console.error("Existing paths found:", existingPaths);
-      
-      // Try to provide more debugging info
-      try {
-        const publicDir = path.join(process.cwd(), "public");
-        if (fs.existsSync(publicDir)) {
-          const publicContents = fs.readdirSync(publicDir);
-          console.log("Public directory contents:", publicContents);
-        } else {
-          console.log("Public directory does not exist at:", publicDir);
-        }
-      } catch (debugErr) {
-        console.log("Could not read public directory for debugging:", debugErr.message);
-      }
-      
+      console.error("Admin API: Logos directory not found. Tried paths:", possibleLogoPaths);
       return res.status(404).json({
         error: "Logos directory not found",
-        triedPaths: possiblePaths,
-        workingDirectory: process.cwd(),
-        moduleDirectory: __dirname,
+        triedPaths: possibleLogoPaths,
+        note: "Individual logos may still work via direct URL"
       });
     }
 
@@ -149,10 +131,10 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
       .filter((file) => file.endsWith(".svg"))
       .sort();
 
-    console.log(`Found ${logoFiles.length} logo files in ${logosPath}`);
+    console.log(`Admin API: Found ${logoFiles.length} logo files in ${logosPath}`);
     res.json({ logos: logoFiles });
   } catch (error) {
-    console.error("Get team logos error:", error);
+    console.error("Admin API: Get team logos error:", error);
     res
       .status(500)
       .json({ error: `Failed to get team logos: ${error.message}` });
@@ -687,39 +669,66 @@ router.delete(
     try {
       const { seasonId } = req.params;
 
+      console.log(`[Admin] Delete season request for ID: ${seasonId}`);
+
       // Get season info before deletion
+      console.log(`[Admin] Looking up season with ID: ${seasonId}`);
       const season = await db.get(
         "SELECT season FROM seasons WHERE id = ?",
         [seasonId]
       );
+      
+      console.log(`[Admin] Season lookup result:`, season);
+      
       if (!season) {
+        console.log(`[Admin] Season not found for ID: ${seasonId}`);
         return res.status(404).json({ error: "Season not found" });
       }
 
       // Check if season has any active games
+      console.log(`[Admin] Checking for associated games for season: ${seasonId}`);
       const gameCount = await db.get(
         "SELECT COUNT(*) as count FROM pickem_games WHERE season_id = ?",
         [seasonId]
       );
 
+      console.log(`[Admin] Game count result:`, gameCount);
+
       if (gameCount?.count > 0) {
+        console.log(`[Admin] Cannot delete season - has ${gameCount.count} associated games`);
         return res.status(400).json({
           error: `Cannot delete season ${season.season} - it has ${gameCount.count} associated pick'em games. Delete the games first.`
         });
       }
 
-      // Delete related NFL games first
-      await db.run("DELETE FROM football_games WHERE season_id = ?", [seasonId]);
+      // Delete related NFL games first (DynamoDB requires individual deletes by ID)
+      console.log(`[Admin] Getting football games for season: ${seasonId}`);
+      const footballGames = await db.all("SELECT id FROM football_games WHERE season_id = ?", [seasonId]);
+      console.log(`[Admin] Found ${footballGames.length} football games to delete`);
+      
+      // Delete each football game individually
+      for (const game of footballGames) {
+        console.log(`[Admin] Deleting football game: ${game.id}`);
+        await db.run("DELETE FROM football_games WHERE id = ?", [game.id]);
+      }
+      console.log(`[Admin] Deleted ${footballGames.length} football games`);
       
       // Finally delete the season itself
-      await db.run("DELETE FROM seasons WHERE id = ?", [seasonId]);
+      console.log(`[Admin] Deleting season record: ${seasonId}`);
+      const seasonDeleteResult = await db.run("DELETE FROM seasons WHERE id = ?", [seasonId]);
+      console.log(`[Admin] Season deletion result:`, seasonDeleteResult);
 
+      console.log(`[Admin] Season ${season.season} deleted successfully`);
       res.json({
         message: `Season ${season.season} deleted successfully`,
       });
     } catch (error) {
-      console.error("Delete season error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("[Admin] Delete season error:", error);
+      console.error("[Admin] Error stack:", error.stack);
+      res.status(500).json({
+        error: "Internal server error",
+        details: error.message
+      });
     }
   }
 );

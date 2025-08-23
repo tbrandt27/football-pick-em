@@ -24,6 +24,9 @@ const SeasonsManager: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSeasonYear, setNewSeasonYear] = useState(new Date().getFullYear());
   const [syncingSeasonId, setSyncingSeasonId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [seasonToDelete, setSeasonToDelete] = useState<Season | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -182,22 +185,46 @@ const SeasonsManager: React.FC = () => {
 
   const deleteSeason = async (seasonId: string, seasonYear: number) => {
     try {
+      setDeleting(true);
+      setError('');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      console.log('Attempting to delete season:', { seasonId, seasonYear });
+      
       const response = await fetch(`/api/admin/seasons/${seasonId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
 
+      console.log('Delete response status:', response.status);
+      
       if (response.ok) {
         setSeasons(seasons.filter(s => s.id !== seasonId));
         setSuccess(`Season ${seasonYear} deleted successfully`);
+        setShowDeleteModal(false);
+        setSeasonToDelete(null);
         setTimeout(() => setSuccess(''), 5000);
       } else {
         const errorData = await response.json();
+        console.error('Delete error response:', errorData);
         setError(errorData.error || 'Failed to delete season');
       }
     } catch (err) {
+      console.error('Delete exception:', err);
       setError('Failed to delete season');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteClick = (season: Season) => {
+    setSeasonToDelete(season);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    if (seasonToDelete) {
+      deleteSeason(seasonToDelete.id, seasonToDelete.year);
     }
   };
 
@@ -373,11 +400,7 @@ const SeasonsManager: React.FC = () => {
                          View Schedule
                        </a>
                        <button
-                         onClick={() => {
-                           if (confirm(`Are you sure you want to delete season ${season.year}?\n\nThis will permanently delete:\n- The season record\n- All NFL games for this season\n\nNote: If there are any pick'em games associated with this season, you must delete them first.\n\nThis action cannot be undone.`)) {
-                             deleteSeason(season.id, season.year);
-                           }
-                         }}
+                         onClick={() => handleDeleteClick(season)}
                          className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
                        >
                          Delete Season
@@ -436,6 +459,73 @@ const SeasonsManager: React.FC = () => {
                   className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
                 >
                   Create Season
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Season Modal */}
+        {showDeleteModal && seasonToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Season {seasonToDelete.year}</h3>
+              
+              <div className="mb-6">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to delete season {seasonToDelete.year}?
+                </p>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-yellow-800 mb-2">This will permanently delete:</h4>
+                  <ul className="text-yellow-700 text-sm space-y-1">
+                    <li>• The season record</li>
+                    <li>• All {seasonToDelete.football_games_count} football games for this season</li>
+                  </ul>
+                </div>
+
+                {seasonToDelete.game_count > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                    <p className="text-red-700 text-sm font-semibold">
+                      ⚠️ Warning: This season has {seasonToDelete.game_count} associated pick'em games.
+                      You must delete those games first before deleting the season.
+                    </p>
+                  </div>
+                )}
+                
+                <p className="text-gray-600 text-sm font-semibold">
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setSeasonToDelete(null);
+                    setError('');
+                  }}
+                  disabled={deleting}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting || seasonToDelete.game_count > 0}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? (
+                    <span className="flex items-center space-x-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      <span>Deleting...</span>
+                    </span>
+                  ) : (
+                    'Delete Season'
+                  )}
                 </button>
               </div>
             </div>
