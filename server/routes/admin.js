@@ -8,6 +8,9 @@ import onDemandUpdates from "../services/onDemandUpdates.js";
 import db from "../models/database.js";
 import crypto from "crypto";
 import emailService from "../services/emailService.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const router = express.Router();
 
@@ -102,10 +105,6 @@ router.post(
 // Get available team logos
 router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const fs = await import("fs");
-    const path = await import("path");
-    const { fileURLToPath } = await import("url");
-
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
@@ -160,10 +159,6 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
 // Debug endpoint to help troubleshoot logos directory issues in production
 router.get("/debug/paths", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const fs = await import("fs");
-    const path = await import("path");
-    const { fileURLToPath } = await import("url");
-
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
@@ -1391,7 +1386,7 @@ router.post(
       }
 
       const nodemailer = await import("nodemailer");
-      const testTransporter = nodemailer.default.createTransporter({
+      const testTransporter = nodemailer.createTransporter({
         host: host,
         port: parseInt(port) || 587,
         secure: false,

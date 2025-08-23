@@ -1,11 +1,22 @@
 import axios from 'axios';
-import db from '../models/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 
 class ESPNService {
   constructor() {
     this.baseUrl = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
     this.timeout = 10000; // 10 seconds
+    this.db = null; // Will be initialized when needed
+  }
+
+  async getDb() {
+    if (!this.db) {
+      this.db = await DatabaseProviderFactory.createProvider();
+      if (!this.db.initialized) {
+        await this.db.initialize();
+      }
+    }
+    return this.db;
   }
 
   async makeRequest(endpoint, params = {}) {
@@ -192,51 +203,115 @@ class ESPNService {
         const awayTeamRecord = await this.findOrCreateTeam(awayTeam.team);
 
         // Check if game already exists
-        const existingGame = await db.get(`
-          SELECT id FROM football_games
-          WHERE season_id = ? AND week = ? AND home_team_id = ? AND away_team_id = ?
-        `, [seasonId, gameData.week, homeTeamRecord.id, awayTeamRecord.id]);
+        const db = await this.getDb();
+        let existingGame;
+        if (db.getType && db.getType() === 'dynamodb') {
+          // DynamoDB: scan with filters
+          const games = await db.all({
+            action: 'scan',
+            table: 'football_games',
+            conditions: {
+              season_id: seasonId,
+              week: gameData.week,
+              home_team_id: homeTeamRecord.id,
+              away_team_id: awayTeamRecord.id
+            }
+          });
+          existingGame = games && games.length > 0 ? games[0] : null;
+        } else {
+          // SQLite: direct SQL query
+          existingGame = await db.get(`
+            SELECT id FROM football_games
+            WHERE season_id = ? AND week = ? AND home_team_id = ? AND away_team_id = ?
+          `, [seasonId, gameData.week, homeTeamRecord.id, awayTeamRecord.id]);
+        }
 
         const gameDate = new Date(gameData.date);
         const startTime = new Date(competition.date);
+        const now = new Date().toISOString();
 
         if (existingGame) {
           // Update existing game
-          await db.run(`
-            UPDATE football_games
-            SET home_score = ?, away_score = ?, status = ?,
-                game_date = ?, start_time = ?, season_type = ?, updated_at = datetime('now'), scores_updated_at = datetime('now')
-            WHERE id = ?
-          `, [
-            homeTeam.score || 0,
-            awayTeam.score || 0,
-            gameData.status.type,
-            gameDate.toISOString(),
-            startTime.toISOString(),
-            gameData.seasonType,
-            existingGame.id
-          ]);
+          const updateData = {
+            home_score: homeTeam.score || 0,
+            away_score: awayTeam.score || 0,
+            status: gameData.status.type,
+            game_date: gameDate.toISOString(),
+            start_time: startTime.toISOString(),
+            season_type: gameData.seasonType,
+            scores_updated_at: now
+          };
+
+          if (db.getType && db.getType() === 'dynamodb') {
+            await db.run({
+              action: 'update',
+              table: 'football_games',
+              key: { id: existingGame.id },
+              item: updateData
+            });
+          } else {
+            await db.run(`
+              UPDATE football_games
+              SET home_score = ?, away_score = ?, status = ?,
+                  game_date = ?, start_time = ?, season_type = ?, updated_at = datetime('now'), scores_updated_at = datetime('now')
+              WHERE id = ?
+            `, [
+              homeTeam.score || 0,
+              awayTeam.score || 0,
+              gameData.status.type,
+              gameDate.toISOString(),
+              startTime.toISOString(),
+              gameData.seasonType,
+              existingGame.id
+            ]);
+          }
           updatedCount++;
         } else {
           // Create new game
-          await db.run(`
-            INSERT INTO football_games (
-              id, season_id, week, home_team_id, away_team_id,
-              home_score, away_score, game_date, start_time, status, season_type, scores_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-          `, [
-            uuidv4(),
-            seasonId,
-            gameData.week,
-            homeTeamRecord.id,
-            awayTeamRecord.id,
-            homeTeam.score || 0,
-            awayTeam.score || 0,
-            gameDate.toISOString(),
-            startTime.toISOString(),
-            gameData.status.type,
-            gameData.seasonType
-          ]);
+          const gameId = uuidv4();
+          const gameItem = {
+            id: gameId,
+            season_id: seasonId,
+            week: gameData.week,
+            home_team_id: homeTeamRecord.id,
+            away_team_id: awayTeamRecord.id,
+            home_score: homeTeam.score || 0,
+            away_score: awayTeam.score || 0,
+            game_date: gameDate.toISOString(),
+            start_time: startTime.toISOString(),
+            status: gameData.status.type,
+            season_type: gameData.seasonType,
+            scores_updated_at: now,
+            created_at: now,
+            updated_at: now
+          };
+
+          if (db.getType && db.getType() === 'dynamodb') {
+            await db.run({
+              action: 'put',
+              table: 'football_games',
+              item: gameItem
+            });
+          } else {
+            await db.run(`
+              INSERT INTO football_games (
+                id, season_id, week, home_team_id, away_team_id,
+                home_score, away_score, game_date, start_time, status, season_type, scores_updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `, [
+              gameId,
+              seasonId,
+              gameData.week,
+              homeTeamRecord.id,
+              awayTeamRecord.id,
+              homeTeam.score || 0,
+              awayTeam.score || 0,
+              gameDate.toISOString(),
+              startTime.toISOString(),
+              gameData.status.type,
+              gameData.seasonType
+            ]);
+          }
           createdCount++;
         }
       }
@@ -259,44 +334,109 @@ class ESPNService {
       
       const ourTeamCode = teamCodeMap[teamData.abbreviation] || teamData.abbreviation;
       
-      // First try to find by our mapped abbreviation
-      let team = await db.get('SELECT * FROM football_teams WHERE team_code = ?', [ourTeamCode]);
+      // Check database type and use appropriate query method
+      const db = await this.getDb();
+      let team;
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB: scan with filter
+        const teams = await db.all({
+          action: 'scan',
+          table: 'football_teams',
+          conditions: { team_code: ourTeamCode }
+        });
+        team = teams && teams.length > 0 ? teams[0] : null;
+      } else {
+        // SQLite: direct SQL query
+        team = await db.get('SELECT * FROM football_teams WHERE team_code = ?', [ourTeamCode]);
+      }
       
       if (!team) {
         // Create new team
         const teamId = uuidv4();
-        await db.run(`
-          INSERT INTO football_teams (
-            id, team_code, team_name, team_city, team_conference, team_division,
-            team_logo, team_primary_color, team_secondary_color
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          teamId,
-          ourTeamCode, // Use our mapped team code
-          teamData.name,
-          teamData.location,
-          'Unknown', // ESPN doesn't provide conference in this endpoint
-          'Unknown', // ESPN doesn't provide division in this endpoint
-          null, // Don't use ESPN logos
-          teamData.color ? `#${teamData.color}` : null,
-          teamData.alternateColor ? `#${teamData.alternateColor}` : null
-        ]);
+        const now = new Date().toISOString();
+        
+        if (db.getType && db.getType() === 'dynamodb') {
+          // DynamoDB: use PUT operation
+          const teamItem = {
+            id: teamId,
+            team_code: ourTeamCode,
+            team_name: teamData.name,
+            team_city: teamData.location,
+            team_conference: 'Unknown', // ESPN doesn't provide conference in this endpoint
+            team_division: 'Unknown', // ESPN doesn't provide division in this endpoint
+            team_logo: null, // Don't use ESPN logos
+            team_primary_color: teamData.color ? `#${teamData.color}` : null,
+            team_secondary_color: teamData.alternateColor ? `#${teamData.alternateColor}` : null,
+            created_at: now,
+            updated_at: now
+          };
+          
+          await db.run({
+            action: 'put',
+            table: 'football_teams',
+            item: teamItem
+          });
+          
+          team = teamItem;
+        } else {
+          // SQLite: use SQL INSERT
+          await db.run(`
+            INSERT INTO football_teams (
+              id, team_code, team_name, team_city, team_conference, team_division,
+              team_logo, team_primary_color, team_secondary_color
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            teamId,
+            ourTeamCode, // Use our mapped team code
+            teamData.name,
+            teamData.location,
+            'Unknown', // ESPN doesn't provide conference in this endpoint
+            'Unknown', // ESPN doesn't provide division in this endpoint
+            null, // Don't use ESPN logos
+            teamData.color ? `#${teamData.color}` : null,
+            teamData.alternateColor ? `#${teamData.alternateColor}` : null
+          ]);
 
-        team = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+          team = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+        }
+        
         console.log(`Created new team: ${teamData.location} ${teamData.name}`);
-      } else {
+      } else if (teamData.color || teamData.alternateColor) {
         // Update team info if we have new data, but don't use ESPN logos
-        await db.run(`
-          UPDATE football_teams
-          SET team_primary_color = COALESCE(?, team_primary_color),
-              team_secondary_color = COALESCE(?, team_secondary_color),
-              updated_at = datetime('now')
-          WHERE id = ?
-        `, [
-          teamData.color ? `#${teamData.color}` : null,
-          teamData.alternateColor ? `#${teamData.alternateColor}` : null,
-          team.id
-        ]);
+        if (db.getType && db.getType() === 'dynamodb') {
+          // DynamoDB: use UPDATE operation
+          const updates = {};
+          if (teamData.color && !team.team_primary_color) {
+            updates.team_primary_color = `#${teamData.color}`;
+          }
+          if (teamData.alternateColor && !team.team_secondary_color) {
+            updates.team_secondary_color = `#${teamData.alternateColor}`;
+          }
+          
+          if (Object.keys(updates).length > 0) {
+            await db.run({
+              action: 'update',
+              table: 'football_teams',
+              key: { id: team.id },
+              item: updates
+            });
+            // Update local team object
+            Object.assign(team, updates);
+          }
+        } else {
+          // SQLite: use SQL UPDATE
+          await db.run(`
+            UPDATE football_teams
+            SET team_primary_color = COALESCE(?, team_primary_color),
+                team_secondary_color = COALESCE(?, team_secondary_color),
+                updated_at = datetime('now')
+            WHERE id = ?
+          `, [
+            teamData.color ? `#${teamData.color}` : null,
+            teamData.alternateColor ? `#${teamData.alternateColor}` : null,
+            team.id
+          ]);
+        }
       }
 
       return team;
@@ -350,7 +490,21 @@ class ESPNService {
 
   async updateGameScores() {
     try {
-      const currentSeason = await db.get('SELECT * FROM seasons WHERE is_current = 1');
+      const db = await this.getDb();
+      let currentSeason;
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB: scan with filter
+        const seasons = await db.all({
+          action: 'scan',
+          table: 'seasons',
+          conditions: { is_current: true }
+        });
+        currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+      } else {
+        // SQLite: direct SQL query
+        currentSeason = await db.get('SELECT * FROM seasons WHERE is_current = 1');
+      }
+
       if (!currentSeason) {
         throw new Error('No current season set');
       }

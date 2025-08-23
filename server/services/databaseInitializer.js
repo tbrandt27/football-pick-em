@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
+import ESPNService from "./espnApi.js";
 
 /**
  * Database Initializer Service
@@ -19,6 +20,7 @@ export default class DatabaseInitializer {
     
     try {
       const needsSeeding = await this.checkIfSeedingNeeded();
+      const needsSchedule = await this.checkIfScheduleSyncNeeded();
       
       if (needsSeeding.teams || needsSeeding.adminUser || needsSeeding.season) {
         console.log("🌱 Database needs seeding, starting initialization...");
@@ -39,6 +41,12 @@ export default class DatabaseInitializer {
       } else {
         console.log("✅ Database already initialized, skipping seeding");
       }
+      
+      // Check if NFL schedule sync is needed (especially for DynamoDB)
+      if (needsSchedule) {
+        await this.syncNFLSchedule();
+      }
+      
     } catch (error) {
       console.error("❌ Database initialization failed:", error);
       // Don't throw error to prevent app from failing to start
@@ -313,6 +321,90 @@ export default class DatabaseInitializer {
       }
     } catch (error) {
       console.error(`❌ Failed to create admin user: ${error.message}`);
+    }
+  }
+
+  async checkIfScheduleSyncNeeded() {
+    // Check if NFL games exist for current season
+    try {
+      const currentYear = new Date().getFullYear().toString();
+      
+      if (this.db.getType && this.db.getType() === 'dynamodb') {
+        // For DynamoDB, check if we have games
+        const games = await this.db.all({
+          action: 'scan',
+          table: 'football_games'
+        });
+        
+        // If no games exist, or very few games (less than expected for a season)
+        const gamesCount = games ? games.length : 0;
+        const minExpectedGames = 250; // Roughly 16 teams * 17 weeks
+        
+        if (gamesCount < minExpectedGames) {
+          console.log(`🔍 Found ${gamesCount} games, expected at least ${minExpectedGames}. Schedule sync needed.`);
+          return true;
+        }
+        
+        console.log(`✅ Found ${gamesCount} games, schedule sync not needed.`);
+        return false;
+      } else {
+        // For SQLite, check normally
+        const gamesCount = await this.db.get('SELECT COUNT(*) as count FROM football_games');
+        const count = gamesCount?.count || 0;
+        const minExpectedGames = 250;
+        
+        if (count < minExpectedGames) {
+          console.log(`🔍 Found ${count} games, expected at least ${minExpectedGames}. Schedule sync needed.`);
+          return true;
+        }
+        
+        console.log(`✅ Found ${count} games, schedule sync not needed.`);
+        return false;
+      }
+    } catch (error) {
+      console.log("🔍 Could not check game count, assuming schedule sync needed");
+      return true; // If we can't check, assume we need sync
+    }
+  }
+
+  async syncNFLSchedule() {
+    console.log("📺 Syncing NFL schedule from ESPN API...");
+    
+    try {
+      // Get current season
+      let currentSeason;
+      const currentYear = new Date().getFullYear().toString();
+      
+      if (this.db.getType && this.db.getType() === 'dynamodb') {
+        const seasons = await this.db.all({
+          action: 'scan',
+          table: 'seasons',
+          conditions: { is_current: true }
+        });
+        currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+      } else {
+        currentSeason = await this.db.get('SELECT * FROM seasons WHERE is_current = 1');
+      }
+      
+      if (!currentSeason) {
+        console.log("⚠️  No current season found, skipping schedule sync");
+        return;
+      }
+      
+      console.log(`📡 Fetching NFL schedule for ${currentSeason.season} season...`);
+      
+      // Use ESPN service to sync schedule
+      const result = await ESPNService.updateNFLGames(currentSeason.id, null, null);
+      
+      console.log(`✅ NFL schedule sync completed:`);
+      console.log(`   📊 Created: ${result.created} games`);
+      console.log(`   🔄 Updated: ${result.updated} games`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to sync NFL schedule: ${error.message}`);
+      console.error("   This might be due to ESPN API rate limiting or network issues.");
+      console.error("   The app will continue to work, but games may need manual sync later.");
+      // Don't throw error - allow app to continue starting
     }
   }
 }
