@@ -193,9 +193,22 @@ router.post("/", authenticateToken, async (req, res) => {
     const gameId = uuidv4();
 
     // Get current season - ensure only one active season
-    const currentSeason = await db.get(
-      "SELECT id FROM seasons WHERE is_current = 1"
-    );
+    // Handle both SQLite (is_current = 1) and DynamoDB (is_current = true)
+    let currentSeason;
+    if (db.getType && db.getType() === 'dynamodb') {
+      // For DynamoDB, use scan with boolean true
+      const seasons = await db.all({
+        action: 'scan',
+        table: 'seasons',
+        conditions: { is_current: true }
+      });
+      currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+    } else {
+      // For SQLite, use SQL with numeric 1
+      currentSeason = await db.get(
+        "SELECT id FROM seasons WHERE is_current = 1"
+      );
+    }
     if (!currentSeason) {
       return res.status(400).json({
         error: "No current season set. Please contact an administrator.",

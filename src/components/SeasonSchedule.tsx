@@ -241,7 +241,9 @@ const SeasonSchedule: React.FC = () => {
                 </div>
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {weekGames.map((game) => (
+                    {weekGames
+                      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+                      .map((game) => (
                       <div key={game.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-center mb-3">
                           {editingGame === game.id ? (

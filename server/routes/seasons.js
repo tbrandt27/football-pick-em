@@ -2,6 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import db from '../models/database.js';
+import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 import espnService from '../services/espnApi.js';
 
 const router = express.Router();
@@ -24,10 +25,23 @@ router.get('/', async (req, res) => {
 // Get current season
 router.get('/current', async (req, res) => {
   try {
-    const currentSeason = await db.get(`
-      SELECT * FROM seasons 
-      WHERE is_current = 1
-    `);
+    // Handle both SQLite (is_current = 1) and DynamoDB (is_current = true)
+    let currentSeason;
+    if (db.getType && db.getType() === 'dynamodb') {
+      // For DynamoDB, use scan with boolean true
+      const seasons = await db.all({
+        action: 'scan',
+        table: 'seasons',
+        conditions: { is_current: true }
+      });
+      currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+    } else {
+      // For SQLite, use SQL with numeric 1
+      currentSeason = await db.get(`
+        SELECT * FROM seasons
+        WHERE is_current = 1
+      `);
+    }
 
     if (!currentSeason) {
       return res.status(404).json({ error: 'No current season set' });
@@ -86,17 +100,51 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
     // If this is to be the current season, unset the previous current season
     if (isCurrent) {
-      await db.run('UPDATE seasons SET is_current = 0');
+      if (db.getType && db.getType() === 'dynamodb') {
+        // For DynamoDB, scan all seasons and update them to false
+        const allSeasons = await db.all({
+          action: 'scan',
+          table: 'seasons'
+        });
+        
+        for (const existingSeason of allSeasons || []) {
+          await db.run({
+            action: 'update',
+            table: 'seasons',
+            key: { id: existingSeason.id },
+            item: { is_current: false }
+          });
+        }
+      } else {
+        // For SQLite, use SQL
+        await db.run('UPDATE seasons SET is_current = 0');
+      }
     }
 
     const seasonId = uuidv4();
     
-    await db.run(`
-      INSERT INTO seasons (id, season, is_current)
-      VALUES (?, ?, ?)
-    `, [seasonId, season, isCurrent ? 1 : 0]);
+    if (db.getType && db.getType() === 'dynamodb') {
+      // For DynamoDB, use put operation
+      await db.run({
+        action: 'put',
+        table: 'seasons',
+        item: {
+          id: seasonId,
+          season: season,
+          is_current: isCurrent || false
+        }
+      });
+    } else {
+      // For SQLite, use SQL
+      await db.run(`
+        INSERT INTO seasons (id, season, is_current)
+        VALUES (?, ?, ?)
+      `, [seasonId, season, isCurrent ? 1 : 0]);
+    }
 
-    const newSeason = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    const newSeason = db.getType && db.getType() === 'dynamodb'
+      ? await db.get({ action: 'get', table: 'seasons', key: { id: seasonId } })
+      : await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
 
     res.status(201).json({
       message: 'Season created successfully',
@@ -122,20 +170,56 @@ router.put('/:seasonId', authenticateToken, requireAdmin, async (req, res) => {
 
     // If updating to be current season, unset previous current
     if (isCurrent && !existingSeason.is_current) {
-      await db.run('UPDATE seasons SET is_current = 0');
+      if (db.getType && db.getType() === 'dynamodb') {
+        // For DynamoDB, scan all seasons and update them to false
+        const allSeasons = await db.all({
+          action: 'scan',
+          table: 'seasons'
+        });
+        
+        for (const s of allSeasons || []) {
+          if (s.id !== seasonId) {
+            await db.run({
+              action: 'update',
+              table: 'seasons',
+              key: { id: s.id },
+              item: { is_current: false }
+            });
+          }
+        }
+      } else {
+        // For SQLite, use SQL
+        await db.run('UPDATE seasons SET is_current = 0');
+      }
     }
 
-    await db.run(`
-      UPDATE seasons 
-      SET season = ?, is_current = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `, [
-      season || existingSeason.season,
-      isCurrent !== undefined ? (isCurrent ? 1 : 0) : existingSeason.is_current,
-      seasonId
-    ]);
+    if (db.getType && db.getType() === 'dynamodb') {
+      // For DynamoDB, use update operation
+      await db.run({
+        action: 'update',
+        table: 'seasons',
+        key: { id: seasonId },
+        item: {
+          season: season || existingSeason.season,
+          is_current: isCurrent !== undefined ? isCurrent : existingSeason.is_current
+        }
+      });
+    } else {
+      // For SQLite, use SQL
+      await db.run(`
+        UPDATE seasons
+        SET season = ?, is_current = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `, [
+        season || existingSeason.season,
+        isCurrent !== undefined ? (isCurrent ? 1 : 0) : existingSeason.is_current,
+        seasonId
+      ]);
+    }
 
-    const updatedSeason = await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    const updatedSeason = db.getType && db.getType() === 'dynamodb'
+      ? await db.get({ action: 'get', table: 'seasons', key: { id: seasonId } })
+      : await db.get('SELECT * FROM seasons WHERE id = ?', [seasonId]);
 
     res.json({
       message: 'Season updated successfully',
@@ -158,11 +242,29 @@ router.put('/:seasonId/current', authenticateToken, requireAdmin, async (req, re
       return res.status(404).json({ error: 'Season not found' });
     }
 
-    // Unset all current seasons
-    await db.run('UPDATE seasons SET is_current = 0');
-    
-    // Set this season as current
-    await db.run('UPDATE seasons SET is_current = 1 WHERE id = ?', [seasonId]);
+    if (db.getType && db.getType() === 'dynamodb') {
+      // For DynamoDB, scan all seasons and update them
+      const allSeasons = await db.all({
+        action: 'scan',
+        table: 'seasons'
+      });
+      
+      for (const s of allSeasons || []) {
+        await db.run({
+          action: 'update',
+          table: 'seasons',
+          key: { id: s.id },
+          item: { is_current: s.id === seasonId }
+        });
+      }
+    } else {
+      // For SQLite, use SQL
+      // Unset all current seasons
+      await db.run('UPDATE seasons SET is_current = 0');
+      
+      // Set this season as current
+      await db.run('UPDATE seasons SET is_current = 1 WHERE id = ?', [seasonId]);
+    }
 
     res.json({ message: 'Current season updated successfully' });
 
@@ -206,39 +308,102 @@ router.get('/:seasonId/games', async (req, res) => {
     const { seasonId } = req.params;
     const { week } = req.query;
 
-    let query = `
-      SELECT 
-        ng.*,
-        ht.team_city as home_team_city,
-        ht.team_name as home_team_name,
-        ht.team_code as home_team_code,
-        ht.team_primary_color as home_team_primary_color,
-        ht.team_secondary_color as home_team_secondary_color,
-        ht.team_logo as home_team_logo,
-        at.team_city as away_team_city,
-        at.team_name as away_team_name,
-        at.team_code as away_team_code,
-        at.team_primary_color as away_team_primary_color,
-        at.team_secondary_color as away_team_secondary_color,
-        at.team_logo as away_team_logo
-      FROM football_games ng
-      JOIN football_teams ht ON ng.home_team_id = ht.id
-      JOIN football_teams at ON ng.away_team_id = at.id
-      WHERE ng.season_id = ?
-    `;
-    
-    const params = [seasonId];
-    
-    if (week) {
-      query += ' AND ng.week = ?';
-      params.push(parseInt(week));
+    // Check if we're using DynamoDB or SQLite
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB implementation
+      let gameConditions = { season_id: seasonId };
+      if (week) {
+        gameConditions.week = parseInt(week);
+      }
+
+      const gamesResult = await db.all({
+        action: 'scan',
+        table: 'football_games',
+        conditions: gameConditions
+      });
+
+      const games = gamesResult || [];
+      
+      // For each game, get team information
+      const enrichedGames = [];
+      for (const game of games) {
+        // Get home team
+        const homeTeamResult = await db.get({
+          action: 'get',
+          table: 'football_teams',
+          key: { id: game.home_team_id }
+        });
+        const homeTeam = homeTeamResult || {};
+
+        // Get away team
+        const awayTeamResult = await db.get({
+          action: 'get',
+          table: 'football_teams',
+          key: { id: game.away_team_id }
+        });
+        const awayTeam = awayTeamResult || {};
+
+        enrichedGames.push({
+          ...game,
+          home_team_city: homeTeam.team_city,
+          home_team_name: homeTeam.team_name,
+          home_team_code: homeTeam.team_code,
+          home_team_primary_color: homeTeam.team_primary_color,
+          home_team_secondary_color: homeTeam.team_secondary_color,
+          home_team_logo: homeTeam.team_logo,
+          away_team_city: awayTeam.team_city,
+          away_team_name: awayTeam.team_name,
+          away_team_code: awayTeam.team_code,
+          away_team_primary_color: awayTeam.team_primary_color,
+          away_team_secondary_color: awayTeam.team_secondary_color,
+          away_team_logo: awayTeam.team_logo
+        });
+      }
+
+      // Sort games by week, then by start_time
+      enrichedGames.sort((a, b) => {
+        if (a.week !== b.week) {
+          return a.week - b.week;
+        }
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+      });
+
+      res.json({ games: enrichedGames });
+    } else {
+      // SQLite implementation (existing code)
+      let query = `
+        SELECT
+          ng.*,
+          ht.team_city as home_team_city,
+          ht.team_name as home_team_name,
+          ht.team_code as home_team_code,
+          ht.team_primary_color as home_team_primary_color,
+          ht.team_secondary_color as home_team_secondary_color,
+          ht.team_logo as home_team_logo,
+          at.team_city as away_team_city,
+          at.team_name as away_team_name,
+          at.team_code as away_team_code,
+          at.team_primary_color as away_team_primary_color,
+          at.team_secondary_color as away_team_secondary_color,
+          at.team_logo as away_team_logo
+        FROM football_games ng
+        JOIN football_teams ht ON ng.home_team_id = ht.id
+        JOIN football_teams at ON ng.away_team_id = at.id
+        WHERE ng.season_id = ?
+      `;
+      
+      const params = [seasonId];
+      
+      if (week) {
+        query += ' AND ng.week = ?';
+        params.push(parseInt(week));
+      }
+      
+      query += ' ORDER BY ng.week, ng.start_time';
+
+      const games = await db.all(query, params);
+      res.json({ games });
     }
-    
-    query += ' ORDER BY ng.week, ng.start_time';
-
-    const games = await db.all(query, params);
-
-    res.json({ games });
   } catch (error) {
     console.error('Get season games error:', error);
     res.status(500).json({ error: 'Internal server error' });
