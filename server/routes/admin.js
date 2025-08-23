@@ -295,18 +295,21 @@ router.post(
 router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
     if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get users and game counts separately
+      // For DynamoDB, get users and game counts using service layer
       const userService = DatabaseServiceFactory.getUserService();
       const users = await userService.getAllUsers();
       
-      // For each user, get game count
+      // For each user, get game count using DynamoDB scan
       const usersWithGameCount = await Promise.all(
         users.map(async (user) => {
           try {
-            const gameParticipations = await db.all('SELECT id FROM game_participants WHERE user_id = ?', [user.id]);
+            // Use DynamoDB scan to find game participations for this user
+            const gameParticipations = await db.provider._dynamoScan('game_participants', {
+              user_id: user.id
+            });
             return {
               ...user,
-              game_count: gameParticipations.length
+              game_count: gameParticipations.Items ? gameParticipations.Items.length : 0
             };
           } catch (error) {
             console.warn(`Could not get game count for user ${user.id}:`, error);
@@ -606,25 +609,67 @@ router.delete(
       const { gameId } = req.params;
 
       console.log(`[Admin Game Deletion] Starting deletion for game: ${gameId}`);
+      console.log(`[Admin Game Deletion] Database type: ${db.getType ? db.getType() : 'unknown'}`);
 
       // Use the game service layer for proper deletion handling
       const gameService = DatabaseServiceFactory.getGameService();
       
-      // Get game info before deletion for response message (bypass access control for admin)
+      // Get game info before deletion for response message using admin method
       let game;
       try {
-        // For admin operations, get game directly without access control
-        const gameData = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
-        if (!gameData) {
-          return res.status(404).json({ error: "Game not found" });
+        console.log(`[Admin Game Deletion] Attempting to get game info for ${gameId}`);
+        game = await gameService.getGameByIdForAdmin(gameId);
+        console.log(`[Admin Game Deletion] Game found:`, game ? 'Yes' : 'No');
+        if (!game) {
+          console.log(`[Admin Game Deletion] Game ${gameId} not found using service layer`);
+          
+          // Fallback: try direct database access for debugging
+          console.log(`[Admin Game Deletion] Trying direct database access as fallback`);
+          try {
+            if (db.getType && db.getType() === 'dynamodb') {
+              const directResult = await db.get({
+                action: 'get',
+                table: 'pickem_games',
+                key: { id: gameId }
+              });
+              console.log(`[Admin Game Deletion] Direct DynamoDB result:`, directResult ? 'Found' : 'Not found');
+              if (directResult && directResult.Item) {
+                game = directResult.Item;
+                console.log(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
+              }
+            } else {
+              const directResult = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
+              console.log(`[Admin Game Deletion] Direct SQLite result:`, directResult ? 'Found' : 'Not found');
+              if (directResult) {
+                game = directResult;
+                console.log(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
+              }
+            }
+          } catch (directError) {
+            console.error(`[Admin Game Deletion] Direct database access also failed:`, directError);
+          }
+          
+          if (!game) {
+            // For debugging, let's also try to list all games to see what's available
+            try {
+              const allGames = await gameService.getAllGames();
+              console.log(`[Admin Game Deletion] Total games in database: ${allGames.length}`);
+              console.log(`[Admin Game Deletion] Available game IDs:`, allGames.map(g => g.id).slice(0, 5));
+            } catch (listError) {
+              console.error(`[Admin Game Deletion] Error listing games:`, listError);
+            }
+            
+            return res.status(404).json({ error: "Game not found" });
+          }
         }
-        game = gameData;
       } catch (error) {
         console.error(`[Admin Game Deletion] Error getting game info:`, error);
+        console.error(`[Admin Game Deletion] Error stack:`, error.stack);
         return res.status(404).json({ error: "Game not found" });
       }
 
       // Use the service layer deleteGame method which handles both SQLite and DynamoDB correctly
+      console.log(`[Admin Game Deletion] Proceeding with deletion of game: ${game.game_name || 'Unknown'}`);
       await gameService.deleteGame(gameId);
 
       console.log(`[Admin Game Deletion] Game ${gameId} deleted successfully`);
@@ -633,31 +678,15 @@ router.delete(
       });
     } catch (error) {
       console.error("Admin delete game error:", error);
+      console.error("Admin delete game error stack:", error.stack);
+      
       if (error.message === 'Game not found') {
         return res.status(404).json({ error: error.message });
-      } else if (error.message === 'Access denied') {
-        // Admin should always have access, but check if this is the issue
-        console.warn(`[Admin Game Deletion] Access denied for admin user ${req.user.id} on game ${gameId}`);
-        // Try to get game directly without access control for admin
-        try {
-          const gameService = DatabaseServiceFactory.getGameService();
-          const gameExists = await db.get("SELECT game_name FROM pickem_games WHERE id = ?", [gameId]);
-          if (!gameExists) {
-            return res.status(404).json({ error: "Game not found" });
-          }
-          
-          // Call deleteGame directly without access control
-          await gameService.deleteGame(gameId);
-          
-          res.json({
-            message: `Game "${gameExists.game_name}" deleted successfully`,
-          });
-          return;
-        } catch (directError) {
-          console.error("Direct deletion also failed:", directError);
-        }
       }
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 );
@@ -743,21 +772,55 @@ router.delete(
       }
 
       // Delete related records manually to handle foreign key constraints
-      // Delete picks first
-      await db.run("DELETE FROM picks WHERE user_id = ?", [userId]);
-      
-      // Delete weekly standings
-      await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
-      
-      // Delete game invitations
-      const invitationService = DatabaseServiceFactory.getInvitationService();
-      await invitationService.deleteInvitationsByUser(userId, user.email);
-      
-      // Remove from game participants
-      await db.run("DELETE FROM game_participants WHERE user_id = ?", [userId]);
-      
-      // Update games where this user was commissioner (set to the requesting admin)
-      await db.run("UPDATE pickem_games SET commissioner_id = ? WHERE commissioner_id = ?", [req.user.id, userId]);
+      if (db.getType() === 'dynamodb') {
+        // For DynamoDB, use scans to find and delete records
+        
+        // Delete picks
+        const picksResult = await db.provider._dynamoScan('picks', { user_id: userId });
+        if (picksResult.Items) {
+          for (const pick of picksResult.Items) {
+            await db.provider._dynamoDelete('picks', { id: pick.id });
+          }
+        }
+        
+        // Delete weekly standings
+        const standingsResult = await db.provider._dynamoScan('weekly_standings', { user_id: userId });
+        if (standingsResult.Items) {
+          for (const standing of standingsResult.Items) {
+            await db.provider._dynamoDelete('weekly_standings', { id: standing.id });
+          }
+        }
+        
+        // Delete game invitations
+        const invitationService = DatabaseServiceFactory.getInvitationService();
+        await invitationService.deleteInvitationsByUser(userId, user.email);
+        
+        // Remove from game participants
+        const participantsResult = await db.provider._dynamoScan('game_participants', { user_id: userId });
+        if (participantsResult.Items) {
+          for (const participant of participantsResult.Items) {
+            await db.provider._dynamoDelete('game_participants', { id: participant.id });
+          }
+        }
+        
+        // Update games where this user was commissioner (set to the requesting admin)
+        const gamesResult = await db.provider._dynamoScan('pickem_games', { commissioner_id: userId });
+        if (gamesResult.Items) {
+          for (const game of gamesResult.Items) {
+            await db.provider._dynamoUpdate('pickem_games', { id: game.id }, { commissioner_id: req.user.id });
+          }
+        }
+      } else {
+        // For SQLite, use SQL queries
+        await db.run("DELETE FROM picks WHERE user_id = ?", [userId]);
+        await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
+        
+        const invitationService = DatabaseServiceFactory.getInvitationService();
+        await invitationService.deleteInvitationsByUser(userId, user.email);
+        
+        await db.run("DELETE FROM game_participants WHERE user_id = ?", [userId]);
+        await db.run("UPDATE pickem_games SET commissioner_id = ? WHERE commissioner_id = ?", [req.user.id, userId]);
+      }
       
       // Finally delete the user
       await userService.deleteUser(userId);
@@ -1625,8 +1688,9 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       // Check if user is already in the game
       let existingParticipant;
       if (db.getType() === 'dynamodb') {
-        // For DynamoDB, get all participants and filter in JavaScript
-        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
+        // For DynamoDB, get all participants using scan
+        const participantsResult = await db.provider._dynamoScan('game_participants', { game_id: gameId });
+        const allParticipants = participantsResult.Items || [];
         existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
       } else {
         // For SQLite, use the efficient query
