@@ -1,4 +1,4 @@
-import db from '../models/database.js';
+import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 import espnService from './espnApi.js';
 
 class OnDemandUpdateService {
@@ -12,14 +12,44 @@ class OnDemandUpdateService {
    */
   async areScoresStale(seasonId, week) {
     try {
-      const result = await db.get(`
-        SELECT 
-          COUNT(*) as total_games,
-          COUNT(scores_updated_at) as updated_games,
-          MAX(scores_updated_at) as last_update
-        FROM football_games
-        WHERE season_id = ? AND week = ?
-      `, [seasonId, week]);
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+      
+      let result;
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan games and calculate manually
+        const gamesResult = await dbProvider._dynamoScan('football_games', {
+          season_id: seasonId,
+          week: week
+        });
+        const games = gamesResult.Items || [];
+        
+        const totalGames = games.length;
+        const updatedGames = games.filter(game => game.scores_updated_at).length;
+        const lastUpdate = games.reduce((latest, game) => {
+          if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
+            return game.scores_updated_at;
+          }
+          return latest;
+        }, null);
+        
+        result = {
+          total_games: totalGames,
+          updated_games: updatedGames,
+          last_update: lastUpdate
+        };
+      } else {
+        // For SQLite, use the existing query
+        result = await dbProvider.get(`
+          SELECT
+            COUNT(*) as total_games,
+            COUNT(scores_updated_at) as updated_games,
+            MAX(scores_updated_at) as last_update
+          FROM football_games
+          WHERE season_id = ? AND week = ?
+        `, [seasonId, week]);
+      }
 
       if (!result || result.total_games === 0) {
         return true; // No games found, consider stale
@@ -50,13 +80,37 @@ class OnDemandUpdateService {
    */
   async getLastUpdateTime(seasonId, week) {
     try {
-      const result = await db.get(`
-        SELECT MAX(scores_updated_at) as last_update
-        FROM football_games
-        WHERE season_id = ? AND week = ? AND scores_updated_at IS NOT NULL
-      `, [seasonId, week]);
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+      
+      let lastUpdate = null;
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan games and find the latest update
+        const gamesResult = await dbProvider._dynamoScan('football_games', {
+          season_id: seasonId,
+          week: week
+        });
+        const games = gamesResult.Items || [];
+        
+        lastUpdate = games.reduce((latest, game) => {
+          if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
+            return game.scores_updated_at;
+          }
+          return latest;
+        }, null);
+      } else {
+        // For SQLite, use the existing query
+        const result = await dbProvider.get(`
+          SELECT MAX(scores_updated_at) as last_update
+          FROM football_games
+          WHERE season_id = ? AND week = ? AND scores_updated_at IS NOT NULL
+        `, [seasonId, week]);
+        
+        lastUpdate = result?.last_update || null;
+      }
 
-      return result?.last_update || null;
+      return lastUpdate;
     } catch (error) {
       console.error('Error getting last update time:', error);
       return null;
@@ -108,7 +162,20 @@ class OnDemandUpdateService {
    */
   async updateCurrentWeekIfStale() {
     try {
-      const currentSeason = await db.get('SELECT * FROM seasons WHERE is_current = 1');
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+      
+      let currentSeason;
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan for current season
+        const seasonsResult = await dbProvider._dynamoScan('seasons', { is_current: true });
+        currentSeason = seasonsResult.Items && seasonsResult.Items.length > 0 ? seasonsResult.Items[0] : null;
+      } else {
+        // For SQLite, use existing query
+        currentSeason = await dbProvider.get('SELECT * FROM seasons WHERE is_current = 1');
+      }
+      
       if (!currentSeason) {
         throw new Error('No current season set');
       }

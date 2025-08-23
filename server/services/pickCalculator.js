@@ -1,4 +1,4 @@
-import db from '../models/database.js';
+import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 
 class PickCalculatorService {
   /**
@@ -21,12 +21,31 @@ class PickCalculatorService {
         params.push(week);
       }
 
-      // Get completed games
-      const completedGames = await db.all(`
-        SELECT ng.id, ng.home_team_id, ng.away_team_id, ng.home_score, ng.away_score, ng.week
-        FROM football_games ng
-        ${whereClause} AND ng.status IN ('STATUS_FINAL', 'STATUS_CLOSED', 'Final')
-      `, params);
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+
+      let completedGames = [];
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan for completed games
+        let gameConditions = { season_id: seasonId };
+        if (week) gameConditions.week = week;
+        
+        const allGamesResult = await dbProvider._dynamoScan('football_games', gameConditions);
+        const allGames = allGamesResult.Items || [];
+        
+        // Filter for completed games
+        completedGames = allGames.filter(game =>
+          ['STATUS_FINAL', 'STATUS_CLOSED', 'Final'].includes(game.status)
+        );
+      } else {
+        // For SQLite, use the existing query
+        completedGames = await dbProvider.all(`
+          SELECT ng.id, ng.home_team_id, ng.away_team_id, ng.home_score, ng.away_score, ng.week
+          FROM football_games ng
+          ${whereClause} AND ng.status IN ('STATUS_FINAL', 'STATUS_CLOSED', 'Final')
+        `, params);
+      }
 
       let updatedPicks = 0;
 
@@ -41,28 +60,44 @@ class PickCalculatorService {
         // If tied, both picks are marked as incorrect (no winner)
 
         // Update picks for this game
-        if (winningTeamId) {
-          const result = await db.run(`
-            UPDATE picks 
-            SET is_correct = CASE 
-              WHEN pick_team_id = ? THEN 1 
-              ELSE 0 
-            END,
-            updated_at = datetime('now')
-            WHERE football_game_id = ?
-          `, [winningTeamId, game.id]);
+        if (dbType === 'dynamodb') {
+          // For DynamoDB, we need to get picks first, then update them
+          const picksResult = await dbProvider._dynamoScan('picks', { football_game_id: game.id });
+          const picks = picksResult.Items || [];
           
-          updatedPicks += result.changes || 0;
+          for (const pick of picks) {
+            const isCorrect = winningTeamId ? (pick.pick_team_id === winningTeamId ? 1 : 0) : 0;
+            await dbProvider._dynamoUpdate('picks', { id: pick.id }, {
+              is_correct: isCorrect,
+              updated_at: new Date().toISOString()
+            });
+            updatedPicks++;
+          }
         } else {
-          // Handle tie games - mark all picks as incorrect
-          const result = await db.run(`
-            UPDATE picks 
-            SET is_correct = 0,
-            updated_at = datetime('now')
-            WHERE football_game_id = ?
-          `, [game.id]);
-          
-          updatedPicks += result.changes || 0;
+          // For SQLite, use the existing bulk update queries
+          if (winningTeamId) {
+            const result = await dbProvider.run(`
+              UPDATE picks
+              SET is_correct = CASE
+                WHEN pick_team_id = ? THEN 1
+                ELSE 0
+              END,
+              updated_at = datetime('now')
+              WHERE football_game_id = ?
+            `, [winningTeamId, game.id]);
+            
+            updatedPicks += result.changes || 0;
+          } else {
+            // Handle tie games - mark all picks as incorrect
+            const result = await dbProvider.run(`
+              UPDATE picks
+              SET is_correct = 0,
+              updated_at = datetime('now')
+              WHERE football_game_id = ?
+            `, [game.id]);
+            
+            updatedPicks += result.changes || 0;
+          }
         }
       }
 
@@ -132,20 +167,50 @@ class PickCalculatorService {
         params.push(week);
       }
 
-      const stats = await db.get(`
-        SELECT 
-          COUNT(*) as total_picks,
-          COUNT(CASE WHEN is_correct = 1 THEN 1 END) as correct_picks,
-          COUNT(CASE WHEN is_correct = 0 THEN 1 END) as incorrect_picks,
-          COUNT(CASE WHEN is_correct IS NULL THEN 1 END) as pending_picks,
-          ROUND(
-            (COUNT(CASE WHEN is_correct = 1 THEN 1 END) * 100.0) / 
-            NULLIF(COUNT(CASE WHEN is_correct IS NOT NULL THEN 1 END), 0), 
-            2
-          ) as accuracy_percentage
-        FROM picks p
-        ${whereClause}
-      `, params);
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+      
+      let stats;
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan picks and calculate stats manually
+        let pickConditions = { season_id: seasonId };
+        if (week) pickConditions.week = week;
+        
+        const picksResult = await dbProvider._dynamoScan('picks', pickConditions);
+        const picks = picksResult.Items || [];
+        
+        const totalPicks = picks.length;
+        const correctPicks = picks.filter(p => p.is_correct === 1 || p.is_correct === true).length;
+        const incorrectPicks = picks.filter(p => p.is_correct === 0 || p.is_correct === false).length;
+        const pendingPicks = picks.filter(p => p.is_correct === null || p.is_correct === undefined).length;
+        const completedPicks = correctPicks + incorrectPicks;
+        const accuracyPercentage = completedPicks > 0 ? Math.round((correctPicks / completedPicks) * 100 * 100) / 100 : 0;
+        
+        stats = {
+          total_picks: totalPicks,
+          correct_picks: correctPicks,
+          incorrect_picks: incorrectPicks,
+          pending_picks: pendingPicks,
+          accuracy_percentage: accuracyPercentage
+        };
+      } else {
+        // For SQLite, use the existing aggregation query
+        stats = await dbProvider.get(`
+          SELECT
+            COUNT(*) as total_picks,
+            COUNT(CASE WHEN is_correct = 1 THEN 1 END) as correct_picks,
+            COUNT(CASE WHEN is_correct = 0 THEN 1 END) as incorrect_picks,
+            COUNT(CASE WHEN is_correct IS NULL THEN 1 END) as pending_picks,
+            ROUND(
+              (COUNT(CASE WHEN is_correct = 1 THEN 1 END) * 100.0) /
+              NULLIF(COUNT(CASE WHEN is_correct IS NOT NULL THEN 1 END), 0),
+              2
+            ) as accuracy_percentage
+          FROM picks p
+          ${whereClause}
+        `, params);
+      }
 
       return stats || {
         total_picks: 0,

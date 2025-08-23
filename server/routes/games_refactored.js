@@ -187,6 +187,7 @@ router.post(
       const normalizedEmail = userEmail.toLowerCase();
 
       const gameService = DatabaseServiceFactory.getGameService();
+      const userService = DatabaseServiceFactory.getUserService();
       
       // Get game information
       const game = await gameService.getGameById(gameId, req.user.id);
@@ -194,14 +195,38 @@ router.post(
         return res.status(404).json({ error: "Game not found" });
       }
 
-      // This logic would need to be moved to a UserService or remain here
-      // For now, keeping the user lookup logic as it was...
-      // The email invitation logic would also need refactoring
+      // Get inviter information
+      const inviter = await userService.getUserBasicInfo(req.user.id);
 
-      res.json({
-        message: "This endpoint needs UserService implementation",
-        type: "placeholder"
-      });
+      // Check if user already exists
+      const existingUser = await userService.getUserByEmail(normalizedEmail);
+
+      if (existingUser) {
+        // User exists - check if already in game
+        const existingParticipant = await gameService.getParticipant(gameId, existingUser.id);
+
+        if (existingParticipant) {
+          return res.status(409).json({ error: "User is already in this game" });
+        }
+
+        // Add user as player
+        const participant = await gameService.addParticipant(gameId, existingUser.id, 'player');
+
+        res.json({
+          message: "Player added successfully",
+          type: "direct_add",
+          player: {
+            id: existingUser.id,
+            email: existingUser.email,
+          },
+        });
+      } else {
+        // User doesn't exist - would need invitation system
+        // For now, return an error since invitation system needs to be implemented
+        res.status(400).json({
+          error: "User not found. Invitation system not yet implemented in refactored routes."
+        });
+      }
     } catch (error) {
       console.error("Add player error:", error);
       res.status(500).json({ error: "Internal server error" });

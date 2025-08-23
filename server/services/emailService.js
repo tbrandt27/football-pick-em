@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import db from "../models/database.js";
+import DatabaseProviderFactory from "../providers/DatabaseProviderFactory.js";
 import crypto from "crypto";
 
 // Encryption key for sensitive settings (should match admin.js)
@@ -23,12 +23,39 @@ class EmailService {
 
   async loadSmtpSettings() {
     try {
-      const settings = await db.all(`
-        SELECT key, value, encrypted
-        FROM system_settings 
-        WHERE category = 'smtp'
-        ORDER BY key
-      `);
+      const dbProvider = DatabaseProviderFactory.createProvider();
+      const dbType = DatabaseProviderFactory.getProviderType();
+      
+      let settings = [];
+      
+      if (dbType === 'dynamodb') {
+        // For DynamoDB, scan system_settings table
+        const result = await dbProvider._dynamoScan('system_settings', { category: 'smtp' });
+        settings = result.Items || [];
+      } else {
+        // For SQLite, check if system_settings table exists first
+        try {
+          const tableExists = await dbProvider.get(`
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='system_settings'
+          `);
+          
+          if (tableExists) {
+            settings = await dbProvider.all(`
+              SELECT key, value, encrypted
+              FROM system_settings
+              WHERE category = 'smtp'
+              ORDER BY key
+            `);
+          } else {
+            console.log("system_settings table does not exist, using environment variables for SMTP");
+            return null;
+          }
+        } catch (tableError) {
+          console.log("Could not check for system_settings table:", tableError.message);
+          return null;
+        }
+      }
 
       const smtpConfig = {};
       settings.forEach((setting) => {

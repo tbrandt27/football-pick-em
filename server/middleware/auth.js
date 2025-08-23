@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import db from '../models/database.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 export const authenticateToken = async (req, res, next) => {
@@ -49,12 +48,13 @@ export const requireGameOwner = async (req, res, next) => {
   }
 
   try {
-    const participant = await db.get(`
-      SELECT role FROM game_participants 
-      WHERE game_id = ? AND user_id = ? AND role = 'owner'
-    `, [gameId, req.user.id]);
-
-    if (!participant && !req.user.is_admin) {
+    // Use DatabaseServiceFactory to get the appropriate service
+    const gameService = DatabaseServiceFactory.getGameService();
+    const participant = await gameService.getParticipant(gameId, req.user.id);
+    
+    // Check if participant exists and has owner role
+    const isOwner = participant && participant.role === 'owner';
+    if (!isOwner && !req.user.is_admin) {
       return res.status(403).json({ error: 'Game owner access required' });
     }
 

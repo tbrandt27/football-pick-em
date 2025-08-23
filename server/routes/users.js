@@ -1,6 +1,5 @@
 import express from 'express';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
-import db from '../models/database.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 const router = express.Router();

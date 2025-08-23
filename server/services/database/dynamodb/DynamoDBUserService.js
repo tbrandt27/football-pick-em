@@ -1,31 +1,30 @@
 import IUserService from '../interfaces/IUserService.js';
-import db from '../../../models/database.js';
+import DatabaseProviderFactory from '../../../providers/DatabaseProviderFactory.js';
 
 /**
  * DynamoDB User Service Implementation
  */
 export default class DynamoDBUserService extends IUserService {
+  constructor() {
+    super();
+    this.db = DatabaseProviderFactory.createProvider();
+  }
   /**
    * Get all users (admin only)
    * @returns {Promise<Array>} Users with team info
    */
   async getAllUsers() {
     // Scan users table
-    const users = await db.all({
-      action: 'scan',
-      table: 'users'
-    });
+    const usersResult = await this.db._dynamoScan('users');
+    const users = usersResult.Items || [];
 
     // For each user, get team information if they have a favorite team
     const usersWithTeams = await Promise.all(
       users.map(async (user) => {
         if (user.favorite_team_id) {
           try {
-            const team = await db.get({
-              action: 'get',
-              table: 'football_teams',
-              key: { id: user.favorite_team_id }
-            });
+            const teamResult = await this.db._dynamoGet('football_teams', { id: user.favorite_team_id });
+            const team = teamResult.Item;
             
             return {
               ...user,
@@ -64,11 +63,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} User with team info
    */
   async getUserById(userId) {
-    const user = await db.get({
-      action: 'get',
-      table: 'users',
-      key: { id: userId }
-    });
+    const userResult = await this.db._dynamoGet('users', { id: userId });
+    const user = userResult.Item;
 
     if (!user) {
       return null;
@@ -77,11 +73,8 @@ export default class DynamoDBUserService extends IUserService {
     // Get team information if user has a favorite team
     if (user.favorite_team_id) {
       try {
-        const team = await db.get({
-          action: 'get',
-          table: 'football_teams',
-          key: { id: user.favorite_team_id }
-        });
+        const teamResult = await this.db._dynamoGet('football_teams', { id: user.favorite_team_id });
+        const team = teamResult.Item;
         
         return {
           ...user,
@@ -108,13 +101,9 @@ export default class DynamoDBUserService extends IUserService {
   async getUserByEmail(email) {
     // DynamoDB doesn't have a secondary index on email in this implementation
     // We need to scan the table - in production, you'd want a GSI on email
-    const result = await db.all({
-      action: 'scan',
-      table: 'users',
-      conditions: { email: email.toLowerCase() }
-    });
+    const result = await this.db._dynamoScan('users', { email: email.toLowerCase() });
 
-    return result && result.length > 0 ? result[0] : null;
+    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
   }
 
   /**
@@ -149,11 +138,7 @@ export default class DynamoDBUserService extends IUserService {
       updated_at: now
     };
 
-    await db.run({
-      action: 'put',
-      table: 'users',
-      item: userItem
-    });
+    await this.db._dynamoPut('users', userItem);
 
     return await this.getUserById(id);
   }
@@ -167,16 +152,11 @@ export default class DynamoDBUserService extends IUserService {
   async updateUser(userId, updates) {
     const { firstName, lastName, favoriteTeamId } = updates;
 
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: {
-        first_name: firstName,
-        last_name: lastName,
-        favorite_team_id: favoriteTeamId || null,
-        updated_at: new Date().toISOString()
-      }
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      first_name: firstName,
+      last_name: lastName,
+      favorite_team_id: favoriteTeamId || null,
+      updated_at: new Date().toISOString()
     });
 
     return await this.getUserById(userId);
@@ -189,14 +169,9 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<void>}
    */
   async updateAdminStatus(userId, isAdmin) {
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: {
-        is_admin: isAdmin,
-        updated_at: new Date().toISOString()
-      }
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      is_admin: isAdmin,
+      updated_at: new Date().toISOString()
     });
   }
 
@@ -206,13 +181,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<void>}
    */
   async updateLastLogin(userId) {
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: {
-        last_login: new Date().toISOString()
-      }
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      last_login: new Date().toISOString()
     });
   }
 
@@ -223,11 +193,8 @@ export default class DynamoDBUserService extends IUserService {
    */
   async getUserGames(userId) {
     // Get user's game participations
-    const participations = await db.all({
-      action: 'scan',
-      table: 'game_participants',
-      conditions: { user_id: userId }
-    });
+    const participationsResult = await this.db._dynamoQuery('game_participants', { user_id: userId });
+    const participations = participationsResult.Items || [];
 
     if (!participations || participations.length === 0) {
       return [];
@@ -237,22 +204,16 @@ export default class DynamoDBUserService extends IUserService {
     const gamesWithDetails = await Promise.all(
       participations.map(async (participation) => {
         try {
-          const game = await db.get({
-            action: 'get',
-            table: 'pickem_games',
-            key: { id: participation.game_id }
-          });
+          const gameResult = await this.db._dynamoGet('pickem_games', { id: participation.game_id });
+          const game = gameResult.Item;
 
           if (!game) {
             return null;
           }
 
           // Get player count for this game
-          const allParticipants = await db.all({
-            action: 'scan',
-            table: 'game_participants',
-            conditions: { game_id: participation.game_id }
-          });
+          const allParticipantsResult = await this.db._dynamoQuery('game_participants', { game_id: participation.game_id });
+          const allParticipants = allParticipantsResult.Items || [];
 
           const playerCount = allParticipants.filter(p => p.role === 'player').length;
 
@@ -293,11 +254,7 @@ export default class DynamoDBUserService extends IUserService {
       throw new Error('User not found');
     }
 
-    await db.run({
-      action: 'delete',
-      table: 'users',
-      key: { id: userId }
-    });
+    await this.db._dynamoDelete('users', { id: userId });
 
     return user;
   }
@@ -310,14 +267,9 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<void>}
    */
   async setPasswordResetToken(userId, resetToken, expiresAt) {
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: {
-        password_reset_token: resetToken,
-        password_reset_expires: expiresAt.toISOString()
-      }
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      password_reset_token: resetToken,
+      password_reset_expires: expiresAt.toISOString()
     });
   }
 
@@ -328,17 +280,13 @@ export default class DynamoDBUserService extends IUserService {
    */
   async getUserByResetToken(resetToken) {
     // Scan for user with this reset token that hasn't expired
-    const result = await db.all({
-      action: 'scan',
-      table: 'users',
-      conditions: { password_reset_token: resetToken }
-    });
+    const result = await this.db._dynamoScan('users', { password_reset_token: resetToken });
 
-    if (!result || result.length === 0) {
+    if (!result.Items || result.Items.length === 0) {
       return null;
     }
 
-    const user = result[0];
+    const user = result.Items[0];
     const now = new Date();
     const expiresAt = new Date(user.password_reset_expires);
 
@@ -357,15 +305,10 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<void>}
    */
   async resetPassword(userId, hashedPassword) {
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: {
-        password: hashedPassword,
-        password_reset_token: null,
-        password_reset_expires: null
-      }
+    await this.db._dynamoUpdate('users', { id: userId }, {
+      password: hashedPassword,
+      password_reset_token: null,
+      password_reset_expires: null
     });
   }
 
@@ -384,13 +327,9 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} First admin user
    */
   async getFirstAdminUser() {
-    const result = await db.all({
-      action: 'scan',
-      table: 'users',
-      conditions: { is_admin: true }
-    });
+    const result = await this.db._dynamoScan('users', { is_admin: true });
 
-    return result && result.length > 0 ? result[0] : null;
+    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
   }
 
   /**
@@ -398,12 +337,9 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} Any user
    */
   async getAnyUser() {
-    const result = await db.all({
-      action: 'scan',
-      table: 'users'
-    });
+    const result = await this.db._dynamoScan('users');
 
-    return result && result.length > 0 ? result[0] : null;
+    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
   }
 
   /**
@@ -431,19 +367,11 @@ export default class DynamoDBUserService extends IUserService {
 
     updateItem.updated_at = new Date().toISOString();
 
-    await db.run({
-      action: 'update',
-      table: 'users',
-      key: { id: userId },
-      item: updateItem
-    });
+    await this.db._dynamoUpdate('users', { id: userId }, updateItem);
 
     // Return updated user data - convert to format expected by auth routes
-    const user = await db.get({
-      action: 'get',
-      table: 'users',
-      key: { id: userId }
-    });
+    const userResult = await this.db._dynamoGet('users', { id: userId });
+    const user = userResult.Item;
 
     return user;
   }
@@ -453,11 +381,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<number>} Total number of users
    */
   async getUserCount() {
-    const result = await db.all({
-      action: 'scan',
-      table: 'users'
-    });
-    return result ? result.length : 0;
+    const result = await this.db._dynamoScan('users');
+    return result.Items ? result.Items.length : 0;
   }
 
   /**
@@ -466,11 +391,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} User basic info (name, email)
    */
   async getUserBasicInfo(userId) {
-    const user = await db.get({
-      action: 'get',
-      table: 'users',
-      key: { id: userId }
-    });
+    const userResult = await this.db._dynamoGet('users', { id: userId });
+    const user = userResult.Item;
 
     if (!user) {
       return null;

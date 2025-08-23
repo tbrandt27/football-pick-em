@@ -10,7 +10,7 @@ import { readFileSync } from "fs";
 // Import routes
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
-import gameRoutes from "./routes/games.js";
+import gameRoutes from "./routes/games_refactored.js";
 import teamRoutes from "./routes/teams.js";
 import pickRoutes from "./routes/picks.js";
 import seasonRoutes from "./routes/seasons.js";

@@ -1,7 +1,6 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateToken, requireGameOwner } from "../middleware/auth.js";
-import db from "../models/database.js";
 import emailService from "../services/emailService.js";
 import crypto from "crypto";
 import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.js";
@@ -22,49 +21,8 @@ const router = express.Router();
 // Get all pickem games (users see only games they participate in)
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    // Handle different database types
-    let games;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get user's participations first, then games
-      const userParticipations = await db.all('SELECT * FROM game_participants WHERE user_id = ?', [req.user.id]);
-      
-      games = await Promise.all(userParticipations.map(async (participation) => {
-        // Get the game details
-        const game = await db.get('SELECT * FROM pickem_games WHERE id = ?', [participation.game_id]);
-        if (!game) return null;
-        
-        // Get all participants for counts
-        const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [participation.game_id]);
-        
-        return {
-          ...game,
-          user_role: participation.role,
-          player_count: allParticipants.length,
-          owner_count: allParticipants.filter(p => p.role === 'owner').length
-        };
-      }));
-      
-      // Filter out null values and sort by creation date
-      games = games.filter(g => g !== null).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    } else {
-      // For SQLite, use the optimized JOIN query
-      games = await db.all(
-        `
-        SELECT
-          g.*,
-          gp.role as user_role,
-          COUNT(gp2.id) as player_count,
-          COUNT(CASE WHEN gp2.role = 'owner' THEN 1 END) as owner_count
-        FROM game_participants gp
-        JOIN pickem_games g ON gp.game_id = g.id
-        LEFT JOIN game_participants gp2 ON g.id = gp2.game_id
-        WHERE gp.user_id = ?
-        GROUP BY g.id, gp.role
-        ORDER BY g.created_at DESC
-      `,
-        [req.user.id]
-      );
-    }
+    const gameService = DatabaseServiceFactory.getGameService();
+    const games = await gameService.getUserGames(req.user.id);
 
     res.json({ games });
   } catch (error) {
@@ -80,118 +38,23 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const decodedSlug = decodeURIComponent(gameSlug);
 
-    // Handle different database types
-    let games;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get all games and commissioners separately
-      const allGames = await db.all('SELECT * FROM pickem_games');
-      
-      games = await Promise.all(allGames.map(async (game) => {
-        let commissioner_name = 'Unknown';
-        if (game.commissioner_id) {
-          const userService = DatabaseServiceFactory.getUserService();
-          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
-          if (commissioner) {
-            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
-          }
-        }
-        return {
-          ...game,
-          commissioner_name
-        };
-      }));
-    } else {
-      // For SQLite, get all games and commissioners separately to avoid JOIN
-      const allGames = await db.all('SELECT * FROM pickem_games');
-      const userService = DatabaseServiceFactory.getUserService();
-      
-      games = await Promise.all(allGames.map(async (game) => {
-        let commissioner_name = 'Unknown';
-        if (game.commissioner_id) {
-          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
-          if (commissioner) {
-            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
-          }
-        }
-        return {
-          ...game,
-          commissioner_name
-        };
-      }));
-    }
-
-    // Find game by matching slug
-    const game = games.find((g) => createGameSlug(g.game_name) === decodedSlug);
+    const gameService = DatabaseServiceFactory.getGameService();
+    const game = await gameService.getGameBySlug(decodedSlug, userId);
 
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
 
-    // Check if user is participant, commissioner, or admin
-    let isParticipant;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get all participants for this game and filter in JavaScript
-      const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [game.id]);
-      isParticipant = allParticipants.find(p => p.user_id === userId);
-    } else {
-      // For SQLite, use the efficient query
-      isParticipant = await db.get(
-        `
-        SELECT id FROM game_participants
-        WHERE game_id = ? AND user_id = ?
-      `,
-        [game.id, userId]
-      );
-    }
-
-    const isCommissioner = game.commissioner_id === userId;
-    const isAdmin = req.user.is_admin;
-
-    if (!isParticipant && !isCommissioner && !isAdmin) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    // Get participants
-    let participants;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get participants and users separately
-      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [game.id]);
-      
-      participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const userService = DatabaseServiceFactory.getUserService();
-        const user = await userService.getUserBasicInfo(gp.user_id);
-        return {
-          ...gp,
-          display_name: user ? `${user.first_name} ${user.last_name}` : ''
-        };
-      }));
-      
-      // Sort by creation date
-      participants.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    } else {
-      // For SQLite, get participants and users separately to avoid JOIN
-      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ? ORDER BY created_at', [game.id]);
-      const userService = DatabaseServiceFactory.getUserService();
-      
-      participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const user = await userService.getUserBasicInfo(gp.user_id);
-        return {
-          ...gp,
-          display_name: user ? `${user.first_name} ${user.last_name}` : ''
-        };
-      }));
-    }
-
     res.json({
-      game: {
-        ...game,
-        participants,
-        player_count: participants.length,
-      },
+      game: game,
     });
   } catch (error) {
     console.error("Get game by slug error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    if (error.message === 'Access denied') {
+      res.status(403).json({ error: "Access denied" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
@@ -200,123 +63,23 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
   try {
     const { gameId } = req.params;
 
-    // Check if user has access to this game
-    let participant;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get all participants for this game and filter in JavaScript
-      const allParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-      participant = allParticipants.find(p => p.user_id === req.user.id);
-    } else {
-      // For SQLite, use the efficient JOIN query
-      participant = await db.get(
-        `
-        SELECT role FROM game_participants
-        WHERE game_id = ? AND user_id = ?
-      `,
-        [gameId, req.user.id]
-      );
-    }
-
-    if (!participant && !req.user.is_admin) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    // Handle different database types
-    let game;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get game directly and calculate counts separately
-      game = await db.get('SELECT * FROM pickem_games WHERE id = ?', [gameId]);
-      
-      if (game) {
-        // Get participant counts manually
-        const participants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-        game.player_count = participants.length;
-        game.owner_count = participants.filter(p => p.role === 'owner').length;
-      }
-    } else {
-      // For SQLite, use the optimized query
-      game = await db.get(
-        `
-        SELECT
-          g.*,
-          COUNT(gp.id) as player_count,
-          COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
-        FROM pickem_games g
-        LEFT JOIN game_participants gp ON g.id = gp.game_id
-        WHERE g.id = ?
-        GROUP BY g.id
-      `,
-        [gameId]
-      );
-    }
+    const gameService = DatabaseServiceFactory.getGameService();
+    const game = await gameService.getGameById(gameId, req.user.id);
 
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
 
-    // Get participants
-    let participants;
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get participants and users separately
-      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-      
-      participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const userService = DatabaseServiceFactory.getUserService();
-        const user = await userService.getUserBasicInfo(gp.user_id);
-        return {
-          role: gp.role,
-          id: gp.id,
-          user_id: gp.user_id,
-          first_name: user?.first_name || '',
-          last_name: user?.last_name || '',
-          email: user?.email || '',
-          display_name: user ? `${user.first_name} ${user.last_name}` : ''
-        };
-      }));
-      
-      // Sort participants
-      participants.sort((a, b) => {
-        if (a.role !== b.role) {
-          return a.role === 'owner' ? -1 : 1;
-        }
-        return a.first_name.localeCompare(b.first_name);
-      });
-    } else {
-      // For SQLite, get participants and users separately to avoid JOIN
-      const gameParticipants = await db.all('SELECT * FROM game_participants WHERE game_id = ?', [gameId]);
-      const userService = DatabaseServiceFactory.getUserService();
-      
-      participants = await Promise.all(gameParticipants.map(async (gp) => {
-        const user = await userService.getUserBasicInfo(gp.user_id);
-        return {
-          role: gp.role,
-          id: gp.id,
-          user_id: gp.user_id,
-          first_name: user?.first_name || '',
-          last_name: user?.last_name || '',
-          email: user?.email || '',
-          display_name: user ? `${user.first_name} ${user.last_name}` : ''
-        };
-      }));
-      
-      // Sort participants
-      participants.sort((a, b) => {
-        if (a.role !== b.role) {
-          return a.role === 'owner' ? -1 : 1;
-        }
-        return a.first_name.localeCompare(b.first_name);
-      });
-    }
-
     res.json({
-      game: {
-        ...game,
-        participants,
-      },
+      game: game,
     });
   } catch (error) {
     console.error("Get game error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    if (error.message === 'Access denied') {
+      res.status(403).json({ error: "Access denied" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
