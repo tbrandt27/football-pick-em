@@ -279,19 +279,84 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     );
   }
 
-  if (!isAuthenticated || !user || !game || !currentSeason) {
+  if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">
-            {error || 'Unable to load game data'}
+            Please log in to view this game
           </p>
           <a
-            href="/dashboard"
+            href="/"
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Back to Dashboard
+            Go to Login
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+        <div className="text-center">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg mb-4">
+            <h3 className="font-bold text-lg mb-2">Error Loading Game</h3>
+            <p className="mb-4">{error}</p>
+            <details className="text-sm text-left">
+              <summary className="cursor-pointer font-medium">Debug Information</summary>
+              <div className="mt-2 p-2 bg-red-50 rounded">
+                <p><strong>Game ID:</strong> {gameId || 'Not provided'}</p>
+                <p><strong>Game Slug:</strong> {gameSlug || 'Not provided'}</p>
+                <p><strong>User:</strong> {user?.email || 'Not available'}</p>
+                <p><strong>Authentication:</strong> {isAuthenticated ? 'Yes' : 'No'}</p>
+              </div>
+            </details>
+          </div>
+          <div className="space-x-3">
+            <button
+              onClick={() => {
+                setError('');
+                loadGameData();
+              }}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Try Again
+            </button>
+            <a
+              href="/dashboard"
+              className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!game || !currentSeason) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">
+            Game or season data not available
+          </p>
+          <div className="space-x-3">
+            <button
+              onClick={() => loadGameData()}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Reload
+            </button>
+            <a
+              href="/dashboard"
+              className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Back to Dashboard
+            </a>
+          </div>
         </div>
       </div>
     );

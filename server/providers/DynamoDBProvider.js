@@ -806,23 +806,28 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     const tableName = tableMatch[1];
     const whereClause = whereMatch[1];
     
-    console.log(`[DynamoDB] Parsing DELETE for table: ${tableName}`);
-    console.log(`[DynamoDB] SQL: ${sql.substring(0, 200)}`);
+    console.log(`[DynamoDB] === DELETE PARSING START ===`);
+    console.log(`[DynamoDB] Table: ${tableName}`);
+    console.log(`[DynamoDB] Full SQL: ${sql}`);
     console.log(`[DynamoDB] Params:`, params);
+    console.log(`[DynamoDB] WHERE clause: ${whereClause}`);
     
     // Parse WHERE clause to extract the key
     const whereConditions = this._parseWhereClause(whereClause, params);
+    console.log(`[DynamoDB] Parsed WHERE conditions:`, whereConditions);
     
     // For DynamoDB, we need the primary key (id)
     const key = {};
     if (whereConditions.id) {
       key.id = whereConditions.id;
+      console.log(`[DynamoDB] Found primary key for DELETE: ${key.id}`);
     } else {
-      throw new Error('DELETE requires id in WHERE clause for DynamoDB');
+      console.error(`[DynamoDB] DELETE failed - no primary key (id) found in WHERE conditions:`, whereConditions);
+      console.error(`[DynamoDB] Available condition keys:`, Object.keys(whereConditions));
+      throw new Error(`DELETE requires id in WHERE clause for DynamoDB. Found conditions: ${Object.keys(whereConditions).join(', ')}`);
     }
     
-    console.log(`[DynamoDB] DELETE parsed key:`, key);
-    
+    console.log(`[DynamoDB] === DELETE PARSING END - CALLING _dynamoDelete ===`);
     return this._dynamoDelete(tableName, key);
   }
 
