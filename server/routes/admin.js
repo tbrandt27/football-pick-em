@@ -702,7 +702,7 @@ router.delete(
         [seasonId]
       );
 
-      if (gameCount.count > 0) {
+      if (gameCount?.count > 0) {
         return res.status(400).json({
           error: `Cannot delete season ${season.season} - it has ${gameCount.count} associated pick'em games. Delete the games first.`
         });

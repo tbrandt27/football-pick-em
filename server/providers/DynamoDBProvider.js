@@ -491,25 +491,55 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _handleInsert(sql, params) {
-    // Parse INSERT statement
+    // Parse INSERT statement - handle both column list and VALUES
     const tableMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
+    const columnsMatch = sql.match(/INSERT\s+INTO\s+\w+\s*\(([^)]+)\)/i);
     const valuesMatch = sql.match(/VALUES\s*\(([^)]+)\)/i);
     
-    if (!tableMatch || !valuesMatch) {
-      throw new Error('Could not parse INSERT statement');
+    if (!tableMatch) {
+      throw new Error('Could not parse table name from INSERT statement');
     }
     
     const tableName = tableMatch[1];
     
-    // For simplicity, assume the item is passed as the first parameter
-    // In a real implementation, you'd parse the column names and values
-    const item = params[0] || {};
+    console.log(`[DynamoDB] Parsing INSERT for table: ${tableName}`);
+    console.log(`[DynamoDB] SQL: ${sql.substring(0, 200)}`);
+    console.log(`[DynamoDB] Params:`, params);
     
-    if (!item.id) {
-      item.id = uuidv4();
+    // If we have column names and values, map them properly
+    if (columnsMatch && valuesMatch) {
+      const columns = columnsMatch[1]
+        .split(',')
+        .map(col => col.trim())
+        .filter(col => col.length > 0);
+      
+      const item = {};
+      
+      // Map parameters to column names
+      columns.forEach((column, index) => {
+        if (index < params.length) {
+          item[column] = params[index];
+        }
+      });
+      
+      console.log(`[DynamoDB] Mapped item:`, item);
+      
+      // Ensure we have an ID
+      if (!item.id) {
+        item.id = uuidv4();
+      }
+      
+      return this._dynamoPut(tableName, item);
+    } else {
+      // Fallback: assume the item is passed as the first parameter (object)
+      const item = params[0] || {};
+      
+      if (!item.id) {
+        item.id = uuidv4();
+      }
+      
+      return this._dynamoPut(tableName, item);
     }
-    
-    return this._dynamoPut(tableName, item);
   }
 
   async _handleUpdate(sql, params) {
@@ -524,6 +554,10 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     
     const tableName = tableMatch[1];
     const whereClause = whereMatch[1];
+    
+    console.log(`[DynamoDB] Parsing UPDATE for table: ${tableName}`);
+    console.log(`[DynamoDB] SQL: ${sql.substring(0, 200)}`);
+    console.log(`[DynamoDB] Params:`, params);
     
     // Parse WHERE clause to extract the key
     const key = {};
@@ -540,26 +574,51 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     const updates = {};
     if (setMatch) {
       const setClause = setMatch[1];
-      // Handle common SET patterns
+      console.log(`[DynamoDB] Parsing SET clause: ${setClause}`);
+      
+      // Handle different SET patterns
       if (setClause.includes('last_login') && setClause.includes('datetime')) {
         updates.last_login = new Date().toISOString();
+      } else if (setClause.includes('updated_at') && setClause.includes('datetime')) {
+        updates.updated_at = new Date().toISOString();
+      } else {
+        // Parse field = ? patterns
+        const setFields = setClause.split(',').map(s => s.trim());
+        let paramIndex = 0;
+        
+        // Skip WHERE clause parameters when counting SET parameters
+        const whereParamCount = (whereClause.match(/\?/g) || []).length;
+        const setParamCount = params.length - whereParamCount;
+        
+        setFields.forEach((field, index) => {
+          const fieldMatch = field.match(/(\w+)\s*=\s*\?/);
+          if (fieldMatch && paramIndex < setParamCount) {
+            const fieldName = fieldMatch[1];
+            updates[fieldName] = params[paramIndex];
+            paramIndex++;
+          } else if (field.includes('datetime(')) {
+            // Handle datetime functions
+            const fieldNameMatch = field.match(/(\w+)\s*=\s*datetime/);
+            if (fieldNameMatch) {
+              updates[fieldNameMatch[1]] = new Date().toISOString();
+            }
+          }
+        });
       }
-      // Add more SET clause parsing as needed
     }
     
-    console.log(`[DynamoDB] UPDATE parsing:`, {
+    console.log(`[DynamoDB] UPDATE parsed:`, {
       tableName,
       key,
       updates,
-      originalSQL: sql.substring(0, 100),
-      params
+      whereConditions
     });
     
     return this._dynamoUpdate(tableName, key, updates);
   }
 
   async _handleDelete(sql, params) {
-    // Parse DELETE statement - simplified
+    // Parse DELETE statement - properly handle WHERE conditions
     const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
     const whereMatch = sql.match(/WHERE\s+(.+)$/i);
     
@@ -568,24 +627,64 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
     
     const tableName = tableMatch[1];
-    const key = params[0] || {}; // Assume key is first param
+    const whereClause = whereMatch[1];
+    
+    console.log(`[DynamoDB] Parsing DELETE for table: ${tableName}`);
+    console.log(`[DynamoDB] SQL: ${sql.substring(0, 200)}`);
+    console.log(`[DynamoDB] Params:`, params);
+    
+    // Parse WHERE clause to extract the key
+    const whereConditions = this._parseWhereClause(whereClause, params);
+    
+    // For DynamoDB, we need the primary key (id)
+    const key = {};
+    if (whereConditions.id) {
+      key.id = whereConditions.id;
+    } else {
+      throw new Error('DELETE requires id in WHERE clause for DynamoDB');
+    }
+    
+    console.log(`[DynamoDB] DELETE parsed key:`, key);
     
     return this._dynamoDelete(tableName, key);
   }
 
   _parseWhereClause(whereClause, params) {
-    // Very basic WHERE clause parsing
-    // In practice, you'd want a proper SQL parser
+    // Enhanced WHERE clause parsing
     const conditions = {};
     
-    // Handle simple equality conditions
+    console.log(`[DynamoDB] Parsing WHERE clause: ${whereClause}`);
+    console.log(`[DynamoDB] Available params:`, params);
+    
+    // Handle simple equality conditions with parameters
     const matches = whereClause.match(/(\w+)\s*=\s*\?/g);
     if (matches) {
-      matches.forEach((match, index) => {
+      let paramIndex = 0;
+      matches.forEach((match) => {
         const field = match.split('=')[0].trim();
-        conditions[field] = params[index];
+        if (paramIndex < params.length) {
+          conditions[field] = params[paramIndex];
+          paramIndex++;
+        }
       });
     }
+    
+    // Handle direct value conditions (for cases where values are in the SQL)
+    const directMatches = whereClause.match(/(\w+)\s*=\s*['"]([^'"]+)['"]|(\w+)\s*=\s*(\d+)/g);
+    if (directMatches) {
+      directMatches.forEach((match) => {
+        const parts = match.split('=').map(p => p.trim());
+        if (parts.length === 2) {
+          const field = parts[0];
+          let value = parts[1];
+          // Remove quotes if present
+          value = value.replace(/^['"]|['"]$/g, '');
+          conditions[field] = value;
+        }
+      });
+    }
+    
+    console.log(`[DynamoDB] Parsed WHERE conditions:`, conditions);
     
     return conditions;
   }
