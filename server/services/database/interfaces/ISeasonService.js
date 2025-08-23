@@ -88,6 +88,30 @@ export default class ISeasonService {
   }
 
   /**
+   * Get total count of seasons
+   * @returns {Promise<number>} Total number of seasons
+   */
+  async getSeasonCount() {
+    throw new Error('getSeasonCount must be implemented');
+  }
+
+  /**
+   * Get total count of football teams
+   * @returns {Promise<number>} Total number of football teams
+   */
+  async getTeamCount() {
+    throw new Error('getTeamCount must be implemented');
+  }
+
+  /**
+   * Get all seasons with game counts (for admin management)
+   * @returns {Promise<Array>} Seasons with game count details
+   */
+  async getAllSeasonsWithCounts() {
+    throw new Error('getAllSeasonsWithCounts must be implemented');
+  }
+
+  /**
    * Find team by team code
    * @param {string} teamCode - Team code (e.g., 'KC', 'SF')
    * @returns {Promise<Object|null>} Team or null

@@ -187,4 +187,42 @@ export default class SQLiteSeasonService extends ISeasonService {
     const result = await db.get('SELECT COUNT(*) as count FROM football_games WHERE season_id = ?', [seasonId]);
     return result.count;
   }
+
+  /**
+   * Get total count of seasons
+   * @returns {Promise<number>} Total number of seasons
+   */
+  async getSeasonCount() {
+    const result = await db.get('SELECT COUNT(*) as count FROM seasons');
+    return result ? result.count : 0;
+  }
+
+  /**
+   * Get total count of football teams
+   * @returns {Promise<number>} Total number of football teams
+   */
+  async getTeamCount() {
+    const result = await db.get('SELECT COUNT(*) as count FROM football_teams');
+    return result ? result.count : 0;
+  }
+
+  /**
+   * Get all seasons with game counts (for admin management)
+   * @returns {Promise<Array>} Seasons with game count details
+   */
+  async getAllSeasonsWithCounts() {
+    return await db.all(`
+      SELECT
+        s.*,
+        COUNT(DISTINCT pg.id) as game_count,
+        COUNT(DISTINCT ng.id) as football_games_count,
+        CAST(s.season AS INTEGER) as year,
+        s.is_current as is_active
+      FROM seasons s
+      LEFT JOIN pickem_games pg ON s.id = pg.season_id
+      LEFT JOIN football_games ng ON s.id = ng.season_id
+      GROUP BY s.id
+      ORDER BY s.season DESC
+    `);
+  }
 }

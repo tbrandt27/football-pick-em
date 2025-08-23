@@ -381,4 +381,53 @@ export default class DynamoDBSeasonService extends ISeasonService {
     const updatedResult = await this.db._dynamoGet('football_games', { id: gameId });
     return updatedResult.Item;
   }
+
+  /**
+   * Get total count of seasons
+   * @returns {Promise<number>} Total number of seasons
+   */
+  async getSeasonCount() {
+    const result = await this.db._dynamoScan('seasons');
+    return result.Items ? result.Items.length : 0;
+  }
+
+  /**
+   * Get total count of football teams
+   * @returns {Promise<number>} Total number of football teams
+   */
+  async getTeamCount() {
+    const result = await this.db._dynamoScan('football_teams');
+    return result.Items ? result.Items.length : 0;
+  }
+
+  /**
+   * Get all seasons with game counts (for admin management)
+   * @returns {Promise<Array>} Seasons with game count details
+   */
+  async getAllSeasonsWithCounts() {
+    const result = await this.db._dynamoScan('seasons');
+    const seasons = result.Items || [];
+    
+    // For each season, get the game counts
+    const seasonsWithCounts = await Promise.all(seasons.map(async (season) => {
+      // Get pickem game count
+      const pickemGamesResult = await this.db._dynamoScan('pickem_games', { season_id: season.id });
+      const game_count = pickemGamesResult.Items ? pickemGamesResult.Items.length : 0;
+      
+      // Get football game count
+      const footballGamesResult = await this.db._dynamoScan('football_games', { season_id: season.id });
+      const football_games_count = footballGamesResult.Items ? footballGamesResult.Items.length : 0;
+      
+      return {
+        ...season,
+        game_count,
+        football_games_count,
+        year: parseInt(season.season), // Convert to integer
+        is_active: Boolean(season.is_current)
+      };
+    }));
+    
+    // Sort by season descending
+    return seasonsWithCounts.sort((a, b) => b.season.localeCompare(a.season));
+  }
 }

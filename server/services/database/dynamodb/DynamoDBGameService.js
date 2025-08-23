@@ -390,4 +390,134 @@ export default class DynamoDBGameService extends IGameService {
       return (a.display_name || '').localeCompare(b.display_name || '');
     });
   }
+
+  /**
+   * Get total count of games
+   * @returns {Promise<number>} Total number of games
+   */
+  async getGameCount() {
+    const result = await this.db._dynamoScan('pickem_games');
+    return result.Items ? result.Items.length : 0;
+  }
+
+  /**
+   * Get all games with admin details (for admin management)
+   * @returns {Promise<Array>} Games with commissioner, season, participant details
+   */
+  async getAllGamesWithDetails() {
+    const result = await this.db._dynamoScan('pickem_games');
+    const games = result.Items || [];
+
+    // For each game, get the additional data
+    const gamesWithDetails = await Promise.all(games.map(async (game) => {
+      // Get commissioner name
+      let commissioner_name = 'Unknown';
+      if (game.commissioner_id) {
+        const userService = require('../DatabaseServiceFactory.js').default.getUserService();
+        const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
+        if (commissioner) {
+          commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
+        }
+      }
+      
+      // Get season info
+      let season_year = null;
+      let season_is_current = false;
+      if (game.season_id) {
+        const seasonResult = await this.db._dynamoGet('seasons', { id: game.season_id });
+        const season = seasonResult.Item;
+        if (season) {
+          season_year = season.season;
+          season_is_current = Boolean(season.is_current);
+        }
+      }
+      
+      // Get participant count
+      const participantsResult = await this.db._dynamoScan('game_participants', { game_id: game.id });
+      const participant_count = participantsResult.Items ? participantsResult.Items.length : 0;
+      
+      return {
+        ...game,
+        name: game.game_name || 'Unnamed Game',
+        commissioner_name,
+        season_year,
+        season_is_current,
+        participant_count
+      };
+    }));
+    
+    // Sort by created_at descending
+    return gamesWithDetails.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
+  /**
+   * Update game season
+   * @param {string} gameId - Game ID
+   * @param {string} seasonId - New season ID
+   * @returns {Promise<void>}
+   */
+  async updateGameSeason(gameId, seasonId) {
+    await this.db._dynamoUpdate('pickem_games', { id: gameId }, { season_id: seasonId });
+  }
+
+  /**
+   * Update game status (active/inactive)
+   * @param {string} gameId - Game ID
+   * @param {boolean} isActive - Active status
+   * @returns {Promise<void>}
+   */
+  async updateGameStatus(gameId, isActive) {
+    await this.db._dynamoUpdate('pickem_games', { id: gameId }, { is_active: isActive });
+  }
+
+  /**
+   * Get all games (basic information)
+   * @returns {Promise<Array>} All games
+   */
+  async getAllGames() {
+    const result = await this.db._dynamoScan('pickem_games');
+    const games = result.Items || [];
+    
+    // Sort by created_at descending
+    return games.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
+  /**
+   * Update game data with provided fields
+   * @param {string} gameId - Game ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<void>}
+   */
+  async updateGameData(gameId, updates) {
+    await this.db._dynamoUpdate('pickem_games', { id: gameId }, {
+      ...updates,
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Migrate game data (DynamoDB - not applicable)
+   * @returns {Promise<void>}
+   */
+  async migrateGameData() {
+    // Not applicable for DynamoDB - handled in admin route logic
+    return;
+  }
+
+  /**
+   * Update commissioner for games without commissioner
+   * @param {string} userId - User ID to set as commissioner
+   * @returns {Promise<void>}
+   */
+  async updateCommissionerForGamesWithoutCommissioner(userId) {
+    // For DynamoDB, we need to scan for games and update individually
+    const result = await this.db._dynamoScan('pickem_games');
+    const games = result.Items || [];
+    
+    for (const game of games) {
+      if (!game.commissioner_id || game.commissioner_id === '') {
+        await this.updateGameData(game.id, { commissioner_id: userId });
+      }
+    }
+  }
 }

@@ -331,4 +331,128 @@ export default class SQLiteGameService extends IGameService {
       [gameId]
     );
   }
+
+  /**
+   * Get total count of games
+   * @returns {Promise<number>} Total number of games
+   */
+  async getGameCount() {
+    const result = await db.get('SELECT COUNT(*) as count FROM pickem_games');
+    return result ? result.count : 0;
+  }
+
+  /**
+   * Get all games with admin details (for admin management)
+   * @returns {Promise<Array>} Games with commissioner, season, participant details
+   */
+  async getAllGamesWithDetails() {
+    return await db.all(`
+      SELECT
+        g.*,
+        COALESCE(g.game_name, 'Unnamed Game') as name,
+        u.first_name || ' ' || u.last_name as commissioner_name,
+        s.season as season_year,
+        s.is_current as season_is_current,
+        COUNT(DISTINCT gp.id) as participant_count
+      FROM pickem_games g
+      LEFT JOIN users u ON g.commissioner_id = u.id
+      LEFT JOIN seasons s ON g.season_id = s.id
+      LEFT JOIN game_participants gp ON g.id = gp.game_id
+      GROUP BY g.id
+      ORDER BY g.created_at DESC
+    `);
+  }
+
+  /**
+   * Update game season
+   * @param {string} gameId - Game ID
+   * @param {string} seasonId - New season ID
+   * @returns {Promise<void>}
+   */
+  async updateGameSeason(gameId, seasonId) {
+    await db.run(`
+      UPDATE pickem_games
+      SET season_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `, [seasonId, gameId]);
+  }
+
+  /**
+   * Update game status (active/inactive)
+   * @param {string} gameId - Game ID
+   * @param {boolean} isActive - Active status
+   * @returns {Promise<void>}
+   */
+  async updateGameStatus(gameId, isActive) {
+    await db.run(`
+      UPDATE pickem_games
+      SET is_active = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `, [isActive ? 1 : 0, gameId]);
+  }
+
+  /**
+   * Get all games (basic information)
+   * @returns {Promise<Array>} All games
+   */
+  async getAllGames() {
+    return await db.all('SELECT * FROM pickem_games ORDER BY created_at DESC');
+  }
+
+  /**
+   * Update game data with provided fields
+   * @param {string} gameId - Game ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<void>}
+   */
+  async updateGameData(gameId, updates) {
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    const setClause = fields.map(field => `${field} = ?`).join(', ');
+    
+    await db.run(
+      `UPDATE pickem_games
+       SET ${setClause}, updated_at = datetime('now')
+       WHERE id = ?`,
+      [...values, gameId]
+    );
+  }
+
+  /**
+   * Migrate game data (SQLite specific)
+   * @returns {Promise<void>}
+   */
+  async migrateGameData() {
+    // Update games with NULL game_name
+    await db.run(`
+      UPDATE pickem_games
+      SET game_name = CASE
+        WHEN type = 'weekly' AND weekly_week IS NOT NULL THEN 'Week ' || weekly_week || ' Picks'
+        WHEN type = 'survivor' THEN 'Survivor Pool'
+        ELSE 'Pick''em Game'
+      END
+      WHERE game_name IS NULL OR game_name = ''
+    `);
+
+    // Update games with NULL is_active - set to active by default
+    await db.run(`
+      UPDATE pickem_games
+      SET is_active = 1
+      WHERE is_active IS NULL
+    `);
+  }
+
+  /**
+   * Update commissioner for games without commissioner
+   * @param {string} userId - User ID to set as commissioner
+   * @returns {Promise<void>}
+   */
+  async updateCommissionerForGamesWithoutCommissioner(userId) {
+    await db.run(
+      `UPDATE pickem_games
+       SET commissioner_id = ?
+       WHERE commissioner_id IS NULL OR commissioner_id = ''`,
+      [userId]
+    );
+  }
 }

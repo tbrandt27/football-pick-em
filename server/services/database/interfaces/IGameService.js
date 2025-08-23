@@ -103,4 +103,75 @@ export default class IGameService {
   async getGameParticipants(gameId) {
     throw new Error('getGameParticipants must be implemented');
   }
+
+  /**
+   * Get total count of games
+   * @returns {Promise<number>} Total number of games
+   */
+  async getGameCount() {
+    throw new Error('getGameCount must be implemented');
+  }
+
+  /**
+   * Get all games with admin details (for admin management)
+   * @returns {Promise<Array>} Games with commissioner, season, participant details
+   */
+  async getAllGamesWithDetails() {
+    throw new Error('getAllGamesWithDetails must be implemented');
+  }
+
+  /**
+   * Update game season
+   * @param {string} gameId - Game ID
+   * @param {string} seasonId - New season ID
+   * @returns {Promise<void>}
+   */
+  async updateGameSeason(gameId, seasonId) {
+    throw new Error('updateGameSeason must be implemented');
+  }
+
+  /**
+   * Update game status (active/inactive)
+   * @param {string} gameId - Game ID
+   * @param {boolean} isActive - Active status
+   * @returns {Promise<void>}
+   */
+  async updateGameStatus(gameId, isActive) {
+    throw new Error('updateGameStatus must be implemented');
+  }
+
+  /**
+   * Get all games (basic information)
+   * @returns {Promise<Array>} All games
+   */
+  async getAllGames() {
+    throw new Error('getAllGames must be implemented');
+  }
+
+  /**
+   * Update game data with provided fields
+   * @param {string} gameId - Game ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<void>}
+   */
+  async updateGameData(gameId, updates) {
+    throw new Error('updateGameData must be implemented');
+  }
+
+  /**
+   * Migrate game data (SQLite only)
+   * @returns {Promise<void>}
+   */
+  async migrateGameData() {
+    throw new Error('migrateGameData must be implemented');
+  }
+
+  /**
+   * Update commissioner for games without commissioner
+   * @param {string} userId - User ID to set as commissioner
+   * @returns {Promise<void>}
+   */
+  async updateCommissionerForGamesWithoutCommissioner(userId) {
+    throw new Error('updateCommissionerForGamesWithoutCommissioner must be implemented');
+  }
 }

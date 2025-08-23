@@ -19,19 +19,22 @@ const router = express.Router();
 router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const userService = DatabaseServiceFactory.getUserService();
+    const gameService = DatabaseServiceFactory.getGameService();
+    const seasonService = DatabaseServiceFactory.getSeasonService();
+    
     const [userCount, gameCount, teamCount, seasonCount] = await Promise.all([
-      userService.getUserCount().then(count => ({ count })),
-      db.get("SELECT COUNT(*) as count FROM pickem_games"),
-      db.get("SELECT COUNT(*) as count FROM football_teams"),
-      db.get("SELECT COUNT(*) as count FROM seasons"),
+      userService.getUserCount(),
+      gameService.getGameCount(),
+      seasonService.getTeamCount(),
+      seasonService.getSeasonCount(),
     ]);
 
     res.json({
       stats: {
-        users: userCount?.count || 0,
-        games: gameCount?.count || 0,
-        teams: teamCount?.count || 0,
-        seasons: seasonCount?.count || 0,
+        users: userCount || 0,
+        games: gameCount || 0,
+        teams: teamCount || 0,
+        seasons: seasonCount || 0,
       },
     });
   } catch (error) {
@@ -244,9 +247,8 @@ router.post("/sync-espn", authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Verify season exists
-    const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-      seasonId,
-    ]);
+    const seasonService = DatabaseServiceFactory.getSeasonService();
+    const season = await seasonService.getSeasonById(seasonId);
     if (!season) {
       return res.status(404).json({ error: "Season not found" });
     }
@@ -409,7 +411,8 @@ router.post(
       }
 
       // Get game name
-      const game = await db.get('SELECT game_name FROM pickem_games WHERE id = ?', [invitation.game_id]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameById(invitation.game_id);
       if (game) {
         invitation.game_name = game.game_name;
       }
@@ -443,10 +446,7 @@ router.post(
       });
 
       // Add user to the game
-      await db.run(`
-        INSERT INTO game_participants (id, game_id, user_id, role)
-        VALUES (?, ?, ?, 'player')
-      `, [uuidv4(), invitation.game_id, userId]);
+      await gameService.addParticipant(invitation.game_id, userId, 'player');
 
       // Mark invitation as accepted
       await invitationService.updateInvitationStatus(invitation.id, 'accepted');
@@ -479,69 +479,10 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
     // First, let's migrate any games that might have NULL names or commissioner_ids
     await migrateGameData();
 
-    // Handle different database types
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, we need to do separate queries and aggregate in JavaScript
-      const games = await db.all('SELECT * FROM pickem_games ORDER BY created_at DESC');
-      
-      // For each game, get the additional data
-      const gamesWithDetails = await Promise.all(games.map(async (game) => {
-        // Get commissioner name
-        let commissioner_name = 'Unknown';
-        if (game.commissioner_id) {
-          const userService = DatabaseServiceFactory.getUserService();
-          const commissioner = await userService.getUserBasicInfo(game.commissioner_id);
-          if (commissioner) {
-            commissioner_name = `${commissioner.first_name} ${commissioner.last_name}`;
-          }
-        }
-        
-        // Get season info
-        let season_year = null;
-        let season_is_current = false;
-        if (game.season_id) {
-          const season = await db.get('SELECT season, is_current FROM seasons WHERE id = ?', [game.season_id]);
-          if (season) {
-            season_year = season.season;
-            season_is_current = Boolean(season.is_current);
-          }
-        }
-        
-        // Get participant count
-        const participants = await db.all('SELECT id FROM game_participants WHERE game_id = ?', [game.id]);
-        const participant_count = participants.length;
-        
-        return {
-          ...game,
-          name: game.game_name || 'Unnamed Game',
-          commissioner_name,
-          season_year,
-          season_is_current,
-          participant_count
-        };
-      }));
-      
-      res.json({ games: gamesWithDetails });
-    } else {
-      // For SQLite, use the optimized JOIN query
-      const games = await db.all(`
-        SELECT
-          g.*,
-          COALESCE(g.game_name, 'Unnamed Game') as name,
-          u.first_name || ' ' || u.last_name as commissioner_name,
-          s.season as season_year,
-          s.is_current as season_is_current,
-          COUNT(DISTINCT gp.id) as participant_count
-        FROM pickem_games g
-        LEFT JOIN users u ON g.commissioner_id = u.id
-        LEFT JOIN seasons s ON g.season_id = s.id
-        LEFT JOIN game_participants gp ON g.id = gp.game_id
-        GROUP BY g.id
-        ORDER BY g.created_at DESC
-      `);
-
-      res.json({ games });
-    }
+    const gameService = DatabaseServiceFactory.getGameService();
+    const games = await gameService.getAllGamesWithDetails();
+    
+    res.json({ games });
   } catch (error) {
     console.error("Get admin games error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -551,9 +492,12 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
 // Helper function to migrate old game data
 async function migrateGameData() {
   try {
+    const gameService = DatabaseServiceFactory.getGameService();
+    const userService = DatabaseServiceFactory.getUserService();
+    
     if (db.getType() === 'dynamodb') {
       // For DynamoDB, handle migrations differently
-      const games = await db.all('SELECT * FROM pickem_games');
+      const games = await gameService.getAllGames();
       
       for (const game of games) {
         let needsUpdate = false;
@@ -580,7 +524,6 @@ async function migrateGameData() {
         // Fix missing commissioner_id
         if (!game.commissioner_id || game.commissioner_id === '') {
           // Find first admin user
-          const userService = DatabaseServiceFactory.getUserService();
           const adminUser = await userService.getFirstAdminUser();
           if (adminUser) {
             updates.commissioner_id = adminUser.id;
@@ -596,59 +539,22 @@ async function migrateGameData() {
         }
         
         if (needsUpdate) {
-          await db.run({
-            action: 'update',
-            table: 'pickem_games',
-            key: { id: game.id },
-            item: updates
-          });
+          await gameService.updateGameData(game.id, updates);
         }
       }
     } else {
-      // For SQLite, use SQL queries
-      // Update games with NULL game_name
-      await db.run(`
-        UPDATE pickem_games
-        SET game_name = CASE
-          WHEN type = 'weekly' AND weekly_week IS NOT NULL THEN 'Week ' || weekly_week || ' Picks'
-          WHEN type = 'survivor' THEN 'Survivor Pool'
-          ELSE 'Pick''em Game'
-        END
-        WHERE game_name IS NULL OR game_name = ''
-      `);
-
-      // Update games with NULL is_active - set to active by default
-      await db.run(`
-        UPDATE pickem_games
-        SET is_active = 1
-        WHERE is_active IS NULL
-      `);
-
+      // For SQLite, use SQL queries through the service layer
+      await gameService.migrateGameData();
+      
       // Update games with NULL commissioner_id - set to first admin user
-      const userService = DatabaseServiceFactory.getUserService();
       const firstAdmin = await userService.getFirstAdminUser();
-
       if (firstAdmin) {
-        await db.run(
-          `
-          UPDATE pickem_games
-          SET commissioner_id = ?
-          WHERE commissioner_id IS NULL OR commissioner_id = ''
-        `,
-          [firstAdmin.id]
-        );
+        await gameService.updateCommissionerForGamesWithoutCommissioner(firstAdmin.id);
       } else {
         // If no admin user, try to find any user
-        const anyUser = await db.get("SELECT id FROM users LIMIT 1");
+        const anyUser = await userService.getAnyUser();
         if (anyUser) {
-          await db.run(
-            `
-            UPDATE pickem_games
-            SET commissioner_id = ?
-            WHERE commissioner_id IS NULL OR commissioner_id = ''
-          `,
-            [anyUser.id]
-          );
+          await gameService.updateCommissionerForGamesWithoutCommissioner(anyUser.id);
         }
       }
     }
