@@ -112,10 +112,28 @@ async function seedTeamsDynamoDB() {
   
   try {
     for (const team of footballTeams) {
-      // Check if team already exists
-      const existingTeam = await db._dynamoScan('football_teams', { team_code: team.code });
+      // Check if team already exists using a more reliable method
+      let existingTeam = null;
+      try {
+        // Try to scan for the team with team_code filter
+        const scanResult = await db._dynamoScan('football_teams', { team_code: team.code });
+        if (scanResult && scanResult.Items && scanResult.Items.length > 0) {
+          existingTeam = scanResult.Items[0];
+        }
+      } catch (scanError) {
+        console.log(`[DynamoDB] Scan failed for ${team.code}, trying alternative approach:`, scanError.message);
+        // Fallback: get all teams and filter in memory
+        try {
+          const allTeamsResult = await db._dynamoScan('football_teams');
+          if (allTeamsResult && allTeamsResult.Items) {
+            existingTeam = allTeamsResult.Items.find(t => t.team_code === team.code);
+          }
+        } catch (fallbackError) {
+          console.log(`[DynamoDB] Fallback scan also failed for ${team.code}:`, fallbackError.message);
+        }
+      }
       
-      if (!existingTeam.Items || existingTeam.Items.length === 0) {
+      if (!existingTeam) {
         // Map team codes to logo filenames
         const logoMap = {
           'LAR': 'LA.svg',
@@ -148,7 +166,14 @@ async function seedTeamsDynamoDB() {
         
         console.log(`Added ${team.city} ${team.name} with logo ${logoFilename}`);
       } else {
-        console.log(`Team ${team.code} already exists, skipping`);
+        console.log(`Team ${team.code} already exists (ID: ${existingTeam.id}), skipping`);
+        
+        // Update existing team with missing data if needed
+        try {
+          await updateExistingTeamDynamoDB(existingTeam, team);
+        } catch (updateError) {
+          console.error(`Failed to update existing team ${team.code}:`, updateError);
+        }
       }
     }
     
@@ -250,6 +275,56 @@ export async function updateTeamLogos() {
 }
 
 
+
+// Helper function to update existing DynamoDB teams
+async function updateExistingTeamDynamoDB(existingTeam, teamData) {
+  try {
+    const logoMap = {
+      'LAR': 'LA.svg',
+      'LAC': 'SD.svg',
+      'LV': 'OAK.svg'
+    };
+    
+    const logoFilename = logoMap[teamData.code] || `${teamData.code}.svg`;
+    const logoPath = `/logos/${logoFilename}`;
+    
+    // Check what fields need updating
+    const updates = {};
+    
+    if (!existingTeam.team_conference || existingTeam.team_conference === 'undefined') {
+      updates.team_conference = teamData.conference;
+    }
+    if (!existingTeam.team_division || existingTeam.team_division === 'undefined') {
+      updates.team_division = teamData.division;
+    }
+    if (!existingTeam.team_logo) {
+      updates.team_logo = logoPath;
+    }
+    if (!existingTeam.team_primary_color) {
+      updates.team_primary_color = teamData.primaryColor;
+    }
+    if (!existingTeam.team_secondary_color) {
+      updates.team_secondary_color = teamData.secondaryColor;
+    }
+    if (!existingTeam.team_city || existingTeam.team_city === 'undefined') {
+      updates.team_city = teamData.city;
+    }
+    if (!existingTeam.team_name || existingTeam.team_name === 'undefined') {
+      updates.team_name = teamData.name;
+    }
+    
+    // Only update if there are fields to update
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = new Date().toISOString();
+      await db._dynamoUpdate('football_teams', { id: existingTeam.id }, updates);
+      console.log(`Updated ${teamData.code} with missing fields:`, Object.keys(updates));
+    } else {
+      console.log(`${teamData.code} already has all required data`);
+    }
+  } catch (error) {
+    console.error(`Error updating existing DynamoDB team ${teamData.code}:`, error);
+  }
+}
 
 // Run seeding if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {

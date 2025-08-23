@@ -187,6 +187,7 @@ const SeasonsManager: React.FC = () => {
     try {
       setDeleting(true);
       setError('');
+      setSuccess('');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       
       console.log('Attempting to delete season:', { seasonId, seasonYear });
@@ -199,11 +200,22 @@ const SeasonsManager: React.FC = () => {
       console.log('Delete response status:', response.status);
       
       if (response.ok) {
-        setSeasons(seasons.filter(s => s.id !== seasonId));
-        setSuccess(`Season ${seasonYear} deleted successfully`);
+        // Immediately update the UI state
+        const updatedSeasons = seasons.filter(s => s.id !== seasonId);
+        setSeasons(updatedSeasons);
+        
+        // Close modal and reset state
         setShowDeleteModal(false);
         setSeasonToDelete(null);
-        setTimeout(() => setSuccess(''), 5000);
+        
+        // Show success message
+        setSuccess(`Season ${seasonYear} deleted successfully`);
+        
+        // Reload seasons from server to ensure consistency
+        setTimeout(() => {
+          loadSeasons();
+          setSuccess('');
+        }, 1000);
       } else {
         const errorData = await response.json();
         console.error('Delete error response:', errorData);

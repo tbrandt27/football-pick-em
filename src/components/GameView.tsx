@@ -62,7 +62,19 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           gameResponse = await api.getGameBySlug(gameSlug);
         } catch (slugError) {
           console.error('[GameView] Error loading game by slug:', slugError);
-          throw new Error(`Failed to load game by slug: ${slugError instanceof Error ? slugError.message : 'Unknown error'}`);
+          // Try to provide more helpful error messages
+          if (slugError instanceof Error) {
+            if (slugError.message.includes('404') || slugError.message.includes('not found')) {
+              setError(`Game "${gameSlug}" not found. Please check the URL or contact the game commissioner.`);
+            } else if (slugError.message.includes('403') || slugError.message.includes('access denied')) {
+              setError(`You don't have permission to view this game. Please contact the game commissioner to be added.`);
+            } else {
+              setError(`Failed to load game: ${slugError.message}`);
+            }
+          } else {
+            setError('Failed to load game. Please try again.');
+          }
+          return;
         }
       } else if (gameId) {
         console.log('[GameView] Loading game by ID:', gameId);
@@ -70,10 +82,22 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           gameResponse = await api.getGame(gameId);
         } catch (idError) {
           console.error('[GameView] Error loading game by ID:', idError);
-          throw new Error(`Failed to load game by ID: ${idError instanceof Error ? idError.message : 'Unknown error'}`);
+          if (idError instanceof Error) {
+            if (idError.message.includes('404') || idError.message.includes('not found')) {
+              setError(`Game not found. Please check the URL or contact the game commissioner.`);
+            } else if (idError.message.includes('403') || idError.message.includes('access denied')) {
+              setError(`You don't have permission to view this game. Please contact the game commissioner to be added.`);
+            } else {
+              setError(`Failed to load game: ${idError.message}`);
+            }
+          } else {
+            setError('Failed to load game. Please try again.');
+          }
+          return;
         }
       } else {
-        throw new Error('No game ID or slug provided');
+        setError('No game specified. Please check the URL.');
+        return;
       }
       
       console.log('[GameView] Game response:', gameResponse);
@@ -94,14 +118,22 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         ]);
       } catch (dataError) {
         console.error('[GameView] Error loading season/teams data:', dataError);
-        throw new Error(`Failed to load season or teams data: ${dataError instanceof Error ? dataError.message : 'Unknown error'}`);
+        // Don't fail completely if teams loading fails, season is more critical
+        if (dataError instanceof Error && dataError.message.includes('season')) {
+          setError(`Failed to load season data: ${dataError.message}`);
+          return;
+        } else {
+          console.warn('[GameView] Teams loading failed, continuing without teams data:', dataError);
+          seasonResponse = await api.getCurrentSeason();
+          teamsResponse = { success: false, data: null };
+        }
       }
 
       console.log('[GameView] Season response:', seasonResponse);
       console.log('[GameView] Teams response:', teamsResponse);
 
-      if (!seasonResponse.success || !seasonResponse.data) {
-        const errorMsg = seasonResponse?.error || 'No current season found';
+      if (!seasonResponse?.success || !seasonResponse.data) {
+        const errorMsg = seasonResponse?.error || 'No current season found. Please contact an administrator to set up the current season.';
         console.error('[GameView] Failed to load season:', errorMsg);
         setError(errorMsg);
         return;
@@ -111,11 +143,15 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       setGame(gameResponse.data.game);
       setCurrentSeason(seasonResponse.data.season);
       
-      // Load favorite team
-      if (user?.favoriteTeamId && teamsResponse.success && teamsResponse.data) {
-        const favTeam = teamsResponse.data.teams.find(t => t.id === user.favoriteTeamId);
-        setFavoriteTeam(favTeam || null);
-        console.log('[GameView] Set favorite team:', favTeam?.team_name);
+      // Load favorite team (optional, don't fail if this doesn't work)
+      if (user?.favoriteTeamId && teamsResponse?.success && teamsResponse.data) {
+        try {
+          const favTeam = teamsResponse.data.teams.find(t => t.id === user.favoriteTeamId);
+          setFavoriteTeam(favTeam || null);
+          console.log('[GameView] Set favorite team:', favTeam?.team_name);
+        } catch (teamError) {
+          console.warn('[GameView] Failed to load favorite team, continuing:', teamError);
+        }
       }
       
       // Load current week games and user picks
@@ -124,15 +160,17 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         await loadWeekData(seasonResponse.data.season.id, currentWeek, gameResponse.data.game.id);
       } catch (weekError) {
         console.error('[GameView] Error loading week data:', weekError);
-        setError(`Failed to load week data: ${weekError instanceof Error ? weekError.message : 'Unknown error'}`);
-        return;
+        // This is not critical, show the game interface even if week data fails
+        console.warn('[GameView] Week data loading failed, showing game interface anyway');
+        setWeekGames([]);
+        setUserPicks([]);
       }
       
       console.log('[GameView] Game data loaded successfully');
 
     } catch (err) {
       console.error('[GameView] Error loading game data:', err);
-      setError(`Failed to load game data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to load game data: ${err instanceof Error ? err.message : 'An unexpected error occurred. Please try refreshing the page.'}`);
     } finally {
       setLoading(false);
     }

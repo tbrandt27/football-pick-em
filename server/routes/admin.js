@@ -786,7 +786,11 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       return res.status(409).json({ error: "Season already exists" });
     }
 
-    const newSeason = await seasonService.createSeason(year.toString());
+    // Create season with proper object structure
+    const newSeason = await seasonService.createSeason({
+      season: year.toString(),
+      isCurrent: false
+    });
 
     res.status(201).json({
       message: "Season created successfully",
@@ -794,6 +798,9 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Create season error:", error);
+    if (error.message === 'Season already exists') {
+      return res.status(409).json({ error: error.message });
+    }
     res.status(500).json({ error: "Internal server error" });
   }
 });

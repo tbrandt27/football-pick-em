@@ -77,7 +77,10 @@ const GamesManager: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError('');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      console.log('[GamesManager] Loading data...');
       
       const [gamesResponse, seasonsResponse] = await Promise.all([
         fetch('/api/admin/games', {
@@ -88,17 +91,34 @@ const GamesManager: React.FC = () => {
         })
       ]);
 
+      console.log('[GamesManager] Games response status:', gamesResponse.status);
+      console.log('[GamesManager] Seasons response status:', seasonsResponse.status);
+
       if (gamesResponse.ok) {
         const gamesData = await gamesResponse.json();
+        console.log('[GamesManager] Games data:', gamesData);
         setGames(gamesData.games || []);
+      } else {
+        const gamesError = await gamesResponse.json().catch(() => ({ error: 'Failed to parse games response' }));
+        console.error('[GamesManager] Games error:', gamesError);
+        setError(`Failed to load games: ${gamesError.error || gamesResponse.statusText}`);
       }
 
       if (seasonsResponse.ok) {
         const seasonsData = await seasonsResponse.json();
+        console.log('[GamesManager] Seasons data:', seasonsData);
         setSeasons(seasonsData.seasons || []);
+      } else {
+        const seasonsError = await seasonsResponse.json().catch(() => ({ error: 'Failed to parse seasons response' }));
+        console.error('[GamesManager] Seasons error:', seasonsError);
+        // Don't overwrite games error if that failed
+        if (!error) {
+          setError(`Failed to load seasons: ${seasonsError.error || seasonsResponse.statusText}`);
+        }
       }
     } catch (err) {
-      setError('Failed to load data');
+      console.error('[GamesManager] Load data error:', err);
+      setError(`Failed to load data: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -398,90 +418,111 @@ const GamesManager: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredGames.map((game) => (
-                  <tr key={game.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{game.name}</div>
-                      {game.type === 'weekly' && game.weekly_week && (
-                        <div className="text-sm text-gray-500">Week {game.weekly_week}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        game.type === 'weekly' 
-                          ? 'bg-purple-100 text-purple-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {game.type === 'weekly' ? 'Weekly Picks' : 'Survivor'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {game.commissioner_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {game.season_year || 'No Season'}
-                        {game.season_is_current && (
-                          <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                            Current
-                          </span>
+                {filteredGames.map((game) => {
+                  // Ensure we have proper data fallbacks using correct property names
+                  const gameName = game.name || 'Unnamed Game';
+                  const gameType = game.type || 'weekly';
+                  const commissionerName = game.commissioner_name || 'Unknown';
+                  const seasonYear = game.season_year || 'No Season';
+                  const participantCount = game.participant_count || 0;
+                  const isActive = game.is_active !== undefined ? game.is_active : true;
+                  const createdAt = game.created_at || new Date().toISOString();
+                  
+                  return (
+                    <tr key={game.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{gameName}</div>
+                        {gameType === 'weekly' && game.weekly_week && (
+                          <div className="text-sm text-gray-500">Week {game.weekly_week}</div>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {game.participant_count} players
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        game.is_active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {game.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(game.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => setEditingGame(game)}
-                        className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded text-xs font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => toggleGameStatus(game.id, !game.is_active)}
-                        className={`px-3 py-1 rounded text-xs font-medium ${
-                          game.is_active
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                      >
-                        {game.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <a
-                        href={`/game/${game.id}/manage`}
-                        className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium"
-                      >
-                        Manage
-                      </a>
-                      <button
-                        onClick={() => handleDeleteClick(game)}
-                        className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          gameType === 'weekly'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {gameType === 'weekly' ? 'Weekly Picks' : 'Survivor'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {commissionerName}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {seasonYear}
+                          {game.season_is_current && (
+                            <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {participantCount} players
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          isActive
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        <button
+                          onClick={() => setEditingGame(game)}
+                          className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded text-xs font-medium"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleGameStatus(game.id, !isActive)}
+                          className={`px-3 py-1 rounded text-xs font-medium ${
+                            isActive
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          }`}
+                        >
+                          {isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <a
+                          href={`/game/${game.id}/manage`}
+                          className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium"
+                        >
+                          Manage
+                        </a>
+                        <button
+                          onClick={() => handleDeleteClick(game)}
+                          className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {filteredGames.length === 0 && (
+          {filteredGames.length === 0 && games.length > 0 && (
             <div className="p-8 text-center text-gray-500">
               No games found matching the selected filters.
+              <div className="mt-2 text-sm">
+                Total games available: {games.length}
+              </div>
+            </div>
+          )}
+          
+          {games.length === 0 && !loading && (
+            <div className="p-8 text-center text-gray-500">
+              <p className="mb-2">No games found.</p>
+              <p className="text-sm">Create your first game to get started.</p>
             </div>
           )}
         </div>
