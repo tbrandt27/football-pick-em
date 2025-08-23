@@ -77,10 +77,17 @@ export default class DatabaseInitializer {
         checks.adminUser = !adminUser;
         
         // Also check for any users created with placeholder emails and mark for cleanup
-        const placeholderUser = await this.db.get('SELECT id FROM users WHERE email LIKE ? LIMIT 1', ['%{{resolve:secretsmanager%']);
-        if (placeholderUser) {
-          console.log("🧹 Found user with placeholder email, will clean up during seeding");
-          checks.adminUser = true; // Force admin user recreation
+        try {
+          const allUsers = await this.db.all('SELECT * FROM users');
+          const placeholderUser = (allUsers || []).find(user =>
+            user.email && user.email.includes('{{resolve:secretsmanager')
+          );
+          if (placeholderUser) {
+            console.log("🧹 Found user with placeholder email, will clean up during seeding");
+            checks.adminUser = true; // Force admin user recreation
+          }
+        } catch (error) {
+          console.log("Note: Could not check for placeholder users");
         }
       } else {
         // If no admin email env var, check for any admin user
@@ -241,14 +248,22 @@ export default class DatabaseInitializer {
       if (this.db.getType() === 'dynamodb') {
         // For DynamoDB, we need to scan and delete placeholder users
         try {
-          const placeholderUsers = await this.db.all('SELECT * FROM users WHERE email LIKE ?', ['%{{resolve:secretsmanager%']);
-          for (const user of placeholderUsers || []) {
+          const allUsers = await this.db.all('SELECT * FROM users');
+          const placeholderUsers = (allUsers || []).filter(user =>
+            user.email && user.email.includes('{{resolve:secretsmanager')
+          );
+          
+          for (const user of placeholderUsers) {
             console.log(`🧹 Removing user with placeholder email: ${user.email}`);
             await this.db.run({
               action: 'delete',
               table: 'users',
               key: { id: user.id }
             });
+          }
+          
+          if (placeholderUsers.length > 0) {
+            console.log(`🧹 Cleaned up ${placeholderUsers.length} placeholder email users`);
           }
         } catch (error) {
           console.log("Note: Could not clean placeholder users (this is expected if none exist)");

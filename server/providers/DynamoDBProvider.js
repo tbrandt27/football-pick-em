@@ -229,13 +229,41 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       updated_at: now
     };
 
+    const actualTableName = this.tables[tableName] || tableName;
+    console.log(`[DynamoDB] PUT operation details:`, {
+      tableName,
+      actualTableName,
+      itemId: item.id,
+      hasRequiredFields: {
+        id: !!item.id,
+        email: !!item.email
+      }
+    });
+
     const command = new PutCommand({
-      TableName: this.tables[tableName] || tableName,
+      TableName: actualTableName,
       Item: itemWithTimestamps
     });
     
-    await this.docClient.send(command);
-    return { id: item.id };
+    try {
+      const result = await this.docClient.send(command);
+      console.log(`[DynamoDB] PUT successful:`, {
+        tableName: actualTableName,
+        itemId: item.id,
+        httpStatusCode: result.$metadata?.httpStatusCode,
+        requestId: result.$metadata?.requestId
+      });
+      return { id: item.id };
+    } catch (error) {
+      console.error(`[DynamoDB] PUT failed:`, {
+        tableName: actualTableName,
+        itemId: item.id,
+        error: error.message,
+        code: error.name,
+        httpStatusCode: error.$metadata?.httpStatusCode
+      });
+      throw error;
+    }
   }
 
   async _dynamoUpdate(tableName, key, updates) {
@@ -270,12 +298,35 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoDelete(tableName, key) {
+    const actualTableName = this.tables[tableName] || tableName;
+    console.log(`[DynamoDB] DELETE operation details:`, {
+      tableName,
+      actualTableName,
+      key
+    });
+
     const command = new DeleteCommand({
-      TableName: this.tables[tableName] || tableName,
+      TableName: actualTableName,
       Key: key
     });
     
-    return await this.docClient.send(command);
+    try {
+      const result = await this.docClient.send(command);
+      console.log(`[DynamoDB] DELETE successful:`, {
+        tableName: actualTableName,
+        key,
+        httpStatusCode: result.$metadata?.httpStatusCode
+      });
+      return result;
+    } catch (error) {
+      console.error(`[DynamoDB] DELETE failed:`, {
+        tableName: actualTableName,
+        key,
+        error: error.message,
+        code: error.name
+      });
+      throw error;
+    }
   }
 
   async _dynamoQuery(tableName, conditions, indexName = null) {
@@ -308,8 +359,9 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async _dynamoScan(tableName, filters = {}) {
+    const actualTableName = this.tables[tableName] || tableName;
     const scanParams = {
-      TableName: this.tables[tableName] || tableName
+      TableName: actualTableName
     };
 
     if (Object.keys(filters).length > 0) {
@@ -331,8 +383,31 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       scanParams.ExpressionAttributeValues = expressionAttributeValues;
     }
 
+    console.log(`[DynamoDB] SCAN operation details:`, {
+      tableName,
+      actualTableName,
+      filters,
+      hasFilters: Object.keys(filters).length > 0
+    });
+
     const command = new ScanCommand(scanParams);
-    return await this.docClient.send(command);
+    try {
+      const result = await this.docClient.send(command);
+      console.log(`[DynamoDB] SCAN successful:`, {
+        tableName: actualTableName,
+        itemCount: result.Items?.length || 0,
+        scannedCount: result.ScannedCount,
+        httpStatusCode: result.$metadata?.httpStatusCode
+      });
+      return result;
+    } catch (error) {
+      console.error(`[DynamoDB] SCAN failed:`, {
+        tableName: actualTableName,
+        error: error.message,
+        code: error.name
+      });
+      throw error;
+    }
   }
 
   // Basic SQL parsing methods (simplified for common patterns)
