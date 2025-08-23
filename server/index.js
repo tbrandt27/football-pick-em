@@ -69,14 +69,40 @@ app.use("/api/health", healthRoutes);
 // Serve static logo files with graceful fallback for missing files
 app.get("/logos/:filename", (req, res) => {
   const { filename } = req.params;
-  const publicLogoPath = join(__dirname, "../public/logos", filename);
+  
+  // Check for explicit environment variable first
+  const explicitLogosPath = process.env.LOGOS_PATH;
+  
+  // Try multiple possible paths for the logos directory (same as admin API)
+  const possibleLogoPaths = explicitLogosPath ? [join(explicitLogosPath, filename)] : [
+    // Standard relative path from current working directory
+    join(process.cwd(), "public/logos", filename),
+    // Path relative to server directory structure
+    join(__dirname, "../public/logos", filename),
+    join(__dirname, "../../public/logos", filename),
+    // Path relative to project root in different deployment scenarios
+    join(process.env.APP_ROOT || process.cwd(), "public/logos", filename),
+    `/app/public/logos/${filename}`, // Common Docker path
+    `/var/app/current/public/logos/${filename}`, // AWS App Runner path
+  ];
 
-  // Try public folder
-  if (existsSync(publicLogoPath)) {
-    res.sendFile(publicLogoPath);
+  let logoPath = null;
+  for (const testPath of possibleLogoPaths) {
+    if (existsSync(testPath)) {
+      logoPath = testPath;
+      break;
+    }
+  }
+
+  if (logoPath) {
+    res.sendFile(logoPath);
   } else {
-    // Return a placeholder SVG for missing logos
+    // Log which paths were tried for debugging
     console.warn(`Missing logo file: ${filename}`);
+    console.warn(`Tried paths:`, possibleLogoPaths);
+    console.warn(`Current working directory:`, process.cwd());
+    
+    // Return a placeholder SVG for missing logos
     res.setHeader("Content-Type", "image/svg+xml");
     res.status(200).send(`
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

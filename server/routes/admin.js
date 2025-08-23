@@ -23,10 +23,10 @@ router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
 
     res.json({
       stats: {
-        users: userCount.count,
-        games: gameCount.count,
-        teams: teamCount.count,
-        seasons: seasonCount.count,
+        users: userCount?.count || 0,
+        games: gameCount?.count || 0,
+        teams: teamCount?.count || 0,
+        seasons: seasonCount?.count || 0,
       },
     });
   } catch (error) {
@@ -77,26 +77,70 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
+    // Check for explicit environment variable first
+    const explicitLogosPath = process.env.LOGOS_PATH;
+    
     // Try multiple possible paths for the logos directory
-    const possiblePaths = [
-      path.join(__dirname, "../../public/logos"),
+    const possiblePaths = explicitLogosPath ? [explicitLogosPath] : [
+      // Standard relative path from current working directory
       path.join(process.cwd(), "public/logos"),
+      // Path relative to server directory structure
+      path.join(__dirname, "../../public/logos"),
       path.join(__dirname, "../../../public/logos"),
+      // Path relative to project root in different deployment scenarios
+      path.resolve("public/logos"),
+      path.resolve("./public/logos"),
+      // Additional paths for containerized/different deployment structures
+      path.join(process.env.APP_ROOT || process.cwd(), "public/logos"),
+      "/app/public/logos", // Common Docker path
+      "/var/app/current/public/logos", // AWS App Runner path
     ];
 
     let logosPath = null;
+    const existingPaths = [];
+    
+    console.log("Current working directory:", process.cwd());
+    console.log("Module filename:", __filename);
+    console.log("Module directory:", __dirname);
+    
     for (const testPath of possiblePaths) {
-      if (fs.existsSync(testPath)) {
-        logosPath = testPath;
-        break;
+      console.log(`Testing path: ${testPath}`);
+      try {
+        if (fs.existsSync(testPath)) {
+          logosPath = testPath;
+          existingPaths.push(testPath);
+          console.log(`✓ Found logos directory at: ${testPath}`);
+          break;
+        } else {
+          console.log(`✗ Path does not exist: ${testPath}`);
+        }
+      } catch (err) {
+        console.log(`✗ Error checking path ${testPath}:`, err.message);
       }
     }
 
     if (!logosPath) {
       console.error("Logos directory not found. Tried paths:", possiblePaths);
+      console.error("Existing paths found:", existingPaths);
+      
+      // Try to provide more debugging info
+      try {
+        const publicDir = path.join(process.cwd(), "public");
+        if (fs.existsSync(publicDir)) {
+          const publicContents = fs.readdirSync(publicDir);
+          console.log("Public directory contents:", publicContents);
+        } else {
+          console.log("Public directory does not exist at:", publicDir);
+        }
+      } catch (debugErr) {
+        console.log("Could not read public directory for debugging:", debugErr.message);
+      }
+      
       return res.status(404).json({
         error: "Logos directory not found",
         triedPaths: possiblePaths,
+        workingDirectory: process.cwd(),
+        moduleDirectory: __dirname,
       });
     }
 
@@ -112,6 +156,100 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
     res
       .status(500)
       .json({ error: `Failed to get team logos: ${error.message}` });
+  }
+});
+
+// Debug endpoint to help troubleshoot logos directory issues in production
+router.get("/debug/paths", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const { fileURLToPath } = await import("url");
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
+    const debugInfo = {
+      nodeVersion: process.version,
+      platform: process.platform,
+      cwd: process.cwd(),
+      __filename,
+      __dirname,
+      envAppRoot: process.env.APP_ROOT,
+      envLogosPath: process.env.LOGOS_PATH,
+    };
+
+    // Test all possible paths
+    const possiblePaths = [
+      path.join(process.cwd(), "public/logos"),
+      path.join(__dirname, "../../public/logos"),
+      path.join(__dirname, "../../../public/logos"),
+      path.resolve("public/logos"),
+      path.resolve("./public/logos"),
+      path.join(process.env.APP_ROOT || process.cwd(), "public/logos"),
+      "/app/public/logos",
+      "/var/app/current/public/logos",
+    ];
+
+    const pathTests = [];
+    for (const testPath of possiblePaths) {
+      try {
+        const exists = fs.existsSync(testPath);
+        const result = { path: testPath, exists };
+        
+        if (exists) {
+          try {
+            const contents = fs.readdirSync(testPath);
+            result.contents = contents.slice(0, 10); // Limit to first 10 items
+            result.svgCount = contents.filter(f => f.endsWith('.svg')).length;
+          } catch (err) {
+            result.error = err.message;
+          }
+        }
+        
+        pathTests.push(result);
+      } catch (err) {
+        pathTests.push({ path: testPath, exists: false, error: err.message });
+      }
+    }
+
+    // Check if public directory exists
+    const publicDirTests = [
+      path.join(process.cwd(), "public"),
+      path.join(__dirname, "../../public"),
+      "/app/public",
+      "/var/app/current/public",
+    ];
+
+    const publicTests = [];
+    for (const testPath of publicDirTests) {
+      try {
+        const exists = fs.existsSync(testPath);
+        const result = { path: testPath, exists };
+        
+        if (exists) {
+          try {
+            const contents = fs.readdirSync(testPath);
+            result.contents = contents;
+          } catch (err) {
+            result.error = err.message;
+          }
+        }
+        
+        publicTests.push(result);
+      } catch (err) {
+        publicTests.push({ path: testPath, exists: false, error: err.message });
+      }
+    }
+
+    res.json({
+      debugInfo,
+      pathTests,
+      publicTests,
+    });
+  } catch (error) {
+    console.error("Debug paths error:", error);
+    res.status(500).json({ error: `Debug error: ${error.message}` });
   }
 });
 
@@ -468,10 +606,10 @@ router.delete(
 router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const seasons = await db.all(`
-      SELECT 
+      SELECT
         s.*,
         COUNT(DISTINCT pg.id) as game_count,
-        COUNT(DISTINCT ng.id) as football_games_count,
+        COUNT(DISTINCT ng.id) as nfl_games_count,
         s.season as year,
         s.is_current as is_active
       FROM seasons s
@@ -510,21 +648,21 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
 
     await db.run(
       `
-      INSERT INTO seasons (id, season, is_current)
-      VALUES (?, ?, 0)
+      INSERT INTO seasons (id, season, name, is_current)
+      VALUES (?, ?, ?, 0)
     `,
-      [seasonId, year.toString()]
+      [seasonId, year.toString(), `${year} NFL Season`]
     );
 
     const newSeason = await db.get(
       `
-      SELECT 
+      SELECT
         *,
         0 as game_count,
-        0 as football_games_count,
+        0 as nfl_games_count,
         season as year,
         is_current as is_active
-      FROM seasons 
+      FROM seasons
       WHERE id = ?
     `,
       [seasonId]

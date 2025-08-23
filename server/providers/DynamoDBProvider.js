@@ -108,6 +108,12 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       const result = await this._executeOperation(operation, params);
       const duration = Date.now() - startTime;
       
+      // Handle COUNT queries - if result has count property, return it directly
+      if (result && typeof result === 'object' && 'count' in result && !result.Item && !result.Items) {
+        console.log(`[DynamoDB:${operationId}] GET completed in ${duration}ms, COUNT result: ${result.count}`);
+        return result;
+      }
+      
       // Handle both GET (result.Item) and SCAN (result.Items) results
       let item = null;
       if (result.Item) {
@@ -425,6 +431,35 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     // This is a simplified implementation
     // In a real implementation, you'd want a proper SQL parser
     // For now, we'll handle common patterns manually
+    
+    // Check for COUNT queries first
+    const countMatch = sql.match(/SELECT\s+COUNT\(\*\)\s+(?:as\s+)?(\w+)?\s+FROM\s+(\w+)/i);
+    if (countMatch) {
+      const countAlias = countMatch[1] || 'count';
+      const tableName = countMatch[2];
+      
+      console.log(`[DynamoDB] Handling COUNT query for table: ${tableName}`);
+      
+      // Check for WHERE clause in COUNT query
+      const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|$)/i);
+      
+      let result;
+      if (whereMatch) {
+        const whereClause = whereMatch[1];
+        const conditions = this._parseWhereClause(whereClause, params);
+        result = await this._dynamoScan(tableName, conditions);
+      } else {
+        result = await this._dynamoScan(tableName);
+      }
+      
+      // Return count in the expected format
+      const count = result.Items ? result.Items.length : 0;
+      const countResult = {};
+      countResult[countAlias] = count;
+      
+      console.log(`[DynamoDB] COUNT query result: ${count} items`);
+      return countResult;
+    }
     
     // Extract table name
     const tableMatch = sql.match(/FROM\s+(\w+)/i);

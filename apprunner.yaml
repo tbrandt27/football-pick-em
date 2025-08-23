@@ -26,6 +26,12 @@ run:
     - name: FRONTEND_URL
       value: ${AWS_APPRUNNER_SERVICE_URL}
 
+    # Static Files Configuration
+    - name: LOGOS_PATH
+      value: "/var/app/current/public/logos"
+    - name: APP_ROOT
+      value: "/var/app/current"
+
     # Database Configuration
     - name: DATABASE_TYPE
       value: "auto"  # Uses DynamoDB in production, SQLite in development

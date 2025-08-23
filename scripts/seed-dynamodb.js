@@ -150,6 +150,7 @@ class DynamoDBSeeder {
         item: {
           id: seasonId,
           season: currentYear,
+          name: `${currentYear} NFL Season`,
           is_current: true,
           created_at: now,
           updated_at: now
