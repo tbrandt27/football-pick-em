@@ -52,6 +52,9 @@ const GamesManager: React.FC = () => {
   });
   const [editingGame, setEditingGame] = useState<PickemGame | null>(null);
   const [updatingGame, setUpdatingGame] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [gameToDelete, setGameToDelete] = useState<PickemGame | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -191,12 +194,11 @@ const GamesManager: React.FC = () => {
   };
 
   const deleteGame = async (gameId: string, gameName: string) => {
-    if (!confirm(`Are you sure you want to delete "${gameName}"?\n\nThis action cannot be undone and will remove all participants, picks, and game data.`)) {
-      return;
-    }
-
     try {
+      setDeleting(true);
+      setError('');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
       const response = await fetch(`/api/admin/games/${gameId}`, {
         method: 'DELETE',
         headers: {
@@ -205,14 +207,29 @@ const GamesManager: React.FC = () => {
       });
 
       if (response.ok) {
-        // Reload games to remove the deleted one
-        loadData();
+        // Remove the deleted game from state
+        setGames(games.filter(g => g.id !== gameId));
+        setShowDeleteModal(false);
+        setGameToDelete(null);
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to delete game');
       }
     } catch (err) {
       setError('Failed to delete game');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteClick = (game: PickemGame) => {
+    setGameToDelete(game);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    if (gameToDelete) {
+      deleteGame(gameToDelete.id, gameToDelete.name);
     }
   };
 
@@ -450,7 +467,7 @@ const GamesManager: React.FC = () => {
                         Manage
                       </a>
                       <button
-                        onClick={() => deleteGame(game.id, game.name)}
+                        onClick={() => handleDeleteClick(game)}
                         className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
                       >
                         Delete
@@ -583,6 +600,76 @@ const GamesManager: React.FC = () => {
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Game Modal */}
+        {showDeleteModal && gameToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Game "{gameToDelete.name}"</h3>
+              
+              <div className="mb-6">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to delete "{gameToDelete.name}"?
+                </p>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-yellow-800 mb-2">This will permanently delete:</h4>
+                  <ul className="text-yellow-700 text-sm space-y-1">
+                    <li>• The game and all its settings</li>
+                    <li>• All participants and their picks</li>
+                    <li>• All game statistics and history</li>
+                    <li>• Any associated weekly or survivor data</li>
+                  </ul>
+                </div>
+
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <p className="text-red-700 text-sm font-semibold">
+                    ⚠️ Warning: This action cannot be undone.
+                  </p>
+                </div>
+                
+                <p className="text-gray-600 text-sm">
+                  Game Type: <span className="font-semibold">{gameToDelete.type === 'weekly' ? 'Weekly Picks' : 'Survivor'}</span>
+                  <br />
+                  Participants: <span className="font-semibold">{gameToDelete.participant_count} players</span>
+                  <br />
+                  Commissioner: <span className="font-semibold">{gameToDelete.commissioner_name}</span>
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setGameToDelete(null);
+                    setError('');
+                  }}
+                  disabled={deleting}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? (
+                    <span className="flex items-center space-x-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      <span>Deleting...</span>
+                    </span>
+                  ) : (
+                    'Delete Game'
+                  )}
                 </button>
               </div>
             </div>

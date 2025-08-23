@@ -58,10 +58,22 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       let gameResponse = null;
       if (gameSlug) {
         console.log('[GameView] Loading game by slug:', gameSlug);
-        gameResponse = await api.getGameBySlug(gameSlug);
+        try {
+          gameResponse = await api.getGameBySlug(gameSlug);
+        } catch (slugError) {
+          console.error('[GameView] Error loading game by slug:', slugError);
+          throw new Error(`Failed to load game by slug: ${slugError instanceof Error ? slugError.message : 'Unknown error'}`);
+        }
       } else if (gameId) {
         console.log('[GameView] Loading game by ID:', gameId);
-        gameResponse = await api.getGame(gameId);
+        try {
+          gameResponse = await api.getGame(gameId);
+        } catch (idError) {
+          console.error('[GameView] Error loading game by ID:', idError);
+          throw new Error(`Failed to load game by ID: ${idError instanceof Error ? idError.message : 'Unknown error'}`);
+        }
+      } else {
+        throw new Error('No game ID or slug provided');
       }
       
       console.log('[GameView] Game response:', gameResponse);
@@ -74,10 +86,16 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       }
 
       console.log('[GameView] Loading season and teams data...');
-      const [seasonResponse, teamsResponse] = await Promise.all([
-        api.getCurrentSeason(),
-        api.getTeams()
-      ]);
+      let seasonResponse, teamsResponse;
+      try {
+        [seasonResponse, teamsResponse] = await Promise.all([
+          api.getCurrentSeason(),
+          api.getTeams()
+        ]);
+      } catch (dataError) {
+        console.error('[GameView] Error loading season/teams data:', dataError);
+        throw new Error(`Failed to load season or teams data: ${dataError instanceof Error ? dataError.message : 'Unknown error'}`);
+      }
 
       console.log('[GameView] Season response:', seasonResponse);
       console.log('[GameView] Teams response:', teamsResponse);
@@ -102,7 +120,13 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       
       // Load current week games and user picks
       console.log('[GameView] Loading week data for season:', seasonResponse.data.season.id);
-      await loadWeekData(seasonResponse.data.season.id, currentWeek);
+      try {
+        await loadWeekData(seasonResponse.data.season.id, currentWeek, gameResponse.data.game.id);
+      } catch (weekError) {
+        console.error('[GameView] Error loading week data:', weekError);
+        setError(`Failed to load week data: ${weekError instanceof Error ? weekError.message : 'Unknown error'}`);
+        return;
+      }
       
       console.log('[GameView] Game data loaded successfully');
 
@@ -114,15 +138,24 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     }
   };
 
-  const loadWeekData = async (seasonId: string, week: number) => {
+  const loadWeekData = async (seasonId: string, week: number, currentGameId?: string) => {
     try {
+      console.log('[GameView] Loading week data with:', { seasonId, week, currentGameId });
+      
       const [gamesResponse, picksResponse] = await Promise.all([
         api.getSeasonGames(seasonId, week),
-        api.getUserPicks({ gameId: game?.id || gameId || '', seasonId, week })
+        // Use the passed gameId or fall back to the current game or provided gameId
+        api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week })
       ]);
+
+      console.log('[GameView] Week games response:', gamesResponse);
+      console.log('[GameView] User picks response:', picksResponse);
 
       if (gamesResponse.success && gamesResponse.data) {
         setWeekGames(gamesResponse.data.games);
+        console.log('[GameView] Set week games:', gamesResponse.data.games.length);
+      } else {
+        console.error('[GameView] Failed to load week games:', gamesResponse.error);
       }
 
       if (picksResponse.success && picksResponse.data) {
@@ -142,9 +175,13 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         
         setSelectedPicks(picks);
         setTiebreakers(ties);
+        console.log('[GameView] Set user picks:', picksResponse.data.picks.length);
+      } else {
+        console.error('[GameView] Failed to load user picks:', picksResponse.error);
       }
     } catch (err) {
-      console.error('Failed to load week data:', err);
+      console.error('[GameView] Error in loadWeekData:', err);
+      setError(`Failed to load week data: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -155,7 +192,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     setLoading(true);
     
     try {
-      await loadWeekData(currentSeason.id, newWeek);
+      await loadWeekData(currentSeason.id, newWeek, game?.id || gameId);
     } finally {
       setLoading(false);
     }
@@ -200,7 +237,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         setError(`Failed to save ${failedPicks.length} picks`);
       } else {
         // Reload picks to show updated data
-        await loadWeekData(currentSeason.id, currentWeek);
+        await loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
       }
     } catch (err) {
       setError('Failed to save picks');
@@ -488,7 +525,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                   onUpdateComplete={(result) => {
                     if (result.updated) {
                       // Reload the week data to show updated scores
-                      loadWeekData(currentSeason.id, currentWeek);
+                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
                     }
                   }}
                 />
