@@ -163,10 +163,10 @@ export default class SQLiteUserService extends IUserService {
    */
   async getUserGames(userId) {
     return await db.all(`
-      SELECT 
+      SELECT
         g.id,
         g.game_name,
-        g.game_type,
+        g.type as game_type,
         g.created_at,
         gp.role,
         COUNT(CASE WHEN gp2.role = 'player' THEN 1 END) as player_count
@@ -174,7 +174,7 @@ export default class SQLiteUserService extends IUserService {
       JOIN pickem_games g ON gp.game_id = g.id
       LEFT JOIN game_participants gp2 ON g.id = gp2.game_id
       WHERE gp.user_id = ?
-      GROUP BY g.id, g.game_name, g.game_type, g.created_at, gp.role
+      GROUP BY g.id, g.game_name, g.type, g.created_at, gp.role
       ORDER BY g.created_at DESC
     `, [userId]);
   }

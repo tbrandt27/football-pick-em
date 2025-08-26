@@ -123,6 +123,14 @@ class ApiClient {
     return this.request<{ teams: NFLTeam[] }>('/teams');
   }
 
+  async getTeamRecords() {
+    return this.request<{
+      records: Record<string, string>;
+      week: number;
+      season: string;
+    }>('/teams/records');
+  }
+
   // Games endpoints
   async getGames() {
     return this.request<{ games: PickemGame[] }>('/games');
@@ -232,12 +240,29 @@ class ApiClient {
     });
   }
 
+  async deletePick(pickId: string) {
+    return this.request<{ message: string }>(`/picks/${pickId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getPicksSummary(gameId: string, seasonId?: string, week?: number) {
     const params = new URLSearchParams();
     if (seasonId) params.append('seasonId', seasonId);
     if (week) params.append('week', week.toString());
     
     return this.request<{ summary: PicksSummary[] }>(`/picks/game/${gameId}/summary?${params}`);
+  }
+
+  async getSurvivorStats(gameId: string, seasonId: string, week: number) {
+    const params = new URLSearchParams();
+    params.append('seasonId', seasonId);
+    
+    return this.request<{
+      teamStats: TeamSurvivorStats[];
+      totalPicks: number;
+      week: number;
+    }>(`/picks/game/${gameId}/survivor-stats/${week}?${params}`);
   }
 
   // On-demand score updates
@@ -291,7 +316,7 @@ export interface NFLTeam {
 export interface PickemGame {
   id: string;
   game_name: string;
-  game_type: 'week' | 'survivor';
+  type: 'week' | 'survivor';
   created_at: string;
   updated_at: string;
   player_count: number;
@@ -402,6 +427,12 @@ export interface LastUpdateInfo {
   lastUpdate: string | null;
   formatted: string;
   isStale: boolean;
+}
+
+export interface TeamSurvivorStats {
+  teamId: string;
+  pickCount: number;
+  percentage: number;
 }
 
 export const api = new ApiClient();

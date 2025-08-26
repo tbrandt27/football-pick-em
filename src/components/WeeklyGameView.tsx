@@ -6,12 +6,12 @@ import api from '../utils/api';
 import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
 
-interface GameViewProps {
+interface WeeklyGameViewProps {
   gameId?: string;
   gameSlug?: string;
 }
 
-const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
+const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => {
   const user = useStore($user);
   const isAuthenticated = useStore($isAuthenticated);
   const isLoading = useStore($isLoading);
@@ -28,10 +28,19 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
   const [tiebreakerGame, setTiebreakerGame] = useState<string | null>(null);
   const [savingPicks, setSavingPicks] = useState(false);
   const [favoriteTeam, setFavoriteTeam] = useState<NFLTeam | null>(null);
+  const [defaultTeam, setDefaultTeam] = useState<NFLTeam | null>(null);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [availableGames, setAvailableGames] = useState<PickemGame[]>([]);
   const [copyingPicks, setCopyingPicks] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [weeklyStats, setWeeklyStats] = useState<{
+    userPicks: number;
+    totalPicks: number;
+    playersWithAllPicks: number;
+    userTotalPoints: number;
+    userWeekPoints: number;
+  } | null>(null);
+  
 
   useEffect(() => {
     // Only run on client side
@@ -53,12 +62,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       setLoading(true);
       setError(''); // Clear any previous errors
       
-      console.log('[GameView] Starting to load game data...', { gameId, gameSlug });
       
       // Use gameSlug if provided, otherwise use gameId for backward compatibility
       let gameResponse = null;
       if (gameSlug) {
-        console.log('[GameView] Loading game by slug:', gameSlug);
         try {
           gameResponse = await api.getGameBySlug(gameSlug);
         } catch (slugError) {
@@ -78,7 +85,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           return;
         }
       } else if (gameId) {
-        console.log('[GameView] Loading game by ID:', gameId);
         try {
           gameResponse = await api.getGame(gameId);
         } catch (idError) {
@@ -101,7 +107,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         return;
       }
       
-      console.log('[GameView] Game response:', gameResponse);
       
       if (!gameResponse?.success || !gameResponse.data) {
         const errorMsg = gameResponse?.error || 'Game not found or access denied';
@@ -110,7 +115,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         return;
       }
 
-      console.log('[GameView] Loading season and teams data...');
       let seasonResponse, teamsResponse;
       try {
         [seasonResponse, teamsResponse] = await Promise.all([
@@ -134,7 +138,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                 parseInt(b.season) - parseInt(a.season)
               )[0];
               seasonResponse = { success: true, data: { season: fallbackSeason } };
-              console.log('[GameView] Using fallback season:', fallbackSeason);
             } else {
               setError('No seasons available. Please contact an administrator to set up seasons.');
               return;
@@ -155,8 +158,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         }
       }
 
-      console.log('[GameView] Season response:', seasonResponse);
-      console.log('[GameView] Teams response:', teamsResponse);
 
       if (!seasonResponse?.success || !seasonResponse.data) {
         const errorMsg = seasonResponse?.error || 'No current season found. Please contact an administrator to set up the current season.';
@@ -165,25 +166,27 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         return;
       }
 
-      console.log('[GameView] Setting game and season data...');
       setGame(gameResponse.data.game);
       setCurrentSeason(seasonResponse.data.season);
       
+      // Always load the default team for fallback
+      await loadDefaultTeam();
+      
       // Load favorite team (optional, don't fail if this doesn't work)
-      if (user?.favoriteTeamId && teamsResponse?.success && teamsResponse.data) {
+      if (teamsResponse?.success && teamsResponse.data && user?.favoriteTeamId) {
         try {
           const favTeam = teamsResponse.data.teams.find(t => t.id === user.favoriteTeamId);
           setFavoriteTeam(favTeam || null);
-          console.log('[GameView] Set favorite team:', favTeam?.team_name);
         } catch (teamError) {
-          console.warn('[GameView] Failed to load favorite team, continuing:', teamError);
+          console.warn('[WeeklyGameView] Failed to load favorite team, continuing:', teamError);
         }
+      } else {
+        setFavoriteTeam(null);
       }
       
       // Load current week games and user picks
-      console.log('[GameView] Loading week data for season:', seasonResponse.data.season.id);
       try {
-        await loadWeekData(seasonResponse.data.season.id, currentWeek, gameResponse.data.game.id);
+        await loadWeekData(seasonResponse.data.season.id, currentWeek, gameResponse.data.game.id, gameResponse.data.game);
       } catch (weekError) {
         console.error('[GameView] Error loading week data:', weekError);
         // This is not critical, show the game interface even if week data fails
@@ -192,7 +195,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         setUserPicks([]);
       }
       
-      console.log('[GameView] Game data loaded successfully');
 
     } catch (err) {
       console.error('[GameView] Error loading game data:', err);
@@ -202,9 +204,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     }
   };
 
-  const loadWeekData = async (seasonId: string, week: number, currentGameId?: string) => {
+  const loadWeekData = async (seasonId: string, week: number, currentGameId?: string, gameData?: PickemGame & { participants: GameParticipant[] }) => {
     try {
-      console.log('[GameView] Loading week data with:', { seasonId, week, currentGameId });
       
       const [gamesResponse, picksResponse] = await Promise.all([
         api.getSeasonGames(seasonId, week),
@@ -212,12 +213,9 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week })
       ]);
 
-      console.log('[GameView] Week games response:', gamesResponse);
-      console.log('[GameView] User picks response:', picksResponse);
 
       if (gamesResponse.success && gamesResponse.data) {
         setWeekGames(gamesResponse.data.games);
-        console.log('[GameView] Set week games:', gamesResponse.data.games.length);
       } else {
         console.error('[GameView] Failed to load week games:', gamesResponse.error);
       }
@@ -239,13 +237,99 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         
         setSelectedPicks(picks);
         setTiebreakers(ties);
-        console.log('[GameView] Set user picks:', picksResponse.data.picks.length);
       } else {
-        console.error('[GameView] Failed to load user picks:', picksResponse.error);
+        console.error('[WeeklyGameView] Failed to load user picks:', picksResponse.error);
+      }
+
+      // Load weekly stats
+      await loadWeeklyStats(seasonId, week, currentGameId || game?.id || gameId || '');
+    } catch (err) {
+      console.error('[WeeklyGameView] Error in loadWeekData:', err);
+      setError(`Failed to load week data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const loadWeeklyStats = async (seasonId: string, week: number, gameId: string) => {
+    try {
+      // Get total number of NFL games for this week
+      let totalNFLGames = 0;
+      try {
+        const nflGamesResponse = await api.getSeasonGames(seasonId, week);
+        if (nflGamesResponse.success && nflGamesResponse.data) {
+          totalNFLGames = nflGamesResponse.data.games.length;
+        }
+      } catch (error) {
+        console.error('Failed to load NFL games for week:', error);
+      }
+
+      // Get user's picks for this game and week
+      const userPicksResponse = await api.getUserPicks({
+        gameId: gameId,
+        seasonId: seasonId,
+        week: week
+      });
+
+      // Get user's picks for all weeks in this season to calculate total points
+      const userAllPicksResponse = await api.getUserPicks({
+        gameId: gameId,
+        seasonId: seasonId
+      });
+
+      // Get picks summary to count players who have made all picks
+      const picksSummaryResponse = await api.getPicksSummary(gameId, seasonId, week);
+
+      const userPicksCount = userPicksResponse.success ? userPicksResponse.data?.picks.length || 0 : 0;
+
+      // Calculate total correct picks across all weeks
+      let userTotalPoints = 0;
+      if (userAllPicksResponse.success && userAllPicksResponse.data) {
+        userTotalPoints = userAllPicksResponse.data.picks.filter(pick => pick.is_correct === true).length;
+      }
+
+      // Calculate correct picks for current week only
+      let userWeekPoints = 0;
+      if (userPicksResponse.success && userPicksResponse.data) {
+        userWeekPoints = userPicksResponse.data.picks.filter(pick => pick.is_correct === true).length;
+      }
+
+      // Count players who have made all their picks for this week
+      let playersWithAllPicks = 0;
+      if (picksSummaryResponse.success && picksSummaryResponse.data && totalNFLGames > 0) {
+        playersWithAllPicks = picksSummaryResponse.data.summary.filter(player =>
+          player.total_picks === totalNFLGames
+        ).length;
+      }
+
+      setWeeklyStats({
+        userPicks: userPicksCount,
+        totalPicks: totalNFLGames,
+        playersWithAllPicks: playersWithAllPicks,
+        userTotalPoints: userTotalPoints,
+        userWeekPoints: userWeekPoints
+      });
+
+    } catch (error) {
+      console.error('Failed to load weekly stats:', error);
+      setWeeklyStats(null);
+    }
+  };
+
+  const loadDefaultTeam = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/default-team', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDefaultTeam(data.defaultTeam);
       }
     } catch (err) {
-      console.error('[GameView] Error in loadWeekData:', err);
-      setError(`Failed to load week data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Failed to load default team:', err);
     }
   };
 
@@ -256,7 +340,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     setLoading(true);
     
     try {
-      await loadWeekData(currentSeason.id, newWeek, game?.id || gameId);
+      await loadWeekData(currentSeason.id, newWeek, game?.id || gameId, game || undefined);
     } finally {
       setLoading(false);
     }
@@ -301,7 +385,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
         setError(`Failed to save ${failedPicks.length} picks`);
       } else {
         // Reload picks to show updated data
-        await loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
+        const currentGameId = game?.id || gameId;
+        if (currentGameId) {
+          await loadWeekData(currentSeason.id, currentWeek, currentGameId, game || undefined);
+        }
       }
     } catch (err) {
       setError('Failed to save picks');
@@ -358,6 +445,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
       setCopyingPicks(false);
     }
   };
+
 
   const canMakePicks = (footballGame: NFLGame) => {
     const gameStart = new Date(footballGame.start_time);
@@ -464,7 +552,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
             <div className="space-x-3">
               <button
                 onClick={() => {
-                  console.log('[GameView] Reloading game data...', { game, currentSeason, user });
                   loadGameData();
                 }}
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -524,18 +611,23 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
 
   const getHeaderStyle = () => {
     try {
-      if (favoriteTeam?.team_primary_color && favoriteTeam?.team_secondary_color) {
+      const activeTeam = favoriteTeam || defaultTeam;
+      if (activeTeam?.team_primary_color && activeTeam?.team_secondary_color) {
         return {
-          background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
+          background: `linear-gradient(135deg, ${activeTeam.team_primary_color} 0%, ${activeTeam.team_secondary_color} 100%)`
         };
       }
     } catch (error) {
       console.error('[GameView] Error calculating header style:', error);
     }
-    // Use system default colors when no team is selected
+    // Fallback if both teams are null
     return {
       background: `linear-gradient(135deg, #013369 0%, #d50a0a 100%)`
     };
+  };
+
+  const getActiveTeam = () => {
+    return favoriteTeam || defaultTeam;
   };
 
   // Render team with error handling
@@ -646,8 +738,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <img
-                src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
-                alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
+                src={getActiveTeam()?.team_logo || '/logos/NFL.svg'}
+                alt={getActiveTeam() ? `${getActiveTeam()?.team_city} ${getActiveTeam()?.team_name} logo` : 'NFL logo'}
                 className="w-16 h-16 object-contain"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
@@ -658,8 +750,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
               <div>
                 <h1 className="text-3xl font-bold">{game.game_name}</h1>
                 <p className="text-lg opacity-90">
-                  {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks -
-                  {currentSeason?.season || 'Loading'} Season
+                  Weekly Picks - {currentSeason?.season || 'Loading'} Season
                 </p>
                 <p className="text-sm opacity-75">
                   {game.player_count} players
@@ -696,8 +787,8 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-4">
                 <img
-                  src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
-                  alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
+                  src={getActiveTeam()?.team_logo || '/logos/NFL.svg'}
+                  alt={getActiveTeam() ? `${getActiveTeam()?.team_city} ${getActiveTeam()?.team_name} logo` : 'NFL logo'}
                   className="w-12 h-12 object-contain"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
@@ -708,7 +799,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                 <div>
                   <h1 className="text-2xl font-bold">{game.game_name}</h1>
                   <p className="text-sm opacity-90">
-                    {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks - {currentSeason?.season || 'Loading'}
+                    Weekly Picks - {currentSeason?.season || 'Loading'}
                   </p>
                   <p className="text-xs opacity-75">
                     {game.player_count} players
@@ -850,12 +941,52 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           })()}
         </div>
 
-        {/* Games */}
+        {/* Weekly Stats Section */}
+        {weeklyStats && game && (
+          <div className="bg-white rounded-lg shadow-md mb-8">
+            <div className="p-6 border-b">
+              <h3 className="text-xl font-bold text-gray-800">Week {currentWeek} Stats</h3>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {`${weeklyStats.userPicks}/${weeklyStats.totalPicks}`}
+                  </div>
+                  <div className="text-xs text-gray-500">Week {currentWeek} Picks</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {`${weeklyStats.playersWithAllPicks}/${game.player_count}`}
+                  </div>
+                  <div className="text-xs text-gray-500">Week {currentWeek} Players</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {`${weeklyStats.userWeekPoints}/${weeklyStats.userPicks}`}
+                  </div>
+                  <div className="text-xs text-gray-500">Week {currentWeek} Points</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {weeklyStats.userTotalPoints}
+                  </div>
+                  <div className="text-xs text-gray-500">Total Points</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Games Section */}
         <div className="bg-white rounded-lg shadow-md">
           <div className="p-6 border-b">
             <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-800">Make Your Picks</h3>
+              <h3 className="text-xl font-bold text-gray-800">
+                Make Your Picks
+              </h3>
               <div className="flex items-center space-x-3">
+                {/* Show copy picks button */}
                 {Object.keys(selectedPicks).length > 0 && (
                   <button
                     onClick={() => {
@@ -868,6 +999,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                     <span>Copy Picks</span>
                   </button>
                 )}
+                {/* Save button */}
                 {hasUnsavedChanges && (
                   <button
                     onClick={handleSavePicks}
@@ -882,6 +1014,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           </div>
 
           <div className="p-6">
+            {/* Weekly Pick Interface */}
             {weekGames.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-600">No games found for this week</p>
@@ -1150,7 +1283,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
                     >
                       <div className="font-medium text-gray-900">{targetGame.game_name}</div>
                       <div className="text-sm text-gray-500">
-                        {targetGame?.game_type ? (targetGame.game_type.charAt(0).toUpperCase() + targetGame.game_type.slice(1)) : 'Game'} • {targetGame?.player_count || 0} players
+                        {targetGame?.type ? (targetGame.type.charAt(0).toUpperCase() + targetGame.type.slice(1)) : 'Game'} • {targetGame?.player_count || 0} players
                       </div>
                     </button>
                   ))
@@ -1214,4 +1347,4 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
   }
 };
 
-export default GameView;
+export default WeeklyGameView;

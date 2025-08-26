@@ -1,6 +1,6 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
-import GameView from '../../../components/GameView.tsx';
+import GameViewRouter from '../../../components/GameViewRouter.tsx';
 
 export const prerender = false;
 
@@ -12,5 +12,5 @@ if (!gameSlug) {
 ---
 
 <Layout title="Game View - NFL Pickem">
-	<GameView gameSlug={gameSlug} client:load />
+	<GameViewRouter gameSlug={gameSlug} client:load />
 </Layout>

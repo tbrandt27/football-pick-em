@@ -45,6 +45,7 @@ export default class DynamoDBGameService extends IGameService {
 
         games.push({
           ...game.Item,
+          game_type: game.Item.type || 'weekly',
           user_role: participation.role,
           player_count: playerCount,
           owner_count: ownerCount
@@ -111,6 +112,7 @@ export default class DynamoDBGameService extends IGameService {
 
     return {
       ...game,
+      game_type: game.type || 'weekly',
       participants,
       player_count: participants.length,
     };
@@ -145,6 +147,7 @@ export default class DynamoDBGameService extends IGameService {
 
     return {
       ...game,
+      game_type: game.type || 'weekly',
       participants,
       player_count: playerCount,
       owner_count: ownerCount
@@ -173,6 +176,7 @@ export default class DynamoDBGameService extends IGameService {
 
     return {
       ...game,
+      game_type: game.type || 'weekly',
       participants,
       player_count: playerCount,
       owner_count: ownerCount
@@ -209,6 +213,7 @@ export default class DynamoDBGameService extends IGameService {
     // Return the created game with counts
     return {
       ...gameItem,
+      game_type: gameItem.type || 'weekly',
       player_count: 1,
       owner_count: 1
     };
