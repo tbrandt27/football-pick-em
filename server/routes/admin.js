@@ -15,6 +15,26 @@ import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.
 
 const router = express.Router();
 
+// Get application version from package.json
+router.get("/version", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const packageJsonPath = path.join(__dirname, "../../package.json");
+    
+    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8');
+    const packageJson = JSON.parse(packageJsonContent);
+    
+    res.json({
+      version: packageJson.version,
+      name: packageJson.name
+    });
+  } catch (error) {
+    console.error("Get version error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Get admin dashboard stats
 router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
   try {

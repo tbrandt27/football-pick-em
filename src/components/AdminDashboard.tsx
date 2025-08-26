@@ -32,6 +32,7 @@ const AdminDashboard: React.FC = () => {
   const [syncLoading, setSyncLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [version, setVersion] = useState('Loading...');
 
   useEffect(() => {
     // Only run on client side
@@ -58,11 +59,14 @@ const AdminDashboard: React.FC = () => {
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       
-      const [statsResponse, seasonsResponse] = await Promise.all([
+      const [statsResponse, seasonsResponse, versionResponse] = await Promise.all([
         fetch('/api/admin/stats', {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        api.getSeasons()
+        api.getSeasons(),
+        fetch('/api/admin/version', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
       ]);
 
       if (statsResponse.ok) {
@@ -72,6 +76,11 @@ const AdminDashboard: React.FC = () => {
 
       if (seasonsResponse.success && seasonsResponse.data) {
         setSeasons(seasonsResponse.data.seasons);
+      }
+
+      if (versionResponse.ok) {
+        const versionData = await versionResponse.json();
+        setVersion(versionData.version);
       }
 
       // Load scheduler status
@@ -311,7 +320,7 @@ const AdminDashboard: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold">Admin Dashboard</h1>
               <p className="text-lg opacity-90">NFL Pickem Administration</p>
-              <p className="text-sm opacity-75">Version 0.9.10</p>
+              <p className="text-sm opacity-75">Version {version}</p>
             </div>
             <div className="flex items-center space-x-4">
               <a
