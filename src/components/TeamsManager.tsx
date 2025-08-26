@@ -16,6 +16,9 @@ const TeamsManager: React.FC = () => {
   const [error, setError] = useState('');
   const [logoError, setLogoError] = useState('');
   const [editingTeam, setEditingTeam] = useState<NFLTeam | null>(null);
+  const [showDefaultColorsModal, setShowDefaultColorsModal] = useState(false);
+  const [defaultPrimaryColor, setDefaultPrimaryColor] = useState('#013369');
+  const [defaultSecondaryColor, setDefaultSecondaryColor] = useState('#d50a0a');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -36,12 +39,43 @@ const TeamsManager: React.FC = () => {
     }
   }, [isAuthenticated, user, isLoading]);
 
+  // Load default colors from API on component mount
+  useEffect(() => {
+    if (isAuthenticated && user?.isAdmin) {
+      loadDefaultColors();
+    }
+  }, [isAuthenticated, user]);
+
+  const loadDefaultColors = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/default-colors', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDefaultPrimaryColor(data.defaultPrimaryColor || '#013369');
+        setDefaultSecondaryColor(data.defaultSecondaryColor || '#d50a0a');
+      } else {
+        console.error('Failed to load default colors:', response.statusText);
+      }
+    } catch (err) {
+      console.error('Error loading default colors:', err);
+    }
+  };
+
   const loadTeams = async () => {
     try {
       setLoading(true);
       const response = await api.getTeams();
       if (response.success && response.data) {
-        setTeams(response.data.teams);
+        // Filter out the DEFAULT team from regular team display
+        const regularTeams = response.data.teams.filter(team => team.team_code !== 'DEFAULT');
+        setTeams(regularTeams);
       }
     } catch (err) {
       setError('Failed to load teams');
@@ -120,6 +154,37 @@ const TeamsManager: React.FC = () => {
         ...editingTeam,
         team_logo: `/logos/${logoFile}`
       });
+    }
+  };
+
+  const saveDefaultColors = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/default-colors', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          defaultPrimaryColor,
+          defaultSecondaryColor
+        })
+      });
+
+      if (response.ok) {
+        // Close modal
+        setShowDefaultColorsModal(false);
+        
+        // Show success message (you could add a toast/notification here)
+        console.log('Default colors saved successfully');
+      } else {
+        const errorData = await response.json();
+        setError(`Failed to save default colors: ${errorData.error}`);
+      }
+    } catch (err) {
+      setError('Failed to save default colors');
+      console.error('Error saving default colors:', err);
     }
   };
 
@@ -205,30 +270,38 @@ const TeamsManager: React.FC = () => {
         {/* Teams Overview */}
         <div className="bg-white rounded-lg shadow-md mb-8">
           <div className="p-6 border-b">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 flex items-center justify-center">
-                <img
-                  src="/logos/NFL.svg"
-                  alt="NFL Logo"
-                  className="w-12 h-12 object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const container = target.parentElement;
-                    if (container) {
-                      container.innerHTML = `
-                        <div class="w-12 h-12 bg-gray-300 rounded flex items-center justify-center">
-                          <span class="text-sm font-bold text-gray-600">NFL</span>
-                        </div>
-                      `;
-                    }
-                  }}
-                />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 flex items-center justify-center">
+                  <img
+                    src="/logos/NFL.svg"
+                    alt="NFL Logo"
+                    className="w-12 h-12 object-contain"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const container = target.parentElement;
+                      if (container) {
+                        container.innerHTML = `
+                          <div class="w-12 h-12 bg-gray-300 rounded flex items-center justify-center">
+                            <span class="text-sm font-bold text-gray-600">NFL</span>
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Teams Overview</h2>
+                  <p className="text-gray-600">Total: {teams.length} teams</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">Teams Overview</h2>
-                <p className="text-gray-600">Total: {teams.length} teams</p>
-              </div>
+              <button
+                onClick={() => setShowDefaultColorsModal(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <span>Set Default Colors</span>
+              </button>
             </div>
           </div>
           
@@ -384,24 +457,42 @@ const TeamsManager: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Primary Color
                   </label>
-                  <input
-                    type="color"
-                    value={editingTeam.team_primary_color || '#000000'}
-                    onChange={(e) => setEditingTeam({...editingTeam, team_primary_color: e.target.value})}
-                    className="w-full h-10 border border-gray-300 rounded-md"
-                  />
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={editingTeam.team_primary_color || '#000000'}
+                      onChange={(e) => setEditingTeam({...editingTeam, team_primary_color: e.target.value})}
+                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditingTeam({...editingTeam, team_primary_color: defaultPrimaryColor})}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm transition-colors"
+                    >
+                      Default
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Secondary Color
                   </label>
-                  <input
-                    type="color"
-                    value={editingTeam.team_secondary_color || '#ffffff'}
-                    onChange={(e) => setEditingTeam({...editingTeam, team_secondary_color: e.target.value})}
-                    className="w-full h-10 border border-gray-300 rounded-md"
-                  />
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={editingTeam.team_secondary_color || '#ffffff'}
+                      onChange={(e) => setEditingTeam({...editingTeam, team_secondary_color: e.target.value})}
+                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditingTeam({...editingTeam, team_secondary_color: defaultSecondaryColor})}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm transition-colors"
+                    >
+                      Default
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -508,6 +599,78 @@ const TeamsManager: React.FC = () => {
                   className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                 >
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Default Colors Modal */}
+        {showDefaultColorsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Set Default Colors</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                These colors will be used as defaults when editing teams.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Default Primary Color
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={defaultPrimaryColor}
+                      onChange={(e) => setDefaultPrimaryColor(e.target.value)}
+                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                    />
+                    <span className="text-sm text-gray-600 font-mono">
+                      {defaultPrimaryColor}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Default Secondary Color
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={defaultSecondaryColor}
+                      onChange={(e) => setDefaultSecondaryColor(e.target.value)}
+                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                    />
+                    <span className="text-sm text-gray-600 font-mono">
+                      {defaultSecondaryColor}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Color Preview */}
+                <div className="mt-4 p-3 rounded-lg" style={{
+                  background: `linear-gradient(135deg, ${defaultPrimaryColor} 0%, ${defaultSecondaryColor} 100%)`
+                }}>
+                  <div className="text-white text-center font-medium">
+                    Preview
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => setShowDefaultColorsModal(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveDefaultColors}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Save Defaults
                 </button>
               </div>
             </div>

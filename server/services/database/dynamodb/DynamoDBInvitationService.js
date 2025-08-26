@@ -152,15 +152,18 @@ export default class DynamoDBInvitationService extends IInvitationService {
     const invitationId = uuidv4();
     const now = new Date().toISOString();
 
+    const emailLower = email.toLowerCase();
     const invitationItem = {
       id: invitationId,
       game_id: gameId || null,
-      email: email.toLowerCase(),
+      email: emailLower,
       invited_by_user_id: invitedByUserId,
       invite_token: inviteToken,
       status: 'pending',
       expires_at: expiresAt,
       is_admin_invitation: isAdminInvitation,
+      // Add composite key for GSI
+      game_email: gameId ? `${gameId}:${emailLower}` : `admin:${emailLower}`,
       created_at: now,
       updated_at: now
     };
@@ -186,15 +189,18 @@ export default class DynamoDBInvitationService extends IInvitationService {
     const invitationId = uuidv4();
     const now = new Date().toISOString();
 
+    const emailLower = email.toLowerCase();
     const invitationItem = {
       id: invitationId,
       game_id: null, // No game for admin invitations
-      email: email.toLowerCase(),
+      email: emailLower,
       invited_by_user_id: invitedByUserId,
       invite_token: inviteToken,
       status: 'pending',
       expires_at: expiresAt,
       is_admin_invitation: true,
+      // Add composite key for GSI
+      game_email: `admin:${emailLower}`,
       created_at: now,
       updated_at: now
     };
@@ -234,6 +240,12 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<void>}
    */
   async updateInvitationStatus(invitationId, status) {
+    // First get the invitation to ensure we have all the data
+    const invitation = await this.getInvitationById(invitationId);
+    if (!invitation) {
+      throw new Error('Invitation not found');
+    }
+    
     await this.db._dynamoUpdate('game_invitations', { id: invitationId }, {
       status: status,
       updated_at: new Date().toISOString()

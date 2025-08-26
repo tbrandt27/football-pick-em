@@ -369,7 +369,8 @@ export default class DynamoDBUserService extends IUserService {
       updateItem.last_name = updates.lastName;
     }
     if (updates.favoriteTeamId !== undefined) {
-      updateItem.favorite_team_id = updates.favoriteTeamId;
+      // DynamoDB needs null instead of undefined to clear the field
+      updateItem.favorite_team_id = updates.favoriteTeamId || null;
     }
 
     if (Object.keys(updateItem).length === 0) {

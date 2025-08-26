@@ -282,9 +282,9 @@ export default class SQLiteUserService extends IUserService {
       updateFields.push('last_name = ?');
       values.push(updates.lastName);
     }
-    if (updates.favoriteTeamId !== undefined) {
+    if (updates.hasOwnProperty('favoriteTeamId')) {
       updateFields.push('favorite_team_id = ?');
-      values.push(updates.favoriteTeamId);
+      values.push(updates.favoriteTeamId || null);
     }
 
     if (updateFields.length === 0) {

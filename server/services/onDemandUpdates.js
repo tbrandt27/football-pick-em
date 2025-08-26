@@ -62,6 +62,17 @@ class OnDemandUpdateService {
       const nflDataService = DatabaseServiceFactory.getNFLDataService();
       const games = await nflDataService.getGamesBySeasonAndWeek(seasonId, week);
       
+      console.log(`[OnDemand] Getting last update time for season ${seasonId}, week ${week}`);
+      console.log(`[OnDemand] Found ${games.length} games`);
+      
+      // Debug: log the first few games to see their scores_updated_at values
+      if (games.length > 0) {
+        console.log('[OnDemand] Sample game scores_updated_at values:');
+        games.slice(0, 3).forEach((game, index) => {
+          console.log(`[OnDemand] Game ${index + 1}: scores_updated_at = ${game.scores_updated_at}`);
+        });
+      }
+      
       const latestUpdate = games.reduce((latest, game) => {
         if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
           return game.scores_updated_at;
@@ -69,6 +80,7 @@ class OnDemandUpdateService {
         return latest;
       }, null);
 
+      console.log(`[OnDemand] Latest update time found: ${latestUpdate}`);
       return latestUpdate;
     } catch (error) {
       console.error('Error getting last update time:', error);
@@ -96,7 +108,46 @@ class OnDemandUpdateService {
       
       // Get current season type from ESPN
       const seasonStatus = await espnService.getCurrentSeasonStatus();
-      const result = await espnService.updateNFLGames(seasonId, week, seasonStatus.type);
+      
+      // Determine which weeks to update for maximum efficiency
+      const currentNFLWeek = seasonStatus.week;
+      const weeksToUpdate = [];
+      
+      if (week <= currentNFLWeek) {
+        // For past/current weeks, also update neighboring weeks that might have ongoing games
+        if (week === currentNFLWeek) {
+          // Current week: update current and previous week (in case of corrections)
+          weeksToUpdate.push(Math.max(1, week - 1), week);
+        } else if (week === currentNFLWeek - 1) {
+          // Previous week: update just that week and current week
+          weeksToUpdate.push(week, currentNFLWeek);
+        } else {
+          // Older weeks: just update the requested week
+          weeksToUpdate.push(week);
+        }
+      } else {
+        // Future weeks shouldn't normally be updated, but if requested, just do that week
+        weeksToUpdate.push(week);
+      }
+      
+      // Remove duplicates and update each week
+      const uniqueWeeks = [...new Set(weeksToUpdate)];
+      console.log(`[OnDemand] Updating weeks: ${uniqueWeeks.join(', ')}`);
+      
+      let totalUpdated = 0;
+      let totalCreated = 0;
+      
+      for (const weekToUpdate of uniqueWeeks) {
+        try {
+          const result = await espnService.updateNFLGames(seasonId, weekToUpdate, seasonStatus.type, true);
+          totalUpdated += result.updated;
+          totalCreated += result.created;
+        } catch (error) {
+          console.error(`[OnDemand] Failed to update week ${weekToUpdate}:`, error);
+        }
+      }
+      
+      const result = { updated: totalUpdated, created: totalCreated };
       
       const lastUpdate = await this.getLastUpdateTime(seasonId, week);
       

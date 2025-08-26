@@ -225,17 +225,18 @@ async function createTables(dbRun) {
   await dbRun(`
     CREATE TABLE IF NOT EXISTS game_invitations (
       id TEXT PRIMARY KEY,
-      game_id TEXT NOT NULL,
+      game_id TEXT,
       email TEXT NOT NULL,
       invited_by_user_id TEXT NOT NULL,
       invite_token TEXT UNIQUE NOT NULL,
       status TEXT DEFAULT 'pending',
       expires_at DATETIME NOT NULL,
+      is_admin_invitation BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (game_id) REFERENCES pickem_games (id),
       FOREIGN KEY (invited_by_user_id) REFERENCES users (id),
-      UNIQUE (game_id, email)
+      UNIQUE (email, game_id)
     )
   `);
 

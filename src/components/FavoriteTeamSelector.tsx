@@ -4,7 +4,7 @@ import api from '../utils/api';
 
 interface FavoriteTeamSelectorProps {
   currentFavoriteId?: string;
-  onTeamSelect: (teamId: string) => void;
+  onTeamSelect: (teamId: string, team?: NFLTeam) => void;
 }
 
 const FavoriteTeamSelector: React.FC<FavoriteTeamSelectorProps> = ({ 
@@ -23,7 +23,9 @@ const FavoriteTeamSelector: React.FC<FavoriteTeamSelectorProps> = ({
     try {
       const response = await api.getTeams();
       if (response.success && response.data) {
-        setTeams(response.data.teams);
+        // Filter out the DEFAULT team from the selector
+        const regularTeams = response.data.teams.filter(team => team.team_code !== 'DEFAULT');
+        setTeams(regularTeams);
       } else {
         setError('Failed to load teams');
       }
@@ -45,10 +47,14 @@ const FavoriteTeamSelector: React.FC<FavoriteTeamSelectorProps> = ({
   return (
     <select
       value={currentFavoriteId || ''}
-      onChange={(e) => onTeamSelect(e.target.value)}
+      onChange={(e) => {
+        const teamId = e.target.value;
+        const team = teamId ? teams.find(t => t.id === teamId) : undefined;
+        onTeamSelect(teamId, team);
+      }}
       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
     >
-      <option value="">Select a favorite team</option>
+      <option value="">No Team</option>
       {teams.map((team) => (
         <option key={team.id} value={team.id}>
           {team.team_city} {team.team_name}

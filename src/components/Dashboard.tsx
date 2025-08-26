@@ -3,8 +3,7 @@ import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
 import type { PickemGame, NFLTeam, SeasonStatus } from '../utils/api';
 import api, { createGameSlug } from '../utils/api';
-import { UserCircleIcon, ArrowLeftStartOnRectangleIcon, CogIcon } from '@heroicons/react/24/outline';
-import ScoreUpdateBadge from './ScoreUpdateBadge';
+import { UserCircleIcon, ArrowLeftStartOnRectangleIcon, CogIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const Dashboard: React.FC = () => {
   const user = useStore($user);
@@ -13,6 +12,7 @@ const Dashboard: React.FC = () => {
   const [games, setGames] = useState<PickemGame[]>([]);
   const [teams, setTeams] = useState<NFLTeam[]>([]);
   const [favoriteTeam, setFavoriteTeam] = useState<NFLTeam | null>(null);
+  const [defaultTeam, setDefaultTeam] = useState<NFLTeam | null>(null);
   const [seasonStatus, setSeasonStatus] = useState<SeasonStatus | null>(null);
   const [currentSeason, setCurrentSeason] = useState<{ id: string; season: string } | null>(null);
   const [gamePicksData, setGamePicksData] = useState<Record<string, { userPicks: number; totalPicks: number }>>({});
@@ -21,6 +21,7 @@ const Dashboard: React.FC = () => {
   const [newGameType, setNewGameType] = useState<'week' | 'survivor'>('week');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     // Only run on client side
@@ -49,6 +50,9 @@ const Dashboard: React.FC = () => {
         api.getCurrentSeason(),
       ]);
 
+      // Always load the default team for fallback
+      await loadDefaultTeam();
+
       if (gamesResponse.success && gamesResponse.data) {
         setGames(gamesResponse.data.games);
       }
@@ -60,6 +64,8 @@ const Dashboard: React.FC = () => {
         if (user?.favoriteTeamId) {
           const favTeam = teamsResponse.data.teams.find(t => t.id === user.favoriteTeamId);
           setFavoriteTeam(favTeam || null);
+        } else {
+          setFavoriteTeam(null);
         }
       }
 
@@ -80,6 +86,25 @@ const Dashboard: React.FC = () => {
       setError('Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDefaultTeam = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/default-team', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDefaultTeam(data.defaultTeam);
+      }
+    } catch (err) {
+      console.error('Failed to load default team:', err);
     }
   };
 
@@ -185,12 +210,20 @@ const Dashboard: React.FC = () => {
   }
 
   const getHeaderStyle = () => {
-    if (favoriteTeam?.team_primary_color && favoriteTeam?.team_secondary_color) {
+    const activeTeam = favoriteTeam || defaultTeam;
+    if (activeTeam?.team_primary_color && activeTeam?.team_secondary_color) {
       return {
-        background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
+        background: `linear-gradient(135deg, ${activeTeam.team_primary_color} 0%, ${activeTeam.team_secondary_color} 100%)`
       };
     }
-    return {};
+    // Fallback if both teams are null
+    return {
+      background: `linear-gradient(135deg, #013369 0%, #d50a0a 100%)`
+    };
+  };
+
+  const getActiveTeam = () => {
+    return favoriteTeam || defaultTeam;
   };
 
   return (
@@ -201,17 +234,16 @@ const Dashboard: React.FC = () => {
           {/* Desktop Layout */}
           <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center space-x-4">
-              {favoriteTeam?.team_logo && (
-                <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
-                  className="w-16 h-16 object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-              )}
+              <img
+                src={getActiveTeam()?.team_logo || '/logos/NFL.svg'}
+                alt={getActiveTeam() ? `${getActiveTeam()?.team_city} ${getActiveTeam()?.team_name} logo` : 'NFL logo'}
+                className="w-16 h-16 object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = '/logos/NFL.svg';
+                  target.alt = 'NFL logo';
+                }}
+              />
               <div>
                 <h1 className="text-3xl font-bold">NFL Pickem</h1>
                 <p className="text-lg opacity-90">
@@ -220,13 +252,6 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <a
-                href="/profile"
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <UserCircleIcon className="h-4 w-4" />
-                <span>Profile</span>
-              </a>
               {user.isAdmin && (
                 <a
                   href="/admin"
@@ -236,6 +261,13 @@ const Dashboard: React.FC = () => {
                   <span>Admin Panel</span>
                 </a>
               )}
+              <a
+                href="/profile"
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <UserCircleIcon className="h-4 w-4" />
+                <span>Profile</span>
+              </a>
               <button
                 onClick={logout}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
@@ -248,50 +280,73 @@ const Dashboard: React.FC = () => {
 
           {/* Mobile Layout */}
           <div className="md:hidden">
-            <div className="flex items-center space-x-4 mb-4">
-              {favoriteTeam?.team_logo && (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-4">
                 <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
+                  src={getActiveTeam()?.team_logo || '/logos/NFL.svg'}
+                  alt={getActiveTeam() ? `${getActiveTeam()?.team_city} ${getActiveTeam()?.team_name} logo` : 'NFL logo'}
                   className="w-12 h-12 object-contain"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
+                    target.src = '/logos/NFL.svg';
+                    target.alt = 'NFL logo';
                   }}
                 />
-              )}
-              <div>
-                <h1 className="text-2xl font-bold">NFL Pickem</h1>
-                <p className="text-sm opacity-90">
-                  Welcome back, {user.firstName}!
-                </p>
+                <div>
+                  <h1 className="text-2xl font-bold">NFL Pickem</h1>
+                  <p className="text-sm opacity-90">
+                    Welcome back, {user.firstName}!
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center justify-center space-x-3">
-              <a
-                href="/profile"
-                className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
-                title="Profile"
-              >
-                <UserCircleIcon className="h-5 w-5" />
-              </a>
-              {user.isAdmin && (
-                <a
-                  href="/admin"
-                  className="bg-purple-500 hover:bg-purple-600 text-white p-2 rounded-lg transition-colors"
-                  title="Admin Panel"
-                >
-                  <CogIcon className="h-5 w-5" />
-                </a>
-              )}
               <button
-                onClick={logout}
-                className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-colors"
-                title="Logout"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
+                aria-label="Toggle menu"
               >
-                <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
+                {mobileMenuOpen ? (
+                  <XMarkIcon className="h-6 w-6" />
+                ) : (
+                  <Bars3Icon className="h-6 w-6" />
+                )}
               </button>
             </div>
+
+            {/* Mobile Menu */}
+            {mobileMenuOpen && (
+              <div className="mt-4 pt-4 border-t border-blue-500">
+                <div className="space-y-2">
+                  {user.isAdmin && (
+                    <a
+                      href="/admin"
+                      className="flex items-center space-x-3 bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-lg transition-colors"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <CogIcon className="h-5 w-5" />
+                      <span>Admin Panel</span>
+                    </a>
+                  )}
+                  <a
+                    href="/profile"
+                    className="flex items-center space-x-3 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <UserCircleIcon className="h-5 w-5" />
+                    <span>Profile</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center space-x-3 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg transition-colors"
+                  >
+                    <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -306,24 +361,14 @@ const Dashboard: React.FC = () => {
         {/* Current Week Card */}
         <div className="bg-white rounded-lg shadow-md mb-8">
           <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">
-                  {seasonStatus?.isPreseason 
-                    ? `Preseason Week ${seasonStatus.week}` 
-                    : `NFL Week ${seasonStatus?.week || 1}`
-                  }
-                </h2>
-                <p className="text-gray-600 mt-1">
-                  {seasonStatus?.typeText || 'Regular Season'} - Current week for picks and standings
-                </p>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-blue-600">
-                  {seasonStatus?.isPreseason ? 'PRE' : 'Week'} {seasonStatus?.week || 1}
-                </div>
-                <div className="text-sm text-gray-500">{seasonStatus?.year || '2024'} Season</div>
-              </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                {seasonStatus?.isPreseason
+                  ? `Preseason Week ${seasonStatus.week}`
+                  : `Week ${seasonStatus?.week || 1}`
+                }
+              </h2>
+              <div className="text-sm text-gray-500 mt-1">{seasonStatus?.year || '2024'} Season</div>
             </div>
           </div>
         </div>
@@ -332,21 +377,7 @@ const Dashboard: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md">
           <div className="p-6 border-b">
             <div className="flex justify-between items-center">
-              <div className="flex items-center space-x-4">
-                <h2 className="text-2xl font-bold text-gray-800">Your Games</h2>
-                {currentSeason && seasonStatus && (
-                  <ScoreUpdateBadge 
-                    seasonId={currentSeason.id} 
-                    week={seasonStatus.isPreseason ? 1 : seasonStatus.week}
-                    onUpdateComplete={(result) => {
-                      if (result.updated) {
-                        // Reload data to show updated scores/picks
-                        loadData();
-                      }
-                    }}
-                  />
-                )}
-              </div>
+              <h2 className="text-2xl font-bold text-gray-800">Your Games</h2>
               <button
                 onClick={() => setShowCreateGame(true)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"

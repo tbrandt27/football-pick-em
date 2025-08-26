@@ -289,7 +289,8 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (game_id) REFERENCES pickem_games (id),
-        FOREIGN KEY (invited_by_user_id) REFERENCES users (id)
+        FOREIGN KEY (invited_by_user_id) REFERENCES users (id),
+        UNIQUE (email, game_id)
       )
     `);
 
@@ -319,7 +320,8 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (game_id) REFERENCES pickem_games (id),
-            FOREIGN KEY (invited_by_user_id) REFERENCES users (id)
+            FOREIGN KEY (invited_by_user_id) REFERENCES users (id),
+            UNIQUE (email, game_id)
           )
         `);
         

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { $user, $isAuthenticated, $isLoading, initAuth } from '../stores/auth';
+import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, Season, NFLGame, Pick, NFLTeam } from '../utils/api';
 import api from '../utils/api';
-import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
 
 interface GameViewProps {
@@ -31,6 +31,7 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [availableGames, setAvailableGames] = useState<PickemGame[]>([]);
   const [copyingPicks, setCopyingPicks] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     // Only run on client side
@@ -531,7 +532,10 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
     } catch (error) {
       console.error('[GameView] Error calculating header style:', error);
     }
-    return {};
+    // Use system default colors when no team is selected
+    return {
+      background: `linear-gradient(135deg, #013369 0%, #d50a0a 100%)`
+    };
   };
 
   // Render team with error handling
@@ -641,17 +645,16 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           {/* Desktop Layout */}
           <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center space-x-4">
-              {favoriteTeam?.team_logo && (
-                <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
-                  className="w-16 h-16 object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-              )}
+              <img
+                src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
+                alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
+                className="w-16 h-16 object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = '/logos/NFL.svg';
+                  target.alt = 'NFL logo';
+                }}
+              />
               <div>
                 <h1 className="text-3xl font-bold">{game.game_name}</h1>
                 <p className="text-lg opacity-90">
@@ -665,62 +668,99 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
             </div>
             <div className="flex items-center space-x-4">
               <a
+                href="/dashboard"
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <HomeIcon className="h-4 w-4" />
+                <span>Dashboard</span>
+              </a>
+              <a
                 href="/profile"
                 className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
               >
                 <UserCircleIcon className="h-4 w-4" />
                 <span>Profile</span>
               </a>
-              <a
-                href="/dashboard"
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              <button
+                onClick={logout}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
               >
-                <HomeIcon className="h-4 w-4" />
-                <span>Dashboard</span>
-              </a>
+                <ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
 
           {/* Mobile Layout */}
           <div className="md:hidden">
-            <div className="flex items-center space-x-4 mb-4">
-              {favoriteTeam?.team_logo && (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-4">
                 <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
+                  src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
+                  alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
                   className="w-12 h-12 object-contain"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
+                    target.src = '/logos/NFL.svg';
+                    target.alt = 'NFL logo';
                   }}
                 />
-              )}
-              <div>
-                <h1 className="text-2xl font-bold">{game.game_name}</h1>
-                <p className="text-sm opacity-90">
-                  {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks - {currentSeason?.season || 'Loading'}
-                </p>
-                <p className="text-xs opacity-75">
-                  {game.player_count} players
-                </p>
+                <div>
+                  <h1 className="text-2xl font-bold">{game.game_name}</h1>
+                  <p className="text-sm opacity-90">
+                    {game?.game_type ? (game.game_type.charAt(0).toUpperCase() + game.game_type.slice(1)) : 'Game'} Picks - {currentSeason?.season || 'Loading'}
+                  </p>
+                  <p className="text-xs opacity-75">
+                    {game.player_count} players
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center justify-center space-x-3">
-              <a
-                href="/profile"
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
-                title="Profile"
+                aria-label="Toggle menu"
               >
-                <UserCircleIcon className="h-5 w-5" />
-              </a>
-              <a
-                href="/dashboard"
-                className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
-                title="Dashboard"
-              >
-                <HomeIcon className="h-5 w-5" />
-              </a>
+                {mobileMenuOpen ? (
+                  <XMarkIcon className="h-6 w-6" />
+                ) : (
+                  <Bars3Icon className="h-6 w-6" />
+                )}
+              </button>
             </div>
+
+            {/* Mobile Menu */}
+            {mobileMenuOpen && (
+              <div className="mt-4 pt-4 border-t border-blue-500">
+                <div className="space-y-2">
+                  <a
+                    href="/dashboard"
+                    className="flex items-center space-x-3 bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <HomeIcon className="h-5 w-5" />
+                    <span>Dashboard</span>
+                  </a>
+                  <a
+                    href="/profile"
+                    className="flex items-center space-x-3 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <UserCircleIcon className="h-5 w-5" />
+                    <span>Profile</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center space-x-3 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg transition-colors"
+                  >
+                    <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -737,18 +777,6 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center space-x-4">
               <h2 className="text-2xl font-bold text-gray-800">Week {currentWeek}</h2>
-              {currentSeason && (
-                <ScoreUpdateBadge 
-                  seasonId={currentSeason.id} 
-                  week={currentWeek}
-                  onUpdateComplete={(result) => {
-                    if (result.updated) {
-                      // Reload the week data to show updated scores
-                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
-                    }
-                  }}
-                />
-              )}
             </div>
             <div className="flex space-x-2">
               <button
@@ -784,6 +812,42 @@ const GameView: React.FC<GameViewProps> = ({ gameId, gameSlug }) => {
               </button>
             ))}
           </div>
+
+          {/* Score Update Badge - positioned after week buttons, only show for relevant weeks */}
+          {currentSeason && (() => {
+            // Only show ScoreUpdateBadge for weeks that have games which have started or completed
+            const hasStartedOrCompletedGames = weekGames.some(game => {
+              const gameStart = new Date(game.start_time);
+              const now = new Date();
+              
+              // Show if game has started (past start time) or is not in scheduled status
+              return now >= gameStart ||
+                     (game.status && game.status !== 'scheduled' && game.status !== 'STATUS_SCHEDULED');
+            });
+            
+            // Also show if there are any games with scores > 0 (meaning they've been updated at some point)
+            const hasGameScores = weekGames.some(game =>
+              (game.home_score && game.home_score > 0) ||
+              (game.away_score && game.away_score > 0)
+            );
+            
+            const shouldShowBadge = hasStartedOrCompletedGames || hasGameScores;
+            
+            return shouldShowBadge ? (
+              <div className="flex justify-end mt-4">
+                <ScoreUpdateBadge
+                  seasonId={currentSeason.id}
+                  week={currentWeek}
+                  onUpdateComplete={(result) => {
+                    if (result.updated) {
+                      // Reload the week data to show updated scores
+                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
+                    }
+                  }}
+                />
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {/* Games */}

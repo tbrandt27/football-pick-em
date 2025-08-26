@@ -164,7 +164,7 @@ class ESPNService {
     }
   }
 
-  async updateNFLGames(seasonId, week = null, seasonType = null) {
+  async updateNFLGames(seasonId, week = null, seasonType = null, scoresOnly = false) {
     try {
       let games;
       
@@ -203,12 +203,25 @@ class ESPNService {
           continue;
         }
 
-        // Find or create teams in our database
-        const homeTeamRecord = await this.findOrCreateTeam(homeTeam.team);
-        const awayTeamRecord = await this.findOrCreateTeam(awayTeam.team);
+        const nflDataService = this.getNFLDataService();
+        let homeTeamRecord, awayTeamRecord;
+
+        if (scoresOnly) {
+          // For score-only updates, find teams by their abbreviation/code
+          homeTeamRecord = await nflDataService.getTeamByCode(homeTeam.team.abbreviation);
+          awayTeamRecord = await nflDataService.getTeamByCode(awayTeam.team.abbreviation);
+          
+          if (!homeTeamRecord || !awayTeamRecord) {
+            console.warn(`Teams not found for score update: ${homeTeam.team.abbreviation} vs ${awayTeam.team.abbreviation}. Skipping game.`);
+            continue;
+          }
+        } else {
+          // For full updates (schedule creation), find or create teams
+          homeTeamRecord = await this.findOrCreateTeam(homeTeam.team);
+          awayTeamRecord = await this.findOrCreateTeam(awayTeam.team);
+        }
 
         // Check if game already exists using the service layer
-        const nflDataService = this.getNFLDataService();
         const existingGame = await nflDataService.findFootballGame({
           seasonId: seasonId,
           week: gameData.week,
@@ -226,16 +239,21 @@ class ESPNService {
             home_score: homeTeam.score || 0,
             away_score: awayTeam.score || 0,
             status: gameData.status.type,
-            game_date: gameDate.toISOString(),
-            start_time: startTime.toISOString(),
-            season_type: gameData.seasonType,
             scores_updated_at: now
           };
 
+          // Only update game date and start time if not doing scores-only update
+          if (!scoresOnly) {
+            updateData.game_date = gameDate.toISOString();
+            updateData.start_time = startTime.toISOString();
+            updateData.season_type = gameData.seasonType;
+          }
+
+          console.log(`[ESPN] Updating game ${existingGame.id} with scores_updated_at: ${now}`);
           await nflDataService.updateFootballGame(existingGame.id, updateData);
           updatedCount++;
-        } else {
-          // Create new game
+        } else if (!scoresOnly) {
+          // Only create new games if not doing scores-only update
           const gameItem = {
             season_id: seasonId,
             week: gameData.week,

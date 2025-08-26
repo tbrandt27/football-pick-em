@@ -16,6 +16,7 @@ const UserProfile: React.FC = () => {
   const [email, setEmail] = useState('');
   const [favoriteTeamId, setFavoriteTeamId] = useState('');
   const [favoriteTeam, setFavoriteTeam] = useState<NFLTeam | null>(null);
+  const [defaultTeam, setDefaultTeam] = useState<NFLTeam | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -43,6 +44,9 @@ const UserProfile: React.FC = () => {
       setEmail(user?.email || '');
       setFavoriteTeamId(user?.favoriteTeamId || '');
 
+      // Always load the default team for fallback
+      await loadDefaultTeam();
+
       // Load favorite team details if one is set
       if (user?.favoriteTeamId) {
         const teamsResponse = await api.getTeams();
@@ -50,11 +54,32 @@ const UserProfile: React.FC = () => {
           const team = teamsResponse.data.teams.find(t => t.id === user.favoriteTeamId);
           setFavoriteTeam(team || null);
         }
+      } else {
+        setFavoriteTeam(null);
       }
     } catch (err) {
       setError('Failed to load user data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDefaultTeam = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch('/api/admin/default-team', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDefaultTeam(data.defaultTeam);
+      }
+    } catch (err) {
+      console.error('Failed to load default team:', err);
     }
   };
 
@@ -65,26 +90,23 @@ const UserProfile: React.FC = () => {
     setSuccess('');
 
     try {
-      const response = await api.updateUser({
+      const updateData = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        favoriteTeamId: favoriteTeamId || undefined
-      });
+        favoriteTeamId: favoriteTeamId === '' ? undefined : favoriteTeamId
+      };
+      
+      const response = await api.updateUser(updateData);
 
       if (response.success && response.data) {
         setSuccess('Profile updated successfully!');
         
-        // Update favorite team display
-        if (favoriteTeamId) {
-          const teamsResponse = await api.getTeams();
-          if (teamsResponse.success && teamsResponse.data) {
-            const team = teamsResponse.data.teams.find(t => t.id === favoriteTeamId);
-            setFavoriteTeam(team || null);
-          }
-        } else {
-          setFavoriteTeam(null);
-        }
-
+        // Update the global user state in the auth store
+        $user.set(response.data.user);
+        
+        // Don't overwrite local state - keep the current selections
+        // The local state already reflects what the user selected
+        
         // Clear success message after 3 seconds
         setTimeout(() => setSuccess(''), 3000);
       } else {
@@ -97,17 +119,27 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const handleFavoriteTeamSelect = (teamId: string) => {
+  const handleFavoriteTeamSelect = (teamId: string, team?: NFLTeam) => {
     setFavoriteTeamId(teamId);
+    // Update favorite team display immediately
+    setFavoriteTeam(team || null);
   };
 
   const getHeaderStyle = () => {
-    if (favoriteTeam?.team_primary_color && favoriteTeam?.team_secondary_color) {
+    const activeTeam = favoriteTeam || defaultTeam;
+    if (activeTeam?.team_primary_color && activeTeam?.team_secondary_color) {
       return {
-        background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
+        background: `linear-gradient(135deg, ${activeTeam.team_primary_color} 0%, ${activeTeam.team_secondary_color} 100%)`
       };
     }
-    return {};
+    // Fallback if both teams are null
+    return {
+      background: `linear-gradient(135deg, #013369 0%, #d50a0a 100%)`
+    };
+  };
+
+  const getActiveTeam = () => {
+    return favoriteTeam || defaultTeam;
   };
 
   if (isLoading || loading) {
@@ -141,17 +173,16 @@ const UserProfile: React.FC = () => {
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
-              {favoriteTeam?.team_logo && (
-                <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
-                  className="w-16 h-16 object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-              )}
+              <img
+                src={getActiveTeam()?.team_logo || '/logos/NFL.svg'}
+                alt={getActiveTeam() ? `${getActiveTeam()?.team_city} ${getActiveTeam()?.team_name} logo` : 'NFL logo'}
+                className="w-16 h-16 object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = '/logos/NFL.svg';
+                  target.alt = 'NFL logo';
+                }}
+              />
               <div>
                 <h1 className="text-3xl font-bold">User Profile</h1>
                 <p className="text-lg opacity-90">Manage your account settings</p>

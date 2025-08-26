@@ -14,21 +14,22 @@ router.get('/', async (req, res) => {
     let teams;
     if (dbType === 'dynamodb') {
       const result = await dbProvider._dynamoScan('football_teams');
-      teams = result.Items || [];
-      
-      // Sort manually since DynamoDB doesn't support ORDER BY
-      teams.sort((a, b) => {
-        if (a.team_conference !== b.team_conference) {
-          return a.team_conference.localeCompare(b.team_conference);
-        }
-        if (a.team_division !== b.team_division) {
-          return a.team_division.localeCompare(b.team_division);
-        }
-        return a.team_city.localeCompare(b.team_city);
-      });
+      // Filter out the DEFAULT team and sort manually since DynamoDB doesn't support ORDER BY
+      teams = (result.Items || [])
+        .filter(team => team.team_code !== 'DEFAULT')
+        .sort((a, b) => {
+          if (a.team_conference !== b.team_conference) {
+            return a.team_conference.localeCompare(b.team_conference);
+          }
+          if (a.team_division !== b.team_division) {
+            return a.team_division.localeCompare(b.team_division);
+          }
+          return a.team_city.localeCompare(b.team_city);
+        });
     } else {
       teams = await dbProvider.all(`
         SELECT * FROM football_teams
+        WHERE team_code != 'DEFAULT'
         ORDER BY team_conference, team_division, team_city
       `);
     }
@@ -297,19 +298,19 @@ router.get('/conference/:conference', async (req, res) => {
     let teams;
     if (dbType === 'dynamodb') {
       const result = await dbProvider._dynamoScan('football_teams', { team_conference: conference.toUpperCase() });
-      teams = result.Items || [];
-      
-      // Sort manually since DynamoDB doesn't support ORDER BY
-      teams.sort((a, b) => {
-        if (a.team_division !== b.team_division) {
-          return a.team_division.localeCompare(b.team_division);
-        }
-        return a.team_city.localeCompare(b.team_city);
-      });
+      // Filter out the DEFAULT team and sort manually since DynamoDB doesn't support ORDER BY
+      teams = (result.Items || [])
+        .filter(team => team.team_code !== 'DEFAULT')
+        .sort((a, b) => {
+          if (a.team_division !== b.team_division) {
+            return a.team_division.localeCompare(b.team_division);
+          }
+          return a.team_city.localeCompare(b.team_city);
+        });
     } else {
       teams = await dbProvider.all(`
         SELECT * FROM football_teams
-        WHERE team_conference = ?
+        WHERE team_conference = ? AND team_code != 'DEFAULT'
         ORDER BY team_division, team_city
       `, [conference.toUpperCase()]);
     }
@@ -335,14 +336,14 @@ router.get('/division/:conference/:division', async (req, res) => {
         team_conference: conference.toUpperCase(),
         team_division: division
       });
-      teams = result.Items || [];
-      
-      // Sort manually since DynamoDB doesn't support ORDER BY
-      teams.sort((a, b) => a.team_city.localeCompare(b.team_city));
+      // Filter out the DEFAULT team and sort manually since DynamoDB doesn't support ORDER BY
+      teams = (result.Items || [])
+        .filter(team => team.team_code !== 'DEFAULT')
+        .sort((a, b) => a.team_city.localeCompare(b.team_city));
     } else {
       teams = await dbProvider.all(`
         SELECT * FROM football_teams
-        WHERE team_conference = ? AND team_division = ?
+        WHERE team_conference = ? AND team_division = ? AND team_code != 'DEFAULT'
         ORDER BY team_city
       `, [conference.toUpperCase(), division]);
     }

@@ -1902,4 +1902,169 @@ router.post("/users/:userId/reset-password", authenticateToken, requireAdmin, as
   }
 });
 
+// Get default team colors from special DEFAULT team record
+router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    let defaultTeam;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      // DynamoDB implementation
+      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
+      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    } else {
+      // SQLite implementation
+      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
+    }
+    
+    if (!defaultTeam) {
+      // Create default team record if it doesn't exist
+      const { v4: uuidv4 } = await import("uuid");
+      const defaultTeamId = uuidv4();
+      const defaultColors = {
+        id: defaultTeamId,
+        team_code: 'DEFAULT',
+        team_name: 'NFL Default',
+        team_city: 'League',
+        team_conference: 'SYSTEM',
+        team_division: 'DEFAULT',
+        team_primary_color: '#013369',
+        team_secondary_color: '#d50a0a',
+        team_logo: '/logos/NFL.svg'
+      };
+      
+      if (db.getType && db.getType() === 'dynamodb') {
+        await db.provider._dynamoPut('football_teams', {
+          ...defaultColors,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } else {
+        await db.run(`
+          INSERT INTO football_teams (
+            id, team_code, team_name, team_city, team_conference, team_division,
+            team_primary_color, team_secondary_color, team_logo
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          defaultTeamId, 'DEFAULT', 'Default Colors', 'System', 'SYSTEM', 'DEFAULT',
+          '#013369', '#d50a0a', '/logos/NFL.svg'
+        ]);
+      }
+      
+      defaultTeam = defaultColors;
+    }
+    
+    res.json({
+      defaultPrimaryColor: defaultTeam.team_primary_color || '#013369',
+      defaultSecondaryColor: defaultTeam.team_secondary_color || '#d50a0a'
+    });
+  } catch (error) {
+    console.error("Get default colors error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Set default team colors by updating the special DEFAULT team record
+router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { defaultPrimaryColor, defaultSecondaryColor } = req.body;
+    
+    if (!defaultPrimaryColor || !defaultSecondaryColor) {
+      return res.status(400).json({ error: "Both primary and secondary colors are required" });
+    }
+    
+    // Find the default team record
+    let defaultTeam;
+    if (db.getType && db.getType() === 'dynamodb') {
+      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
+      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    } else {
+      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
+    }
+    
+    if (!defaultTeam) {
+      return res.status(404).json({ error: "Default team record not found" });
+    }
+    
+    // Update the default team colors
+    if (db.getType && db.getType() === 'dynamodb') {
+      await db.provider._dynamoUpdate('football_teams', { id: defaultTeam.id }, {
+        team_primary_color: defaultPrimaryColor,
+        team_secondary_color: defaultSecondaryColor,
+        updated_at: new Date().toISOString()
+      });
+    } else {
+      await db.run(`
+        UPDATE football_teams
+        SET team_primary_color = ?, team_secondary_color = ?, updated_at = datetime('now')
+        WHERE team_code = 'DEFAULT'
+      `, [defaultPrimaryColor, defaultSecondaryColor]);
+    }
+    
+    res.json({
+      message: "Default colors updated successfully",
+      defaultPrimaryColor,
+      defaultSecondaryColor
+    });
+  } catch (error) {
+    console.error("Set default colors error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get the DEFAULT team record for use when users have no favorite team
+router.get("/default-team", authenticateToken, async (req, res) => {
+  try {
+    let defaultTeam;
+    
+    if (db.getType && db.getType() === 'dynamodb') {
+      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
+      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    } else {
+      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
+    }
+    
+    if (!defaultTeam) {
+      // Create default team record if it doesn't exist
+      const { v4: uuidv4 } = await import("uuid");
+      const defaultTeamId = uuidv4();
+      const defaultColors = {
+        id: defaultTeamId,
+        team_code: 'DEFAULT',
+        team_name: 'NFL Default',
+        team_city: 'League',
+        team_conference: 'SYSTEM',
+        team_division: 'DEFAULT',
+        team_primary_color: '#013369',
+        team_secondary_color: '#d50a0a',
+        team_logo: '/logos/NFL.svg'
+      };
+      
+      if (db.getType && db.getType() === 'dynamodb') {
+        await db.provider._dynamoPut('football_teams', {
+          ...defaultColors,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } else {
+        await db.run(`
+          INSERT INTO football_teams (
+            id, team_code, team_name, team_city, team_conference, team_division,
+            team_primary_color, team_secondary_color, team_logo
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          defaultTeamId, 'DEFAULT', 'NFL Default', 'League', 'SYSTEM', 'DEFAULT',
+          '#013369', '#d50a0a', '/logos/NFL.svg'
+        ]);
+      }
+      
+      defaultTeam = defaultColors;
+    }
+    
+    res.json({ defaultTeam });
+  } catch (error) {
+    console.error("Get default team error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

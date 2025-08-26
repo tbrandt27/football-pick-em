@@ -3,7 +3,7 @@ import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, NFLTeam, GameInvitation } from '../utils/api';
 import api from '../utils/api';
-import { UserCircleIcon, ArrowLeftStartOnRectangleIcon, HomeIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, ArrowLeftStartOnRectangleIcon, HomeIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface GameManagementProps {
   gameId: string;
@@ -26,6 +26,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   const [newGameName, setNewGameName] = useState('');
   const [savingGameName, setSavingGameName] = useState(false);
   const [deletingGame, setDeletingGame] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -228,7 +229,10 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
         background: `linear-gradient(135deg, ${favoriteTeam.team_primary_color} 0%, ${favoriteTeam.team_secondary_color} 100%)`
       };
     }
-    return {};
+    // Use system default colors when no team is selected
+    return {
+      background: `linear-gradient(135deg, #013369 0%, #d50a0a 100%)`
+    };
   };
 
   if (isLoading || loading) {
@@ -263,19 +267,19 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
       {/* Header */}
       <header className="bg-blue-600 text-white shadow-lg" style={getHeaderStyle()}>
         <div className="container mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
+          {/* Desktop Layout */}
+          <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center space-x-4">
-              {favoriteTeam?.team_logo && (
-                <img
-                  src={favoriteTeam.team_logo}
-                  alt={`${favoriteTeam.team_city} ${favoriteTeam.team_name} logo`}
-                  className="w-16 h-16 object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-              )}
+              <img
+                src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
+                alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
+                className="w-16 h-16 object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = '/logos/NFL.svg';
+                  target.alt = 'NFL logo';
+                }}
+              />
               <div>
                 <h1 className="text-3xl font-bold">Manage Game</h1>
                 <p className="text-lg opacity-90">{game.game_name}</p>
@@ -283,18 +287,18 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
             </div>
             <div className="flex items-center space-x-4">
               <a
+                href="/dashboard"
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <HomeIcon className="h-4 w-4" />
+                <span>Dashboard</span>
+              </a>
+              <a
                 href="/profile"
                 className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
               >
                 <UserCircleIcon className="h-4 w-4" />
                 <span>Profile</span>
-              </a>
-              <a
-                href="/dashboard"
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <HomeIcon className="h-4 w-4" />
-                <span>Dashboard</span>
               </a>
               <button
                 onClick={logout}
@@ -304,6 +308,73 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
                 <span>Logout</span>
               </button>
             </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="md:hidden">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <img
+                  src={favoriteTeam?.team_logo || '/logos/NFL.svg'}
+                  alt={favoriteTeam ? `${favoriteTeam.team_city} ${favoriteTeam.team_name} logo` : 'NFL logo'}
+                  className="w-12 h-12 object-contain"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = '/logos/NFL.svg';
+                    target.alt = 'NFL logo';
+                  }}
+                />
+                <div>
+                  <h1 className="text-2xl font-bold">Manage Game</h1>
+                  <p className="text-sm opacity-90">{game.game_name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? (
+                  <XMarkIcon className="h-6 w-6" />
+                ) : (
+                  <Bars3Icon className="h-6 w-6" />
+                )}
+              </button>
+            </div>
+
+            {/* Mobile Menu */}
+            {mobileMenuOpen && (
+              <div className="mt-4 pt-4 border-t border-blue-500">
+                <div className="space-y-2">
+                  <a
+                    href="/dashboard"
+                    className="flex items-center space-x-3 bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <HomeIcon className="h-5 w-5" />
+                    <span>Dashboard</span>
+                  </a>
+                  <a
+                    href="/profile"
+                    className="flex items-center space-x-3 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-lg transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <UserCircleIcon className="h-5 w-5" />
+                    <span>Profile</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center space-x-3 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg transition-colors"
+                  >
+                    <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
