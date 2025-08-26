@@ -26,6 +26,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
   const [newGameName, setNewGameName] = useState('');
   const [savingGameName, setSavingGameName] = useState(false);
   const [deletingGame, setDeletingGame] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -191,14 +192,13 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
     setNewGameName(game?.game_name || '');
   };
 
-  const handleDeleteGame = async () => {
+  const handleDeleteGame = () => {
     if (!game) return;
-    
-    const confirmDelete = confirm(
-      `Are you sure you want to delete "${game.game_name}"?\n\nThis action cannot be undone and will remove all participants, picks, and game data.`
-    );
-    
-    if (!confirmDelete) return;
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteGame = async () => {
+    if (!game) return;
 
     setDeletingGame(true);
     setError('');
@@ -209,6 +209,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
 
       if (response.success) {
         setSuccess('Game deleted successfully! Redirecting to dashboard...');
+        setShowDeleteModal(false);
         // Redirect to dashboard after a short delay
         setTimeout(() => {
           window.location.href = '/dashboard';
@@ -221,6 +222,11 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
     } finally {
       setDeletingGame(false);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setError('');
   };
 
   const getHeaderStyle = () => {
@@ -611,6 +617,67 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
             </div>
           </div>
         </div>
+
+        {/* Delete Game Modal */}
+        {showDeleteModal && game && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Game "{game.game_name}"</h3>
+              
+              <div className="mb-6">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to delete "{game.game_name}"?
+                </p>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-yellow-800 mb-2">This will permanently delete:</h4>
+                  <ul className="text-yellow-700 text-sm space-y-1">
+                    <li>• The game and all its settings</li>
+                    <li>• All participants and their picks</li>
+                    <li>• All game statistics and history</li>
+                    <li>• Any associated weekly or survivor data</li>
+                  </ul>
+                </div>
+
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <p className="text-red-700 text-sm font-semibold">
+                    ⚠️ Warning: This action cannot be undone.
+                  </p>
+                </div>
+                
+                <p className="text-gray-600 text-sm">
+                  Game Type: <span className="font-semibold capitalize">{game.game_type}</span>
+                  <br />
+                  Participants: <span className="font-semibold">{game.participants?.length || 0} players</span>
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={handleCancelDelete}
+                  disabled={deletingGame}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteGame}
+                  disabled={deletingGame}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingGame ? (
+                    <span className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Deleting...</span>
+                    </span>
+                  ) : (
+                    'Delete Game'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

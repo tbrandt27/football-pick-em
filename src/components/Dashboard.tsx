@@ -15,7 +15,13 @@ const Dashboard: React.FC = () => {
   const [defaultTeam, setDefaultTeam] = useState<NFLTeam | null>(null);
   const [seasonStatus, setSeasonStatus] = useState<SeasonStatus | null>(null);
   const [currentSeason, setCurrentSeason] = useState<{ id: string; season: string } | null>(null);
-  const [gamePicksData, setGamePicksData] = useState<Record<string, { userPicks: number; totalPicks: number }>>({});
+  const [gamePicksData, setGamePicksData] = useState<Record<string, { userPicks: number; totalPicks: number; playersWithAllPicks: number; userTotalPoints: number; userWeekPoints: number }>>({});
+  const [survivorStatsData, setSurvivorStatsData] = useState<Record<string, {
+    totalPlayers: number;
+    aliveCount: number;
+    eliminatedCount: number;
+    currentWeekSubmissions: number
+  }>>({});
   const [showCreateGame, setShowCreateGame] = useState(false);
   const [newGameName, setNewGameName] = useState('');
   const [newGameType, setNewGameType] = useState<'week' | 'survivor'>('week');
@@ -113,6 +119,17 @@ const Dashboard: React.FC = () => {
       // Use week 1 if in preseason, otherwise use current week
       const week = seasonStatus.isPreseason ? 1 : seasonStatus.week;
       
+      // Get total number of NFL games for this week (this should be the same for all pickem games)
+      let totalNFLGames = 0;
+      try {
+        const nflGamesResponse = await api.getSeasonGames(seasonId, week);
+        if (nflGamesResponse.success && nflGamesResponse.data) {
+          totalNFLGames = nflGamesResponse.data.games.length;
+        }
+      } catch (error) {
+        console.error('Failed to load NFL games for week:', error);
+      }
+      
       const picksDataPromises = games.map(async (game) => {
         try {
           // Get user's picks for this game and week
@@ -122,28 +139,54 @@ const Dashboard: React.FC = () => {
             week: week
           });
           
-          // Get total picks summary for this game and week
+          // Get user's picks for all weeks in this season to calculate total points
+          const userAllPicksResponse = await api.getUserPicks({
+            gameId: game.id,
+            seasonId: seasonId
+          });
+          
+          // Get picks summary to count players who have made all picks
           const picksSummaryResponse = await api.getPicksSummary(game.id, seasonId, week);
           
           const userPicksCount = userPicksResponse.success ? userPicksResponse.data?.picks.length || 0 : 0;
           
-          // Calculate total possible picks from summary
-          let totalPicks = 0;
-          if (picksSummaryResponse.success && picksSummaryResponse.data) {
-            totalPicks = picksSummaryResponse.data.summary.length;
+          // Calculate total correct picks across all weeks
+          let userTotalPoints = 0;
+          if (userAllPicksResponse.success && userAllPicksResponse.data) {
+            userTotalPoints = userAllPicksResponse.data.picks.filter(pick => pick.is_correct === true).length;
+          }
+          
+          // Calculate correct picks for current week only
+          let userWeekPoints = 0;
+          if (userPicksResponse.success && userPicksResponse.data) {
+            userWeekPoints = userPicksResponse.data.picks.filter(pick => pick.is_correct === true).length;
+          }
+          
+          // Count players who have made all their picks for this week
+          let playersWithAllPicks = 0;
+          if (picksSummaryResponse.success && picksSummaryResponse.data && totalNFLGames > 0) {
+            playersWithAllPicks = picksSummaryResponse.data.summary.filter(player =>
+              player.total_picks === totalNFLGames
+            ).length;
           }
           
           return {
             gameId: game.id,
             userPicks: userPicksCount,
-            totalPicks: totalPicks
+            totalPicks: totalNFLGames,
+            playersWithAllPicks: playersWithAllPicks,
+            userTotalPoints: userTotalPoints,
+            userWeekPoints: userWeekPoints
           };
         } catch (error) {
           console.error(`Failed to load picks for game ${game.id}:`, error);
           return {
             gameId: game.id,
             userPicks: 0,
-            totalPicks: 0
+            totalPicks: totalNFLGames,
+            playersWithAllPicks: 0,
+            userTotalPoints: 0,
+            userWeekPoints: 0
           };
         }
       });
@@ -154,14 +197,104 @@ const Dashboard: React.FC = () => {
       const picksData = picksResults.reduce((acc, result) => {
         acc[result.gameId] = {
           userPicks: result.userPicks,
-          totalPicks: result.totalPicks
+          totalPicks: result.totalPicks,
+          playersWithAllPicks: result.playersWithAllPicks,
+          userTotalPoints: result.userTotalPoints,
+          userWeekPoints: result.userWeekPoints
         };
         return acc;
-      }, {} as Record<string, { userPicks: number; totalPicks: number }>);
+      }, {} as Record<string, { userPicks: number; totalPicks: number; playersWithAllPicks: number; userTotalPoints: number; userWeekPoints: number }>);
       
       setGamePicksData(picksData);
+
+      // Load survivor stats for survivor games
+      const survivorGames = games.filter(g => g.type === 'survivor');
+      if (survivorGames.length > 0) {
+        await loadSurvivorStats(survivorGames, seasonId, seasonStatus);
+      }
     } catch (error) {
       console.error('Failed to load game picks data:', error);
+    }
+  };
+
+  const loadSurvivorStats = async (survivorGames: PickemGame[], seasonId: string, seasonStatus: SeasonStatus) => {
+    try {
+      const week = seasonStatus.isPreseason ? 1 : seasonStatus.week;
+      
+      const survivorStatsPromises = survivorGames.map(async (game) => {
+        try {
+          const [gamesResponse, summaryResponse, survivorStatsResponse] = await Promise.allSettled([
+            api.getSeasonGames(seasonId, week),
+            api.getPicksSummary(game.id, seasonId),
+            api.getSurvivorStats(game.id, seasonId, week)
+          ]);
+
+          const totalPlayers = game.player_count || 0;
+          
+          // Check if any games this week have been completed
+          let hasCompletedGames = false;
+          if (gamesResponse.status === 'fulfilled' &&
+              gamesResponse.value.success &&
+              gamesResponse.value.data &&
+              gamesResponse.value.data.games) {
+            hasCompletedGames = gamesResponse.value.data.games.some(g =>
+              g.status && g.status !== 'scheduled' && g.status !== 'STATUS_SCHEDULED'
+            );
+          }
+          
+          // Only count eliminations if games have actually been completed
+          let eliminatedCount = 0;
+          if (hasCompletedGames && summaryResponse.status === 'fulfilled' && summaryResponse.value.success && summaryResponse.value.data) {
+            const eliminatedPlayers = summaryResponse.value.data.summary.filter(s =>
+              s.total_picks > 0 && s.correct_picks < s.total_picks
+            );
+            eliminatedCount = eliminatedPlayers.length;
+          }
+          
+          const aliveCount = totalPlayers - eliminatedCount;
+
+          // Count current week submissions from survivor stats
+          let currentWeekPickCount = 0;
+          if (survivorStatsResponse.status === 'fulfilled' &&
+              survivorStatsResponse.value.success &&
+              survivorStatsResponse.value.data) {
+            currentWeekPickCount = survivorStatsResponse.value.data.teamStats.reduce((sum, team) => sum + team.pickCount, 0);
+          }
+
+          return {
+            gameId: game.id,
+            stats: {
+              totalPlayers,
+              aliveCount,
+              eliminatedCount,
+              currentWeekSubmissions: currentWeekPickCount
+            }
+          };
+        } catch (error) {
+          console.error(`Failed to load survivor stats for game ${game.id}:`, error);
+          return {
+            gameId: game.id,
+            stats: {
+              totalPlayers: game.player_count || 0,
+              aliveCount: game.player_count || 0,
+              eliminatedCount: 0,
+              currentWeekSubmissions: 0
+            }
+          };
+        }
+      });
+
+      const survivorResults = await Promise.all(survivorStatsPromises);
+      
+      // Convert to object for easy lookup
+      const survivorData = survivorResults.reduce((acc, result) => {
+        acc[result.gameId] = result.stats;
+        return acc;
+      }, {} as Record<string, { totalPlayers: number; aliveCount: number; eliminatedCount: number; currentWeekSubmissions: number }>);
+      
+      setSurvivorStatsData(survivorData);
+    } catch (error) {
+      console.error('Failed to load survivor stats:', error);
     }
   };
 
@@ -173,7 +306,11 @@ const Dashboard: React.FC = () => {
       const response = await api.createGame(newGameName.trim(), newGameType);
       
       if (response.success && response.data) {
-        setGames([response.data.game, ...games]);
+        // Reload the full games list to get proper role information
+        const gamesResponse = await api.getGames();
+        if (gamesResponse.success && gamesResponse.data) {
+          setGames(gamesResponse.data.games);
+        }
         setNewGameName('');
         setShowCreateGame(false);
       } else {
@@ -411,19 +548,15 @@ const Dashboard: React.FC = () => {
                           <h3 className="text-xl font-semibold text-gray-800">
                             {game.game_name}
                           </h3>
-                          <span className="hidden md:inline-block px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 capitalize">
-                            {game.game_type}
+                          <span className={`hidden md:inline-block px-2 py-1 rounded-full text-xs capitalize ${
+                            game.type === 'survivor'
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {game.type}
                           </span>
                           <span className="hidden md:inline text-sm text-gray-500">•</span>
                           <span className="hidden md:inline text-sm text-gray-600">{game.player_count} players</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          {gamePicksData[game.id] && (
-                            <span className="hidden md:inline-block px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
-                              {seasonStatus?.isPreseason ? 'Week 1: ' : `Week ${seasonStatus?.week || 1}: `}
-                              {gamePicksData[game.id].userPicks}/{gamePicksData[game.id].totalPicks} picks
-                            </span>
-                          )}
                         </div>
                       </div>
                       <div className="flex space-x-2">
@@ -445,31 +578,74 @@ const Dashboard: React.FC = () => {
                     </div>
 
                     {/* Game-specific stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-100">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {gamePicksData[game.id] ? 
-                            `${gamePicksData[game.id].userPicks}/${gamePicksData[game.id].totalPicks}` : 
-                            '--'
-                          }
+                    {(() => {
+                      return game.type === 'survivor' && survivorStatsData[game.id];
+                    })() ? (
+                      /* Survivor Game Stats */
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-100">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">{survivorStatsData[game.id].aliveCount}</div>
+                          <div className="text-xs text-gray-500">Still Alive</div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {seasonStatus?.isPreseason ? 'Week 1 Picks' : `Week ${seasonStatus?.week || 1} Picks`}
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-600">{survivorStatsData[game.id].eliminatedCount}</div>
+                          <div className="text-xs text-gray-500">Eliminated</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-600">{survivorStatsData[game.id].currentWeekSubmissions}</div>
+                          <div className="text-xs text-gray-500">
+                            {seasonStatus?.isPreseason ? 'Week 1 Picks' : `Week ${seasonStatus?.week || 1} Picks`}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-600">{survivorStatsData[game.id].totalPlayers}</div>
+                          <div className="text-xs text-gray-500">Total Players</div>
                         </div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600">--</div>
-                        <div className="text-xs text-gray-500">Your Rank</div>
+                    ) : (
+                      /* Weekly Game Stats */
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-100">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-600">
+                            {gamePicksData[game.id] ? 
+                              `${gamePicksData[game.id].userPicks}/${gamePicksData[game.id].totalPicks}` : 
+                              '--'
+                            }
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {seasonStatus?.isPreseason ? 'Week 1 Picks' : `Week ${seasonStatus?.week || 1} Picks`}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-600">
+                            {gamePicksData[game.id] ?
+                              `${gamePicksData[game.id].playersWithAllPicks}/${game.player_count}` :
+                              '--'
+                            }
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {seasonStatus?.isPreseason ? 'Week 1 Players' : `Week ${seasonStatus?.week || 1} Players`}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">
+                            {gamePicksData[game.id] ?
+                              `${gamePicksData[game.id].userWeekPoints}/${gamePicksData[game.id].userPicks}` :
+                              '--'
+                            }
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {seasonStatus?.isPreseason ? 'Week 1 Points' : `Week ${seasonStatus?.week || 1} Points`}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-orange-600">
+                            {gamePicksData[game.id] ? gamePicksData[game.id].userTotalPoints : '--'}
+                          </div>
+                          <div className="text-xs text-gray-500">Total Points</div>
+                        </div>
                       </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">--%</div>
-                        <div className="text-xs text-gray-500">Win Rate</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-orange-600">--</div>
-                        <div className="text-xs text-gray-500">Points</div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>

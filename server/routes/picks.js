@@ -109,8 +109,29 @@ router.post('/', authenticateToken, async (req, res) => {
     // Create or update the pick using the service
     const pickService = DatabaseServiceFactory.getPickService();
     
-    // Check if this was an update or new pick
-    const existingPick = await pickService.getExistingPick(req.user.id, gameId, footballGameId);
+    // For survivor games, check for existing pick by week (not by footballGameId)
+    // For weekly games, check by footballGameId as normal
+    let existingPick;
+    if (game && (game.type === 'survivor' || game.game_type === 'survivor')) {
+      // For survivor games, replace any existing pick for this week
+      const userWeekPicks = await pickService.getUserPicks({
+        userId: req.user.id,
+        gameId,
+        seasonId: footballGame.season_id,
+        week: footballGame.week
+      });
+      existingPick = userWeekPicks.length > 0 ? userWeekPicks[0] : null;
+      
+      // If there's an existing pick for this week but different football game, delete it first
+      if (existingPick && existingPick.football_game_id !== footballGameId) {
+        await pickService.deletePick(existingPick.id, req.user.id);
+        existingPick = null; // Force creation of new pick
+      }
+    } else {
+      // For weekly games, check by specific football game
+      existingPick = await pickService.getExistingPick(req.user.id, gameId, footballGameId);
+    }
+    
     const wasUpdate = !!existingPick;
     
     const pick = await pickService.createOrUpdatePick({
@@ -192,6 +213,72 @@ router.get('/game/:gameId/summary', authenticateToken, async (req, res) => {
     res.json({ summary });
   } catch (error) {
     console.error('Get picks summary error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get team pick percentages for survivor games
+router.get('/game/:gameId/survivor-stats/:week', authenticateToken, async (req, res) => {
+  try {
+    const { gameId, week } = req.params;
+    const { seasonId } = req.query;
+
+    if (!seasonId) {
+      return res.status(400).json({ error: 'Season ID is required' });
+    }
+
+    // Verify user has access to this game
+    const gameService = DatabaseServiceFactory.getGameService();
+    const participant = await gameService.getParticipant(gameId, req.user.id);
+
+    if (!participant && !req.user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get all picks for this game, season, and week from all users
+    const pickService = DatabaseServiceFactory.getPickService();
+    
+    // First get all participants in the game
+    const participants = await gameService.getGameParticipants(gameId);
+    
+    // Get picks for each participant
+    let allPicks = [];
+    for (const participant of participants) {
+      const userPicks = await pickService.getUserPicks({
+        userId: participant.user_id,
+        gameId,
+        seasonId,
+        week: parseInt(week)
+      });
+      allPicks = allPicks.concat(userPicks);
+    }
+
+    // Count picks by team
+    const teamPickCounts = {};
+    let totalPicks = 0;
+
+    allPicks.forEach(pick => {
+      if (!teamPickCounts[pick.pick_team_id]) {
+        teamPickCounts[pick.pick_team_id] = 0;
+      }
+      teamPickCounts[pick.pick_team_id]++;
+      totalPicks++;
+    });
+
+    // Calculate percentages
+    const teamStats = Object.entries(teamPickCounts).map(([teamId, count]) => ({
+      teamId,
+      pickCount: count,
+      percentage: totalPicks > 0 ? (count / totalPicks) * 100 : 0
+    }));
+
+    res.json({
+      teamStats,
+      totalPicks,
+      week: parseInt(week)
+    });
+  } catch (error) {
+    console.error('Get survivor stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
