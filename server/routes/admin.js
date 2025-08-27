@@ -1574,15 +1574,8 @@ router.get(
     try {
       const { category } = req.params;
 
-      const settings = await db.all(
-        `
-      SELECT key, value, encrypted, description
-      FROM system_settings 
-      WHERE category = ?
-      ORDER BY key
-    `,
-        [category]
-      );
+      const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+      const settings = await systemSettingsService.getSettingsByCategory(category);
 
       // Decrypt encrypted values for display (but mask passwords)
       const processedSettings = settings.map((setting) => {
@@ -1655,20 +1648,8 @@ router.put(
         const settingId = `${category}_${key}`;
         const processedValue = encrypted ? encrypt(value) : value;
 
-        await db.run(
-          `
-        INSERT OR REPLACE INTO system_settings (id, category, key, value, encrypted, description, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `,
-          [
-            settingId,
-            category,
-            key,
-            processedValue,
-            encrypted ? 1 : 0,
-            description,
-          ]
-        );
+        const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+        await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
       }
 
       // Refresh email service transporter if SMTP settings were updated
@@ -1726,9 +1707,8 @@ router.post(
         console.log("Detected masked password, loading real password from database...");
         
         try {
-          const settings = await db.all(
-            `SELECT key, value, encrypted FROM system_settings WHERE category = 'smtp' ORDER BY key`
-          );
+          const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+          const settings = await systemSettingsService.getSettingsByCategory('smtp');
           
           const smtpConfig = {};
           settings.forEach((setting) => {
