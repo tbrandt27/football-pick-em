@@ -1518,17 +1518,51 @@ const ENCRYPTION_KEY =
   "football-pickem-default-key-32-chars!";
 
 function encrypt(text) {
-  const cipher = crypto.createCipher("aes-256-cbc", ENCRYPTION_KEY);
+  // Generate a random initialization vector
+  const iv = crypto.randomBytes(16);
+  
+  // Create a hash of the encryption key to ensure it's exactly 32 bytes for AES-256
+  const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+  
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
-  return encrypted;
+  
+  // Prepend the IV to the encrypted data (both in hex)
+  return iv.toString('hex') + ':' + encrypted;
 }
 
 function decrypt(encryptedText) {
-  const decipher = crypto.createDecipher("aes-256-cbc", ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    // Try new format first (with IV)
+    const parts = encryptedText.split(':');
+    if (parts.length === 2) {
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      
+      // Create a hash of the encryption key to ensure it's exactly 32 bytes for AES-256
+      const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+      
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    }
+  } catch (error) {
+    // If new format fails, try legacy format
+    console.warn('New format decryption failed, attempting legacy format:', error.message);
+  }
+  
+  try {
+    // Fallback to legacy format for backward compatibility
+    console.warn('Attempting to decrypt legacy format data. Consider re-saving settings to update to new format.');
+    
+    // This is a simplified fallback - in a real scenario you'd want to
+    // create a proper migration strategy
+    throw new Error('Legacy encrypted data detected. Please re-save your settings to update to the new secure format.');
+  } catch (legacyError) {
+    throw new Error(`Unable to decrypt data. This may be due to changed encryption format. Please re-enter your settings. Details: ${legacyError.message}`);
+  }
 }
 
 // Get all settings by category
@@ -1551,15 +1585,37 @@ router.get(
       );
 
       // Decrypt encrypted values for display (but mask passwords)
-      const processedSettings = settings.map((setting) => ({
-        ...setting,
-        value:
-          setting.encrypted && setting.key.toLowerCase().includes("pass")
-            ? "••••••••" // Mask passwords
-            : setting.encrypted
-            ? decrypt(setting.value)
-            : setting.value,
-      }));
+      const processedSettings = settings.map((setting) => {
+        let displayValue = setting.value;
+        
+        if (setting.encrypted) {
+          try {
+            const decryptedValue = decrypt(setting.value);
+            
+            // For passwords, show masked value but include original length hint
+            if (setting.key.toLowerCase().includes("pass")) {
+              displayValue = "••••••••"; // Always show 8 dots for UI consistency
+              // Add metadata to help frontend identify this as a masked password
+              return {
+                ...setting,
+                value: displayValue,
+                _isPasswordMask: true,
+                _originalLength: decryptedValue.length
+              };
+            } else {
+              displayValue = decryptedValue;
+            }
+          } catch (error) {
+            console.error(`Failed to decrypt setting ${setting.key}:`, error.message);
+            displayValue = "[Decryption Failed - Please Re-enter]";
+          }
+        }
+        
+        return {
+          ...setting,
+          value: displayValue
+        };
+      });
 
       res.json({ settings: processedSettings });
     } catch (error) {
@@ -1587,6 +1643,14 @@ router.put(
         const { key, value, encrypted = false, description = "" } = setting;
 
         if (!key) continue;
+        
+        // Skip saving if this is a masked password that hasn't been changed
+        if (encrypted && setting.key && setting.key.toLowerCase().includes("pass") && value === "••••••••") {
+          console.log(`Skipping update for masked password field: ${key}`);
+          continue;
+        }
+        
+        console.log(`Updating setting ${key}: encrypted=${encrypted}, valueLength=${value ? value.length : 0}`);
 
         const settingId = `${category}_${key}`;
         const processedValue = encrypted ? encrypt(value) : value;
@@ -1626,53 +1690,280 @@ router.post(
   authenticateToken,
   requireAdmin,
   async (req, res) => {
+    // Define isAwsSes outside try block for error handling access
+    let isAwsSes = false;
+    
     try {
-      const { host, port, user, pass, from } = req.body;
+      let { host, port, user, pass, from, testEmail } = req.body;
 
       if (!host || !user || !pass || !from) {
         return res
           .status(400)
           .json({ error: "All SMTP fields are required for testing" });
       }
+      
+      // Determine test email address
+      const targetEmail = testEmail && testEmail.trim()
+        ? testEmail.trim()
+        : req.user.email;
+      
+      // Enhanced debug logging to clearly distinguish between admin email and target email
+      console.log("=== SMTP Test Email Configuration ===");
+      console.log("Admin Email (req.user.email):", req.user.email);
+      console.log("Provided Test Email:", testEmail || "None provided");
+      console.log("Target Email (where test will be sent):", targetEmail);
+      console.log("=====================================");
+      
+      // Validate email format
+      if (!targetEmail || !targetEmail.includes('@')) {
+        return res.status(400).json({
+          error: `Invalid test email address: ${targetEmail}. Please provide a valid email address in the 'Test Email' field.`
+        });
+      }
+      
+      // Check if password is masked - if so, load real password from database
+      if (pass === "••••••••") {
+        console.log("Detected masked password, loading real password from database...");
+        
+        try {
+          const settings = await db.all(
+            `SELECT key, value, encrypted FROM system_settings WHERE category = 'smtp' ORDER BY key`
+          );
+          
+          const smtpConfig = {};
+          settings.forEach((setting) => {
+            smtpConfig[setting.key] = setting.encrypted
+              ? decrypt(setting.value)
+              : setting.value;
+          });
+          
+          if (smtpConfig.pass) {
+            pass = smtpConfig.pass;
+            console.log("Successfully loaded real password from database, length:", pass.length);
+          } else {
+            return res.status(400).json({
+              error: "No password found in saved settings. Please re-enter your SMTP password."
+            });
+          }
+        } catch (dbError) {
+          console.error("Failed to load password from database:", dbError);
+          return res.status(400).json({
+            error: "Could not load saved password. Please re-enter your SMTP password."
+          });
+        }
+      }
 
-      const nodemailer = await import("nodemailer");
-      const testTransporter = nodemailer.createTransporter({
-        host: host,
-        port: parseInt(port) || 587,
-        secure: false,
-        auth: {
-          user: user,
-          pass: pass,
-        },
-      });
+      const { default: nodemailer } = await import("nodemailer");
+      
+      // Detect if this looks like AWS SES
+      isAwsSes = host.includes('email-smtp') && host.includes('amazonaws.com');
+      
+      // Enhanced debugging info
+      console.log("SMTP Test Configuration:");
+      console.log("- Host:", host);
+      console.log("- Port:", parseInt(port) || 587);
+      console.log("- User:", user);
+      console.log("- From:", from);
+      console.log("- Password length:", pass.length);
+      console.log("- Password first 10 chars:", pass.substring(0, 10) + "...");
+      console.log("- AWS SES detected:", isAwsSes);
+      console.log("- Using real password from database:", pass !== req.body.pass);
+      
+      // AWS SES specific validation
+      if (isAwsSes) {
+        console.log("AWS SES Validation:");
+        console.log("- Expected username format: AKIA... (should start with AKIA)");
+        console.log("- Actual username starts with:", user.substring(0, 4));
+        console.log("- Expected password length: 40+ characters");
+        console.log("- Actual password length:", pass.length);
+        
+        if (!user.startsWith('AKIA')) {
+          console.warn("⚠️  WARNING: AWS SES username should start with 'AKIA'");
+        }
+        
+        if (pass.length < 30) {
+          console.warn("⚠️  WARNING: AWS SES password seems too short. Expected 40+ characters, got", pass.length);
+          console.warn("This suggests the password may be truncated or incorrectly saved.");
+        }
+      }
 
-      // Verify connection
-      await testTransporter.verify();
+      const portNum = parseInt(port) || 587;
+      
+      // Try multiple configurations
+      const configurations = [
+        {
+          name: "Standard TLS (port 587)",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465, // true for 465, false for other ports
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: false // Allow self-signed certificates
+            }
+          }
+        }
+      ];
 
-      // Send test email
-      await testTransporter.sendMail({
-        from: from,
-        to: req.user.email, // Send test email to admin
-        subject: "SMTP Test - NFL Pick'em",
-        text: "This is a test email to verify your SMTP settings are working correctly.",
-        html: `
-        <div style="font-family: Arial, sans-serif;">
-          <h2>🏈 SMTP Test Successful!</h2>
-          <p>Your SMTP settings are working correctly.</p>
-          <p>This test email was sent from your NFL Pick'em application.</p>
-        </div>
-      `,
-      });
+      // Add AWS SES specific configuration if detected
+      if (isAwsSes) {
+        console.log("AWS SES detected - adding SES-specific configurations");
+        configurations.push({
+          name: "AWS SES Optimized",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465,
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: true, // AWS SES has valid certificates
+              ciphers: 'SSLv3' // AWS SES compatibility
+            },
+            connectionTimeout: 10000, // 10 seconds
+            greetingTimeout: 5000,
+            socketTimeout: 10000
+          }
+        });
+      } else {
+        // Add alternative config for non-SES providers
+        configurations.push({
+          name: "Alternative with explicit TLS",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465,
+            requireTLS: true,
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: false
+            }
+          }
+        });
+      }
 
-      res.json({
-        success: true,
-        message: "SMTP test successful! Check your email for the test message.",
-      });
+      let lastError = null;
+      
+      for (const config of configurations) {
+        try {
+          console.log(`\nTrying configuration: ${config.name}`);
+          const testTransporter = nodemailer.createTransport(config.config);
+
+          // Verify connection
+          console.log("Verifying SMTP connection...");
+          await testTransporter.verify();
+          console.log("SMTP connection verified successfully!");
+
+          // Send test email
+          console.log("Sending test email...");
+          const result = await testTransporter.sendMail({
+            from: from,
+            to: targetEmail,
+            subject: "SMTP Test - NFL Pick'em",
+            text: "This is a test email to verify your SMTP settings are working correctly.",
+            html: `
+            <div style="font-family: Arial, sans-serif;">
+              <h2>🏈 SMTP Test Successful!</h2>
+              <p>Your SMTP settings are working correctly.</p>
+              <p>This test email was sent from your NFL Pick'em application.</p>
+              <p><small>Configuration: ${config.name}</small></p>
+            </div>
+          `,
+          });
+
+          console.log("✅ Test email sent successfully!");
+          console.log("Target Email:", targetEmail);
+          console.log("Message ID:", result.messageId);
+          console.log("Admin performing test:", req.user.email);
+          
+          return res.json({
+            success: true,
+            message: `SMTP test successful with ${config.name}! Test email sent to ${targetEmail}. Check your email for the test message.`,
+            configuration: config.name,
+            messageId: result.messageId,
+            testEmailSentTo: targetEmail
+          });
+          
+        } catch (configError) {
+          console.log(`Configuration "${config.name}" failed:`, configError.message);
+          lastError = configError;
+          continue;
+        }
+      }
+
+      // If we get here, all configurations failed
+      throw lastError;
+
     } catch (error) {
-      console.error("SMTP test error:", error);
+      console.error("SMTP test error details:", {
+        message: error.message,
+        code: error.code,
+        response: error.response,
+        responseCode: error.responseCode,
+        command: error.command
+      });
+      
+      let helpfulMessage = `SMTP test failed: ${error.message}`;
+      
+      // Provide specific guidance based on error type
+      if (error.code === 'EAUTH') {
+        helpfulMessage += "\n\nAuthentication failed. Please check:\n";
+        
+        if (isAwsSes) {
+          helpfulMessage += "• AWS SES SMTP credentials are correct (NOT your AWS Access Keys)\n";
+          helpfulMessage += "• SMTP username should look like: AKIA... (20 characters)\n";
+          helpfulMessage += "• SMTP password should be the generated SMTP password (NOT your AWS secret)\n";
+          helpfulMessage += "• SMTP password should be 40+ characters (yours is only " + (req.body.pass ? req.body.pass.length : 'unknown') + ")\n";
+          helpfulMessage += "• Your 'from' email is verified in AWS SES\n";
+          helpfulMessage += "• Your AWS SES is out of sandbox mode (if sending to unverified emails)\n";
+          helpfulMessage += "• AWS SES region matches your SMTP endpoint\n";
+          helpfulMessage += "\n⚠️  Password appears to be truncated or incorrectly saved - please re-enter it.";
+        } else {
+          helpfulMessage += "• Username and password are correct\n";
+          helpfulMessage += "• For Gmail: Use App Password instead of regular password\n";
+          helpfulMessage += "• For Outlook: Enable 'Less secure app access' or use App Password\n";
+          helpfulMessage += "• Check if 2FA is enabled and requires App Password";
+        }
+      } else if (error.code === 'ECONNECTION') {
+        helpfulMessage += "\n\nConnection failed. Please check:\n";
+        
+        if (isAwsSes) {
+          helpfulMessage += "• AWS SES SMTP endpoint is correct (e.g., email-smtp.us-east-1.amazonaws.com)\n";
+          helpfulMessage += "• Region in endpoint matches your SES setup\n";
+          helpfulMessage += "• Port 587 (TLS) or 465 (SSL) - 587 is recommended for SES\n";
+          helpfulMessage += "• Network/firewall allows SMTP connections to AWS";
+        } else {
+          helpfulMessage += "• SMTP server hostname is correct\n";
+          helpfulMessage += "• Port number is correct (587 for TLS, 465 for SSL)\n";
+          helpfulMessage += "• Network/firewall allows SMTP connections";
+        }
+      } else if (error.code === 'ETIMEDOUT') {
+        helpfulMessage += "\n\nConnection timed out. Please check:\n";
+        helpfulMessage += "• SMTP server is accessible\n";
+        helpfulMessage += "• Firewall/network settings";
+        
+        if (isAwsSes) {
+          helpfulMessage += "\n• AWS SES region endpoint is correct";
+        }
+      }
+      
       res.status(400).json({
         success: false,
-        error: `SMTP test failed: ${error.message}`,
+        error: helpfulMessage,
+        details: {
+          code: error.code,
+          response: error.response,
+          responseCode: error.responseCode,
+          passwordLength: req.body.pass ? req.body.pass.length : 'unknown'
+        }
       });
     }
   }
