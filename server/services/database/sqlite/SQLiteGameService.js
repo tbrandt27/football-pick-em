@@ -51,7 +51,7 @@ export default class SQLiteGameService extends IGameService {
 
     // Get all games and find the one that matches the slug
     const games = await db.all(`
-      SELECT g.*, u.first_name || ' ' || u.last_name as commissioner_name
+      SELECT g.*, g.type as game_type, u.first_name || ' ' || u.last_name as commissioner_name
       FROM pickem_games g
       LEFT JOIN users u ON g.commissioner_id = u.id
     `);
@@ -98,6 +98,7 @@ export default class SQLiteGameService extends IGameService {
       `
       SELECT
         g.*,
+        g.type as game_type,
         COUNT(gp.id) as player_count,
         COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
       FROM pickem_games g
@@ -131,6 +132,7 @@ export default class SQLiteGameService extends IGameService {
       `
       SELECT
         g.*,
+        g.type as game_type,
         COUNT(gp.id) as player_count,
         COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
       FROM pickem_games g
@@ -183,6 +185,7 @@ export default class SQLiteGameService extends IGameService {
       `
       SELECT
         g.*,
+        g.type as game_type,
         COUNT(gp.id) as player_count,
         COUNT(CASE WHEN gp.role = 'owner' THEN 1 END) as owner_count
       FROM pickem_games g

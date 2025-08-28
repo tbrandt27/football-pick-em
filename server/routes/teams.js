@@ -355,4 +355,42 @@ router.get('/division/:conference/:division', async (req, res) => {
   }
 });
 
+// Get team records for current season
+router.get('/records', async (req, res) => {
+  try {
+    const espnService = (await import('../services/espnApi.js')).default;
+    
+    // Get current season info from ESPN
+    const seasonInfo = await espnService.fetchCurrentSeason();
+    
+    // Fetch recent games to get team records
+    const seasonStatus = await espnService.getCurrentSeasonStatus();
+    const currentWeek = Math.max(1, seasonStatus.week - 1); // Get previous week to ensure we have data
+    
+    const games = await espnService.fetchWeeklyGames(currentWeek, 2, seasonInfo.year);
+    
+    // Extract team records from the games
+    const teamRecords = {};
+    
+    games.forEach(game => {
+      if (game.competitions && game.competitions.competitors) {
+        game.competitions.competitors.forEach(competitor => {
+          if (competitor.record && competitor.team.abbreviation) {
+            teamRecords[competitor.team.abbreviation] = competitor.record;
+          }
+        });
+      }
+    });
+    
+    res.json({
+      records: teamRecords,
+      week: currentWeek,
+      season: seasonInfo.year
+    });
+  } catch (error) {
+    console.error('Get team records error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

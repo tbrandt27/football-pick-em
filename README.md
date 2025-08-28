@@ -87,7 +87,9 @@ football-pickem/
 │   ├── components/              # React components
 │   │   ├── AdminDashboard.tsx   # Admin management interface
 │   │   ├── Dashboard.tsx        # User dashboard
-│   │   ├── GameView.tsx         # Game picking interface
+│   │   ├── GameViewRouter.tsx   # Routes between Weekly and Survivor game views
+│   │   ├── WeeklyGameView.tsx   # Weekly pick game interface
+│   │   ├── SurvivorGameView.tsx # Survivor game interface
 │   │   ├── GamesManager.tsx     # Admin game management
 │   │   └── ...
 │   ├── layouts/                 # Astro layouts
