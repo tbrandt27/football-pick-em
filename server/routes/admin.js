@@ -343,24 +343,10 @@ router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
       
       res.json({ users: usersWithGameCount });
     } else {
-      // For SQLite, use the optimized JOIN query
-      const users = await db.all(`
-        SELECT
-          u.id,
-          u.email,
-          u.first_name,
-          u.last_name,
-          u.is_admin,
-          u.email_verified,
-          u.last_login,
-          u.created_at,
-          COUNT(gp.id) as game_count
-        FROM users u
-        LEFT JOIN game_participants gp ON u.id = gp.user_id
-        GROUP BY u.id
-        ORDER BY u.created_at DESC
-      `);
-
+      // For SQLite, use service layer for consistency
+      const userService = DatabaseServiceFactory.getUserService();
+      const users = await userService.getAllUsers();
+      
       res.json({ users });
     }
   } catch (error) {
@@ -495,7 +481,8 @@ router.post(
         lastName,
         favoriteTeamId: null,
         emailVerificationToken,
-        emailVerified: true  // Admin-created accounts are pre-verified
+        emailVerified: true,  // Admin-created accounts are pre-verified
+        isAdmin: invitation.is_admin_invitation || false  // Set admin status for admin invitations
       });
 
       // Add user to the game (only for regular game invitations)
@@ -831,7 +818,7 @@ router.delete(
           }
         }
       } else {
-        // For SQLite, use SQL queries
+        // For SQLite, use direct SQL for now until service methods are available
         await db.run("DELETE FROM picks WHERE user_id = ?", [userId]);
         await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
         
@@ -979,21 +966,13 @@ router.put(
       const { seasonId } = req.params;
       const { isActive } = req.body;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      await db.run(
-        `
-      UPDATE seasons 
-      SET is_current = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [isActive ? 1 : 0, seasonId]
-      );
+      await seasonService.updateSeasonCurrentStatus(seasonId, isActive);
 
       res.json({ message: "Season status updated successfully" });
     } catch (error) {
@@ -1012,19 +991,15 @@ router.post(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
       // This would integrate with ESPN API to sync games
       // For now, return success with count
-      const gameCount = await db.get(
-        "SELECT COUNT(*) as count FROM football_games WHERE season_id = ?",
-        [seasonId]
-      );
+      const gameCount = await seasonService.getFootballGameCount(seasonId);
 
       res.json({
         message: "NFL games synced successfully",
@@ -1046,9 +1021,8 @@ router.post(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
@@ -1079,21 +1053,13 @@ router.put(
       const { gameId } = req.params;
       const { isActive } = req.body;
 
-      const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [
-        gameId,
-      ]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameByIdForAdmin(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
 
-      await db.run(
-        `
-      UPDATE pickem_games 
-      SET is_active = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [isActive ? 1 : 0, gameId]
-      );
+      await gameService.updateGameActiveStatus(gameId, isActive);
 
       res.json({ message: "Game status updated successfully" });
     } catch (error) {
@@ -1113,21 +1079,13 @@ router.put(
       const { gameId } = req.params;
       const { start_time } = req.body;
 
-      const game = await db.get("SELECT * FROM football_games WHERE id = ?", [
-        gameId,
-      ]);
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const game = await nflDataService.getFootballGameById(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
 
-      await db.run(
-        `
-      UPDATE football_games
-      SET start_time = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [start_time, gameId]
-      );
+      await nflDataService.updateGameStartTime(gameId, start_time);
 
       res.json({ message: "Game time updated successfully" });
     } catch (error) {
@@ -1461,21 +1419,14 @@ router.put(
         return res.status(404).json({ error: "Game not found" });
       }
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      await db.run(
-        `
-      UPDATE pickem_games 
-      SET season_id = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [seasonId, gameId]
-      );
+      const gameService = DatabaseServiceFactory.getGameService();
+      await gameService.updateGameSeason(gameId, seasonId);
 
       res.json({ message: "Game season updated successfully" });
     } catch (error) {
@@ -1961,7 +1912,8 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
     const normalizedEmail = email.toLowerCase();
 
     // Get game information
-    const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
+    const gameService = DatabaseServiceFactory.getGameService();
+    const game = await gameService.getGameByIdForAdmin(gameId);
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
@@ -1984,14 +1936,8 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
         const allParticipants = participantsResult.Items || [];
         existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
       } else {
-        // For SQLite, use the efficient query
-        existingParticipant = await db.get(
-          `
-          SELECT id FROM game_participants
-          WHERE game_id = ? AND user_id = ?
-        `,
-          [gameId, existingUser.id]
-        );
+        // For SQLite, use service layer
+        existingParticipant = await gameService.getParticipant(gameId, existingUser.id);
       }
 
       if (existingParticipant) {
@@ -2001,14 +1947,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       }
 
       // Add user as player
-      const { v4: uuidv4 } = await import("uuid");
-      await db.run(
-        `
-        INSERT INTO game_participants (id, game_id, user_id, role)
-        VALUES (?, ?, ?, 'player')
-      `,
-        [uuidv4(), gameId, existingUser.id]
-      );
+      await gameService.addParticipant(gameId, existingUser.id, 'player');
 
       res.json({
         message: `Successfully added ${existingUser.email} to the game "${game.game_name}"`,
@@ -2021,14 +1960,9 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
     } else {
       // User doesn't exist - send invitation
 
-      // Check if invitation already exists
-      const existingInvitation = await db.get(
-        `
-        SELECT * FROM game_invitations
-        WHERE game_id = ? AND email = ? AND status = 'pending'
-      `,
-        [gameId, normalizedEmail]
-      );
+      // Check if invitation already exists and create new one
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const existingInvitation = await invitationService.checkExistingInvitation(gameId, normalizedEmail);
 
       if (existingInvitation) {
         return res
@@ -2038,25 +1972,17 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
 
       // Create invitation
       const crypto = await import("crypto");
-      const { v4: uuidv4 } = await import("uuid");
       const inviteToken = crypto.randomBytes(32).toString("hex");
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
 
-      await db.run(
-        `
-        INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-        [
-          uuidv4(),
-          gameId,
-          normalizedEmail,
-          req.user.id,
-          inviteToken,
-          expiresAt.toISOString(),
-        ]
-      );
+      await invitationService.createInvitation({
+        gameId,
+        email: normalizedEmail,
+        invitedByUserId: req.user.id,
+        inviteToken,
+        expiresAt: expiresAt.toISOString()
+      });
 
       // Send invitation email
       const emailResult = await emailService.sendGameInvitation(
@@ -2198,14 +2124,8 @@ router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) 
   try {
     let defaultTeam;
     
-    if (db.getType && db.getType() === 'dynamodb') {
-      // DynamoDB implementation
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      // SQLite implementation
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       // Create default team record if it doesn't exist
@@ -2223,23 +2143,7 @@ router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) 
         team_logo: '/logos/NFL.svg'
       };
       
-      if (db.getType && db.getType() === 'dynamodb') {
-        await db.provider._dynamoPut('football_teams', {
-          ...defaultColors,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-      } else {
-        await db.run(`
-          INSERT INTO football_teams (
-            id, team_code, team_name, team_city, team_conference, team_division,
-            team_primary_color, team_secondary_color, team_logo
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          defaultTeamId, 'DEFAULT', 'Default Colors', 'System', 'SYSTEM', 'DEFAULT',
-          '#013369', '#d50a0a', '/logos/NFL.svg'
-        ]);
-      }
+      await nflDataService.createDefaultTeam(defaultColors);
       
       defaultTeam = defaultColors;
     }

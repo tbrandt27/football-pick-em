@@ -1,7 +1,7 @@
 {
   "name": "football-pickem",
   "type": "module",
-  "version": "0.9.13",
+  "version": "0.9.16",
   "engines": {
     "node": ">=18.0.0"
   },
