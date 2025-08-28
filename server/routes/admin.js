@@ -5,6 +5,7 @@ import espnService from "../services/espnApi.js";
 import scheduler from "../services/scheduler.js";
 import pickCalculator from "../services/pickCalculator.js";
 import onDemandUpdates from "../services/onDemandUpdates.js";
+import configService from "../services/configService.js";
 import db from "../models/database.js";
 import crypto from "crypto";
 import emailService from "../services/emailService.js";
@@ -1379,17 +1380,15 @@ router.get(
 
 // Settings management endpoints
 
-// Encryption key for sensitive settings (in production, this should be from environment)
-const ENCRYPTION_KEY =
-  process.env.SETTINGS_ENCRYPTION_KEY ||
-  "football-pickem-default-key-32-chars!";
+// Get encryption key from config service
+const getEncryptionKey = () => configService.getSettingsEncryptionKey();
 
 function encrypt(text) {
   // Generate a random initialization vector
   const iv = crypto.randomBytes(16);
   
   // Create a 32-byte key from the encryption key
-  const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+  const key = crypto.scryptSync(getEncryptionKey(), 'salt', 32);
   
   // Create cipher with key and IV
   const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
@@ -1433,7 +1432,7 @@ function decrypt(encryptedText) {
       const iv = Buffer.from(ivHex, "hex");
       
       // Create a 32-byte key from the encryption key
-      const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+      const key = crypto.scryptSync(getEncryptionKey(), 'salt', 32);
       
       // Create decipher with key and IV
       const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
@@ -1448,7 +1447,7 @@ function decrypt(encryptedText) {
       
       // Try method 1: Zero IV (most common legacy method)
       try {
-        const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+        const key = crypto.scryptSync(getEncryptionKey(), 'salt', 32);
         const iv = Buffer.alloc(16, 0);
         
         const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
@@ -1462,7 +1461,7 @@ function decrypt(encryptedText) {
       
       // Try method 2: Different key derivation (if the original used a different method)
       try {
-        const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32), 'utf8');
+        const key = Buffer.from(getEncryptionKey().padEnd(32, '0').slice(0, 32), 'utf8');
         const iv = Buffer.alloc(16, 0);
         
         const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
@@ -1491,7 +1490,7 @@ function decrypt(encryptedText) {
       
       // Try method 4: SHA256 hash of key
       try {
-        let key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+        let key = crypto.createHash('sha256').update(getEncryptionKey()).digest();
         const iv = Buffer.alloc(16, 0);
         
         const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
@@ -1505,7 +1504,7 @@ function decrypt(encryptedText) {
       
       // Try method 5: AES-128 instead of AES-256 (in case original was 128)
       try {
-        const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 16); // 16 bytes for AES-128
+        const key = crypto.scryptSync(getEncryptionKey(), 'salt', 16); // 16 bytes for AES-128
         const iv = Buffer.alloc(16, 0);
         
         const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
@@ -1524,7 +1523,7 @@ function decrypt(encryptedText) {
     console.error("Decryption error:", error);
     console.log("Failed to decrypt value:", error.message);
     console.log("Encrypted text length:", encryptedText?.length || 0);
-    console.log("Encryption key defined:", !!ENCRYPTION_KEY);
+    console.log("Encryption key defined:", !!getEncryptionKey());
     
     // Return empty string so the UI doesn't break
     return "";

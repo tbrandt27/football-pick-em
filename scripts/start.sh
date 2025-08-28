@@ -61,7 +61,12 @@ check_server_health() {
 get_memory_usage() {
     if [ -n "$1" ] && is_process_running "$1"; then
         # Get RSS memory in KB and convert to MB
-        ps -o rss= -p "$1" 2>/dev/null | awk '{print int($1/1024)}' || echo "0"
+        MEMORY_KB=$(ps -o rss= -p "$1" 2>/dev/null | tr -d ' ' || echo "0")
+        if [ -n "$MEMORY_KB" ] && [ "$MEMORY_KB" -gt 0 ] 2>/dev/null; then
+            echo $((MEMORY_KB / 1024))
+        else
+            echo "0"
+        fi
     else
         echo "0"
     fi
@@ -156,7 +161,8 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
     else
         # Check memory usage
         MEMORY_USAGE=$(get_memory_usage $SERVER_PID)
-        if [ "$MEMORY_USAGE" -gt "$MEMORY_LIMIT_MB" ]; then
+        # Ensure MEMORY_USAGE is a valid number before comparison
+        if [ -n "$MEMORY_USAGE" ] && [ "$MEMORY_USAGE" -gt 0 ] 2>/dev/null && [ "$MEMORY_USAGE" -gt "$MEMORY_LIMIT_MB" ] 2>/dev/null; then
             NEEDS_RESTART=true
             RESTART_REASON="Memory limit exceeded (${MEMORY_USAGE}MB > ${MEMORY_LIMIT_MB}MB)"
             log_with_timestamp "⚠️  $RESTART_REASON"

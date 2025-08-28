@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 
 export const authenticateToken = async (req, res, next) => {
@@ -10,7 +11,7 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
+    const decoded = jwt.verify(token, configService.getJwtSecret());
     const userService = DatabaseServiceFactory.getUserService();
     
     // Primary lookup by userId, fallback to email if needed

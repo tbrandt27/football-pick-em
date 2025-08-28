@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../middleware/auth.js';
+import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 import db from '../models/database.js';
 
@@ -49,7 +50,7 @@ router.post('/register', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId, email: email.toLowerCase() },
-      process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
+      configService.getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
@@ -139,7 +140,7 @@ router.post('/register-invite', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: userId, email: email.toLowerCase() },
-      process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
+      configService.getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
@@ -198,7 +199,7 @@ router.post('/login', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
+      configService.getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import ESPNService from "./espnApi.js";
+import configService from "./configService.js";
 
 /**
  * Database Initializer Service
@@ -83,14 +84,11 @@ export default class DatabaseInitializer {
       }
       checks.season = !season;
       
-      // Check if admin user exists (using env var email)
-      let adminEmail = process.env.ADMIN_EMAIL;
+      // Check if admin user exists (try Secrets Manager first in production)
+      let adminEmail;
       
-      // Handle AWS Secrets Manager placeholders
-      if (adminEmail && adminEmail.includes('{{resolve:secretsmanager')) {
-        console.log("⚠️  AWS Secrets Manager placeholder detected in admin check, using fallback");
-        adminEmail = "admin@nflpickem.com";
-      }
+      // Get admin email using the config service
+      adminEmail = configService.getAdminEmail();
       
       if (adminEmail) {
         let adminUser;
@@ -200,23 +198,12 @@ export default class DatabaseInitializer {
   async createAdminUser() {
     console.log("👤 Creating admin user...");
 
-    // Get admin credentials from environment variables (configured in apprunner.yaml)
-    let adminEmail = process.env.ADMIN_EMAIL || "admin@nflpickem.com";
-    let adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-
-    // Check if AWS Secrets Manager placeholders weren't resolved
-    if (adminEmail.includes('{{resolve:secretsmanager')) {
-      console.log("⚠️  AWS Secrets Manager placeholder detected in ADMIN_EMAIL, using fallback");
-      adminEmail = "admin@nflpickem.com";
-    }
-    
-    if (adminPassword.includes('{{resolve:secretsmanager')) {
-      console.log("⚠️  AWS Secrets Manager placeholder detected in ADMIN_PASSWORD, using fallback");
-      adminPassword = "admin123";
-    }
+    // Get admin credentials using the config service
+    const adminEmail = configService.getAdminEmail();
+    const adminPassword = configService.getAdminPassword();
 
     console.log(`📧 Admin email resolved to: ${adminEmail}`);
-    console.log(`🔑 Admin password source: ${process.env.ADMIN_PASSWORD ? 'environment variable' : 'fallback default'}`);
+    console.log(`🔑 Admin password source: ${configService.isInitialized() ? 'Configuration service' : 'fallback values'}`);
 
     try {
       // First, clean up ALL users with the target email to prevent duplicates

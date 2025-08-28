@@ -1,11 +1,10 @@
 import nodemailer from "nodemailer";
 import db from "../models/database.js";
 import crypto from "crypto";
+import configService from "./configService.js";
 
-// Encryption key for sensitive settings (should match admin.js)
-const ENCRYPTION_KEY =
-  process.env.SETTINGS_ENCRYPTION_KEY ||
-  "football-pickem-default-key-32-chars!";
+// Get encryption key from config service
+const getEncryptionKey = () => configService.getSettingsEncryptionKey();
 
 function decrypt(encryptedText) {
   try {
@@ -14,7 +13,7 @@ function decrypt(encryptedText) {
       // New format with IV: iv:encryptedData
       const [ivHex, encrypted] = encryptedText.split(':');
       const iv = Buffer.from(ivHex, 'hex');
-      const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+      const key = crypto.scryptSync(getEncryptionKey(), 'salt', 32);
       const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');

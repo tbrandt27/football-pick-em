@@ -46,17 +46,23 @@ run:
     # - name: DATABASE_PATH
     #   value: "./server/data/database.sqlite"
 
-    # Security Configuration
+    # Security Configuration - will be retrieved from Secrets Manager at runtime
     - name: JWT_SECRET
-      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:jwt_secret}}"
+      value: "runtime-secret-retrieval"
     - name: SETTINGS_ENCRYPTION_KEY
-      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:settings_encryption_key}}"
+      value: "runtime-secret-retrieval"
 
-    # Admin Configuration
+    # Admin Configuration - will be retrieved from Secrets Manager at runtime
     - name: ADMIN_EMAIL
-      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_email}}"
+      value: "admin@nflpickem.com"
     - name: ADMIN_PASSWORD
-      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_password}}"
+      value: "runtime-secret-retrieval"
+
+    # Enable Secrets Manager runtime retrieval
+    - name: USE_SECRETS_MANAGER
+      value: "true"
+    - name: SECRETS_SECRET_NAME
+      value: "football-pickem/jwt-secret"
 
     # SMTP Configuration (optional - can be configured via admin panel):
     # - name: SMTP_HOST

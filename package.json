@@ -1,7 +1,7 @@
 {
   "name": "football-pickem",
   "type": "module",
-  "version": "0.9.19",
+  "version": "0.9.20",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -25,6 +25,7 @@
     "@astrojs/node": "^9.3.0",
     "@astrojs/react": "^4.3.0",
     "@aws-sdk/client-dynamodb": "^3.873.0",
+    "@aws-sdk/client-secrets-manager": "^3.873.0",
     "@aws-sdk/lib-dynamodb": "^3.873.0",
     "@heroicons/react": "^2.2.0",
     "@nanostores/react": "^1.0.0",

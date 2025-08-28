@@ -21,6 +21,7 @@ import healthRoutes from "./routes/health.js";
 
 // Import services
 import scheduler from "./services/scheduler.js";
+import configService from "./services/configService.js";
 
 // Load environment variables
 dotenv.config();
@@ -245,6 +246,11 @@ const findAvailablePort = (startPort, maxAttempts = 10) => {
 // Start server with port detection
 const startServer = async () => {
   try {
+    // Initialize configuration service first
+    console.log("🔧 Initializing configuration service...");
+    await configService.initialize();
+    console.log("✅ Configuration service initialized");
+
     let finalPort = PORT;
     
     // In development, try to find an available port if the default is in use
