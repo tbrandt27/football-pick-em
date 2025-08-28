@@ -1523,18 +1523,56 @@ router.put(
         const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
         console.log('[DEBUG] Selected Service:', systemSettingsService.constructor.name);
         
+        // Enhanced debugging for service type mismatch detection
+        const dbType = db.getType();
+        const serviceName = systemSettingsService.constructor.name;
+        const hasMismatch = dbType === 'dynamodb' && serviceName === 'SQLiteSystemSettingsService';
+        
+        console.log('[DEBUG] Mismatch Detection:');
+        console.log('- DB Type:', dbType);
+        console.log('- Service Name:', serviceName);
+        console.log('- Has Mismatch:', hasMismatch);
+        
         // Failsafe: If we detect DynamoDB but got SQLite service, force the correct service
-        if (db.getType() === 'dynamodb' && systemSettingsService.constructor.name === 'SQLiteSystemSettingsService') {
-          console.error('[ERROR] Database type mismatch detected! DB is DynamoDB but service is SQLite');
-          console.error('[ERROR] This indicates an environment configuration issue');
+        if (hasMismatch) {
+          console.error('[ERROR] DATABASE TYPE MISMATCH DETECTED!');
+          console.error('[ERROR] DB is DynamoDB but service is SQLite - this will cause SQL operation errors');
+          console.error('[ERROR] This indicates an environment configuration issue in the service factory');
           
           // Import and use DynamoDB service directly as failsafe
           const { default: DynamoDBSystemSettingsService } = await import('../services/database/dynamodb/DynamoDBSystemSettingsService.js');
           const fallbackService = new DynamoDBSystemSettingsService();
-          console.log('[FAILSAFE] Using DynamoDB service directly');
-          await fallbackService.updateSetting(category, key, processedValue, encrypted, description);
+          console.log('[FAILSAFE] Using DynamoDB service directly to bypass factory selection issue');
+          console.log('[FAILSAFE] Calling fallbackService.updateSetting()');
+          
+          try {
+            await fallbackService.updateSetting(category, key, processedValue, encrypted, description);
+            console.log('[FAILSAFE] Successfully updated setting using DynamoDB service');
+          } catch (failsafeError) {
+            console.error('[FAILSAFE] Error using DynamoDB service:', failsafeError);
+            throw failsafeError;
+          }
         } else {
-          await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
+          console.log('[DEBUG] No mismatch detected, using factory-selected service');
+          console.log('[DEBUG] Calling systemSettingsService.updateSetting()');
+          
+          try {
+            await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
+            console.log('[DEBUG] Successfully updated setting using factory service');
+          } catch (serviceError) {
+            console.error('[DEBUG] Error using factory service:', serviceError);
+            
+            // Additional failsafe: If factory service fails and we're in DynamoDB, try fallback
+            if (dbType === 'dynamodb') {
+              console.log('[EMERGENCY FAILSAFE] Factory service failed in DynamoDB environment, trying direct DynamoDB service');
+              const { default: DynamoDBSystemSettingsService } = await import('../services/database/dynamodb/DynamoDBSystemSettingsService.js');
+              const emergencyService = new DynamoDBSystemSettingsService();
+              await emergencyService.updateSetting(category, key, processedValue, encrypted, description);
+              console.log('[EMERGENCY FAILSAFE] Successfully updated setting using emergency DynamoDB service');
+            } else {
+              throw serviceError;
+            }
+          }
         }
       }
 
