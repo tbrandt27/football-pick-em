@@ -1975,21 +1975,32 @@ router.post("/invite-admin", authenticateToken, requireAdmin, async (req, res) =
     });
 
     // Send invitation email
-    const emailResult = await emailService.sendAdminInvitation(
-      normalizedEmail,
-      `${inviter.first_name} ${inviter.last_name}`,
-      inviteToken
-    );
+    let emailResult = { success: false, error: 'Email service not attempted' };
+    try {
+      console.log(`[Admin] Attempting to send admin invitation email to: ${normalizedEmail}`);
+      emailResult = await emailService.sendAdminInvitation(
+        normalizedEmail,
+        `${inviter.first_name} ${inviter.last_name}`,
+        inviteToken
+      );
+      console.log(`[Admin] Email service result:`, emailResult);
+    } catch (emailError) {
+      console.error("Error calling email service for admin invitation:", emailError);
+      emailResult = { success: false, error: emailError.message };
+    }
 
     if (!emailResult.success) {
       console.error("Failed to send admin invitation email:", emailResult.error);
       // Still return success since the invitation was saved to database
+      console.log("Proceeding with success response despite email failure");
     }
 
+    console.log(`[Admin] Sending success response for admin invitation`);
     res.json({
       message: `Admin invitation sent to ${normalizedEmail}. They'll receive an email to create their admin account.`,
       type: "admin_invitation_sent",
       email: normalizedEmail,
+      emailSent: emailResult.success
     });
   } catch (error) {
     console.error("Admin invite user error:", error);
