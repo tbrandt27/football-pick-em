@@ -26,10 +26,10 @@ const AdminSettings: React.FC = () => {
 
   // Default SMTP settings structure
   const defaultSmtpSettings: Setting[] = [
-    { key: 'host', value: '', encrypted: false, description: 'SMTP server hostname (e.g., smtp.gmail.com)' },
+    { key: 'host', value: '', encrypted: false, description: 'SMTP server hostname (e.g., smtp.gmail.com or email-smtp.us-east-1.amazonaws.com for SES)' },
     { key: 'port', value: '587', encrypted: false, description: 'SMTP server port (typically 587 for TLS)' },
-    { key: 'user', value: '', encrypted: false, description: 'SMTP username/email address' },
-    { key: 'pass', value: '', encrypted: true, description: 'SMTP password or app password' },
+    { key: 'user', value: '', encrypted: false, description: 'SMTP username/email address (for SES: Access Key ID starting with AKIA)' },
+    { key: 'pass', value: '', encrypted: true, description: 'SMTP password or app password (for SES: Secret Access Key)' },
     { key: 'from', value: '', encrypted: false, description: 'From email address for outgoing emails' },
   ];
 
@@ -278,7 +278,9 @@ const AdminSettings: React.FC = () => {
                 <ul className="list-disc list-inside space-y-1">
                   <li>For Gmail, use smtp.gmail.com with port 587 and an app password</li>
                   <li>For Outlook/Hotmail, use smtp-mail.outlook.com with port 587</li>
-                  <li>Make sure to enable "Less secure app access" or use app-specific passwords</li>
+                  <li>For AWS SES, use email-smtp.[region].amazonaws.com with port 587, Access Key ID as username, and Secret Access Key as password</li>
+                  <li>Make sure to enable "Less secure app access" or use app-specific passwords for Gmail/Outlook</li>
+                  <li>For SES, ensure your sending domain/email is verified and out of sandbox mode</li>
                   <li>Test your connection before saving to ensure emails can be sent</li>
                 </ul>
               </div>

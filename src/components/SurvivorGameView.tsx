@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, Season, NFLGame, Pick, NFLTeam, TeamSurvivorStats } from '../utils/api';
 import api from '../utils/api';
-import { UserCircleIcon, HomeIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, ClockIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, HomeIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, ClockIcon, CheckCircleIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
+import SurvivorStandingsView from './SurvivorStandingsView';
 
 interface SurvivorGameViewProps {
   gameId?: string;
@@ -47,6 +48,7 @@ const SurvivorGameView: React.FC<SurvivorGameViewProps> = ({ gameId, gameSlug, i
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [picksLocked, setPicksLocked] = useState(false);
   const [teamsPlayingThisWeek, setTeamsPlayingThisWeek] = useState<Set<string>>(new Set());
+  const [showStandings, setShowStandings] = useState(false);
 
   useEffect(() => {
     // Initialize data when component mounts
@@ -542,7 +544,18 @@ const SurvivorGameView: React.FC<SurvivorGameViewProps> = ({ gameId, gameSlug, i
               <h2 className="text-2xl font-bold text-gray-800">Week {currentWeek}</h2>
               <div className="text-sm text-gray-500 mt-1">{currentSeason?.season || '2024'} Season</div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowStandings(!showStandings)}
+                className={`inline-flex items-center space-x-2 px-3 py-1 border rounded-lg text-sm font-medium transition-colors ${
+                  showStandings
+                    ? 'bg-gray-100 border-gray-400 text-gray-800'
+                    : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <ChartBarIcon className="h-4 w-4" />
+                <span>{showStandings ? 'Hide Standings' : 'Show Standings'}</span>
+              </button>
               {picksLocked ? (
                 <div className="flex items-center text-red-600">
                   <ClockIcon className="h-5 w-5 mr-1" />
@@ -594,6 +607,19 @@ const SurvivorGameView: React.FC<SurvivorGameViewProps> = ({ gameId, gameSlug, i
             </div>
           )}
         </div>
+
+        {/* Standings View */}
+        {showStandings && currentSeason && (
+          <div className="mb-8">
+            <SurvivorStandingsView
+              game={game}
+              currentSeason={currentSeason}
+              currentWeek={currentWeek}
+              teams={teams}
+              picksLocked={picksLocked}
+            />
+          </div>
+        )}
 
         {/* Team Selection Grid */}
         <div className="bg-white rounded-lg shadow-md">

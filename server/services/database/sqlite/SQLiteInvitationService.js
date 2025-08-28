@@ -60,9 +60,13 @@ export default class SQLiteInvitationService extends IInvitationService {
    */
   async getInvitationByToken(inviteToken) {
     const invitation = await this.db.get(`
-      SELECT gi.*, pg.game_name
+      SELECT gi.*,
+             CASE
+               WHEN gi.is_admin_invitation = 1 THEN 'Admin Invitation'
+               ELSE pg.game_name
+             END as game_name
       FROM game_invitations gi
-      JOIN pickem_games pg ON gi.game_id = pg.id
+      LEFT JOIN pickem_games pg ON gi.game_id = pg.id
       WHERE gi.invite_token = ? AND gi.status = 'pending' AND gi.expires_at > datetime('now')
     `, [inviteToken]);
 

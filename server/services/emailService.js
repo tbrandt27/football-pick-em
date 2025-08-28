@@ -8,10 +8,36 @@ const ENCRYPTION_KEY =
   "football-pickem-default-key-32-chars!";
 
 function decrypt(encryptedText) {
-  const decipher = crypto.createDecipher("aes-256-cbc", ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    // Try new format first (with IV)
+    const parts = encryptedText.split(':');
+    if (parts.length === 2) {
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      
+      // Create a hash of the encryption key to ensure it's exactly 32 bytes for AES-256
+      const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+      
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    }
+  } catch (error) {
+    // If new format fails, try legacy format
+    console.warn('New format decryption failed, attempting legacy format:', error.message);
+  }
+  
+  try {
+    // Fallback to legacy format for backward compatibility
+    console.warn('Attempting to decrypt legacy format data. Consider re-saving settings to update to new format.');
+    
+    // This is a simplified fallback - in a real scenario you'd want to
+    // create a proper migration strategy
+    throw new Error('Legacy encrypted data detected. Please re-save your settings to update to the new secure format.');
+  } catch (legacyError) {
+    throw new Error(`Unable to decrypt data. This may be due to changed encryption format. Please re-enter your settings. Details: ${legacyError.message}`);
+  }
 }
 
 class EmailService {

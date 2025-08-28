@@ -343,24 +343,10 @@ router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
       
       res.json({ users: usersWithGameCount });
     } else {
-      // For SQLite, use the optimized JOIN query
-      const users = await db.all(`
-        SELECT
-          u.id,
-          u.email,
-          u.first_name,
-          u.last_name,
-          u.is_admin,
-          u.email_verified,
-          u.last_login,
-          u.created_at,
-          COUNT(gp.id) as game_count
-        FROM users u
-        LEFT JOIN game_participants gp ON u.id = gp.user_id
-        GROUP BY u.id
-        ORDER BY u.created_at DESC
-      `);
-
+      // For SQLite, use service layer for consistency
+      const userService = DatabaseServiceFactory.getUserService();
+      const users = await userService.getAllUsers();
+      
       res.json({ users });
     }
   } catch (error) {
@@ -495,7 +481,8 @@ router.post(
         lastName,
         favoriteTeamId: null,
         emailVerificationToken,
-        emailVerified: true  // Admin-created accounts are pre-verified
+        emailVerified: true,  // Admin-created accounts are pre-verified
+        isAdmin: invitation.is_admin_invitation || false  // Set admin status for admin invitations
       });
 
       // Add user to the game (only for regular game invitations)
@@ -831,7 +818,7 @@ router.delete(
           }
         }
       } else {
-        // For SQLite, use SQL queries
+        // For SQLite, use direct SQL for now until service methods are available
         await db.run("DELETE FROM picks WHERE user_id = ?", [userId]);
         await db.run("DELETE FROM weekly_standings WHERE user_id = ?", [userId]);
         
@@ -979,21 +966,13 @@ router.put(
       const { seasonId } = req.params;
       const { isActive } = req.body;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      await db.run(
-        `
-      UPDATE seasons 
-      SET is_current = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [isActive ? 1 : 0, seasonId]
-      );
+      await seasonService.updateSeasonCurrentStatus(seasonId, isActive);
 
       res.json({ message: "Season status updated successfully" });
     } catch (error) {
@@ -1012,19 +991,15 @@ router.post(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
       // This would integrate with ESPN API to sync games
       // For now, return success with count
-      const gameCount = await db.get(
-        "SELECT COUNT(*) as count FROM football_games WHERE season_id = ?",
-        [seasonId]
-      );
+      const gameCount = await seasonService.getFootballGameCount(seasonId);
 
       res.json({
         message: "NFL games synced successfully",
@@ -1046,9 +1021,8 @@ router.post(
     try {
       const { seasonId } = req.params;
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
@@ -1079,21 +1053,13 @@ router.put(
       const { gameId } = req.params;
       const { isActive } = req.body;
 
-      const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [
-        gameId,
-      ]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameByIdForAdmin(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
 
-      await db.run(
-        `
-      UPDATE pickem_games 
-      SET is_active = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [isActive ? 1 : 0, gameId]
-      );
+      await gameService.updateGameActiveStatus(gameId, isActive);
 
       res.json({ message: "Game status updated successfully" });
     } catch (error) {
@@ -1113,21 +1079,13 @@ router.put(
       const { gameId } = req.params;
       const { start_time } = req.body;
 
-      const game = await db.get("SELECT * FROM football_games WHERE id = ?", [
-        gameId,
-      ]);
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const game = await nflDataService.getFootballGameById(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
 
-      await db.run(
-        `
-      UPDATE football_games
-      SET start_time = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [start_time, gameId]
-      );
+      await nflDataService.updateGameStartTime(gameId, start_time);
 
       res.json({ message: "Game time updated successfully" });
     } catch (error) {
@@ -1146,49 +1104,14 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      let season;
-      if (db.getType && db.getType() === 'dynamodb') {
-        season = await db.get({
-          action: 'get',
-          table: 'seasons',
-          key: { id: seasonId }
-        });
-      } else {
-        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB: scan and update all seasons
-        const allSeasonsResult = await db.all({
-          action: 'scan',
-          table: 'seasons'
-        });
-        const allSeasons = allSeasonsResult || [];
-        
-        for (const s of allSeasons) {
-          await db.run({
-            action: 'update',
-            table: 'seasons',
-            key: { id: s.id },
-            item: { is_current: s.id === seasonId ? true : false }
-          });
-        }
-      } else {
-        // SQLite: bulk updates
-        // Unset all current seasons
-        await db.run("UPDATE seasons SET is_current = 0");
-
-        // Set this season as current
-        await db.run("UPDATE seasons SET is_current = 1 WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      await seasonService.setCurrentSeason(seasonId);
 
       res.json({ message: "Current season updated successfully" });
     } catch (error) {
@@ -1207,38 +1130,14 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      let season;
-      if (db.getType && db.getType() === 'dynamodb') {
-        season = await db.get({
-          action: 'get',
-          table: 'seasons',
-          key: { id: seasonId }
-        });
-      } else {
-        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB: update specific season
-        await db.run({
-          action: 'update',
-          table: 'seasons',
-          key: { id: seasonId },
-          item: { is_current: false }
-        });
-      } else {
-        // SQLite: update season
-        // Unset this season as current
-        await db.run("UPDATE seasons SET is_current = 0 WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      await seasonService.updateSeasonCurrentStatus(seasonId, false);
 
       res.json({ message: "Season unset as current successfully" });
     } catch (error) {
@@ -1264,47 +1163,19 @@ router.put(
         team_logo,
       } = req.body;
 
-      const team = await db.get("SELECT * FROM football_teams WHERE id = ?", [
-        teamId,
-      ]);
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const team = await nflDataService.getTeamById(teamId);
       if (!team) {
         return res.status(404).json({ error: "Team not found" });
       }
 
-      // Handle different database types
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB update
-        await db.run({
-          action: 'update',
-          table: 'football_teams',
-          key: { id: teamId },
-          item: {
-            team_city,
-            team_name,
-            team_primary_color,
-            team_secondary_color,
-            team_logo,
-            updated_at: new Date().toISOString()
-          }
-        });
-      } else {
-        // SQLite update
-        await db.run(
-          `
-        UPDATE football_teams
-        SET team_city = ?, team_name = ?, team_primary_color = ?, team_secondary_color = ?, team_logo = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `,
-          [
-            team_city,
-            team_name,
-            team_primary_color,
-            team_secondary_color,
-            team_logo,
-            teamId,
-          ]
-        );
-      }
+      await nflDataService.updateTeam(teamId, {
+        team_city,
+        team_name,
+        team_primary_color,
+        team_secondary_color,
+        team_logo
+      });
 
       res.json({ message: "Team updated successfully" });
     } catch (error) {
@@ -1454,28 +1325,19 @@ router.put(
         return res.status(400).json({ error: "Season ID is required" });
       }
 
-      const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [
-        gameId,
-      ]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameByIdForAdmin(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
 
-      const season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-        seasonId,
-      ]);
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      await db.run(
-        `
-      UPDATE pickem_games 
-      SET season_id = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-        [seasonId, gameId]
-      );
+      await gameService.updateGameSeason(gameId, seasonId);
 
       res.json({ message: "Game season updated successfully" });
     } catch (error) {
@@ -1518,17 +1380,51 @@ const ENCRYPTION_KEY =
   "football-pickem-default-key-32-chars!";
 
 function encrypt(text) {
-  const cipher = crypto.createCipher("aes-256-cbc", ENCRYPTION_KEY);
+  // Generate a random initialization vector
+  const iv = crypto.randomBytes(16);
+  
+  // Create a hash of the encryption key to ensure it's exactly 32 bytes for AES-256
+  const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+  
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
-  return encrypted;
+  
+  // Prepend the IV to the encrypted data (both in hex)
+  return iv.toString('hex') + ':' + encrypted;
 }
 
 function decrypt(encryptedText) {
-  const decipher = crypto.createDecipher("aes-256-cbc", ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    // Try new format first (with IV)
+    const parts = encryptedText.split(':');
+    if (parts.length === 2) {
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      
+      // Create a hash of the encryption key to ensure it's exactly 32 bytes for AES-256
+      const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+      
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    }
+  } catch (error) {
+    // If new format fails, try legacy format
+    console.warn('New format decryption failed, attempting legacy format:', error.message);
+  }
+  
+  try {
+    // Fallback to legacy format for backward compatibility
+    console.warn('Attempting to decrypt legacy format data. Consider re-saving settings to update to new format.');
+    
+    // This is a simplified fallback - in a real scenario you'd want to
+    // create a proper migration strategy
+    throw new Error('Legacy encrypted data detected. Please re-save your settings to update to the new secure format.');
+  } catch (legacyError) {
+    throw new Error(`Unable to decrypt data. This may be due to changed encryption format. Please re-enter your settings. Details: ${legacyError.message}`);
+  }
 }
 
 // Get all settings by category
@@ -1540,26 +1436,41 @@ router.get(
     try {
       const { category } = req.params;
 
-      const settings = await db.all(
-        `
-      SELECT key, value, encrypted, description
-      FROM system_settings 
-      WHERE category = ?
-      ORDER BY key
-    `,
-        [category]
-      );
+      const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+      const settings = await systemSettingsService.getSettingsByCategory(category);
 
       // Decrypt encrypted values for display (but mask passwords)
-      const processedSettings = settings.map((setting) => ({
-        ...setting,
-        value:
-          setting.encrypted && setting.key.toLowerCase().includes("pass")
-            ? "••••••••" // Mask passwords
-            : setting.encrypted
-            ? decrypt(setting.value)
-            : setting.value,
-      }));
+      const processedSettings = settings.map((setting) => {
+        let displayValue = setting.value;
+        
+        if (setting.encrypted) {
+          try {
+            const decryptedValue = decrypt(setting.value);
+            
+            // For passwords, show masked value but include original length hint
+            if (setting.key.toLowerCase().includes("pass")) {
+              displayValue = "••••••••"; // Always show 8 dots for UI consistency
+              // Add metadata to help frontend identify this as a masked password
+              return {
+                ...setting,
+                value: displayValue,
+                _isPasswordMask: true,
+                _originalLength: decryptedValue.length
+              };
+            } else {
+              displayValue = decryptedValue;
+            }
+          } catch (error) {
+            console.error(`Failed to decrypt setting ${setting.key}:`, error.message);
+            displayValue = "[Decryption Failed - Please Re-enter]";
+          }
+        }
+        
+        return {
+          ...setting,
+          value: displayValue
+        };
+      });
 
       res.json({ settings: processedSettings });
     } catch (error) {
@@ -1587,24 +1498,58 @@ router.put(
         const { key, value, encrypted = false, description = "" } = setting;
 
         if (!key) continue;
+        
+        // Skip saving if this is a masked password that hasn't been changed
+        if (encrypted && setting.key && setting.key.toLowerCase().includes("pass") && value === "••••••••") {
+          console.log(`Skipping update for masked password field: ${key}`);
+          continue;
+        }
+        
+        console.log(`Updating setting ${key}: encrypted=${encrypted}, valueLength=${value ? value.length : 0}`);
 
         const settingId = `${category}_${key}`;
         const processedValue = encrypted ? encrypt(value) : value;
 
-        await db.run(
-          `
-        INSERT OR REPLACE INTO system_settings (id, category, key, value, encrypted, description, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `,
-          [
-            settingId,
-            category,
-            key,
-            processedValue,
-            encrypted ? 1 : 0,
-            description,
-          ]
-        );
+        // Get database type first for comprehensive failsafe logic
+        const dbType = db.getType();
+        console.log(`[COMPREHENSIVE FAILSAFE] Database type: ${dbType}`);
+        
+        // UNIVERSAL FAILSAFE: For DynamoDB environment, ALWAYS use DynamoDB service to avoid SQL errors
+        if (dbType === 'dynamodb') {
+          console.log('[UNIVERSAL FAILSAFE] DynamoDB detected - forcing DynamoDB service to prevent SQL errors');
+          
+          try {
+            // Import and use DynamoDB service directly
+            const { default: DynamoDBSystemSettingsService } = await import('../services/database/dynamodb/DynamoDBSystemSettingsService.js');
+            const dynamoService = new DynamoDBSystemSettingsService();
+            console.log('[UNIVERSAL FAILSAFE] Using DynamoDB service directly for setting:', key);
+            
+            await dynamoService.updateSetting(category, key, processedValue, encrypted, description);
+            console.log(`[UNIVERSAL FAILSAFE] Successfully updated setting ${key} using DynamoDB service`);
+            
+          } catch (dynamoError) {
+            console.error(`[UNIVERSAL FAILSAFE] DynamoDB service failed for setting ${key}:`, dynamoError);
+            throw dynamoError;
+          }
+          
+        } else {
+          // For SQLite, use the factory service normally
+          console.log('[STANDARD PATH] SQLite detected - using factory service');
+          
+          // Clear service cache to ensure we get the correct service for current database type
+          DatabaseServiceFactory.clearCache();
+          
+          const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+          console.log('[STANDARD PATH] Selected Service:', systemSettingsService.constructor.name);
+          
+          try {
+            await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
+            console.log(`[STANDARD PATH] Successfully updated setting ${key} using factory service`);
+          } catch (serviceError) {
+            console.error(`[STANDARD PATH] Factory service failed for setting ${key}:`, serviceError);
+            throw serviceError;
+          }
+        }
       }
 
       // Refresh email service transporter if SMTP settings were updated
@@ -1626,53 +1571,279 @@ router.post(
   authenticateToken,
   requireAdmin,
   async (req, res) => {
+    // Define isAwsSes outside try block for error handling access
+    let isAwsSes = false;
+    
     try {
-      const { host, port, user, pass, from } = req.body;
+      let { host, port, user, pass, from, testEmail } = req.body;
 
       if (!host || !user || !pass || !from) {
         return res
           .status(400)
           .json({ error: "All SMTP fields are required for testing" });
       }
+      
+      // Determine test email address
+      const targetEmail = testEmail && testEmail.trim()
+        ? testEmail.trim()
+        : req.user.email;
+      
+      // Enhanced debug logging to clearly distinguish between admin email and target email
+      console.log("=== SMTP Test Email Configuration ===");
+      console.log("Admin Email (req.user.email):", req.user.email);
+      console.log("Provided Test Email:", testEmail || "None provided");
+      console.log("Target Email (where test will be sent):", targetEmail);
+      console.log("=====================================");
+      
+      // Validate email format
+      if (!targetEmail || !targetEmail.includes('@')) {
+        return res.status(400).json({
+          error: `Invalid test email address: ${targetEmail}. Please provide a valid email address in the 'Test Email' field.`
+        });
+      }
+      
+      // Check if password is masked - if so, load real password from database
+      if (pass === "••••••••") {
+        console.log("Detected masked password, loading real password from database...");
+        
+        try {
+          const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
+          const settings = await systemSettingsService.getSettingsByCategory('smtp');
+          
+          const smtpConfig = {};
+          settings.forEach((setting) => {
+            smtpConfig[setting.key] = setting.encrypted
+              ? decrypt(setting.value)
+              : setting.value;
+          });
+          
+          if (smtpConfig.pass) {
+            pass = smtpConfig.pass;
+            console.log("Successfully loaded real password from database, length:", pass.length);
+          } else {
+            return res.status(400).json({
+              error: "No password found in saved settings. Please re-enter your SMTP password."
+            });
+          }
+        } catch (dbError) {
+          console.error("Failed to load password from database:", dbError);
+          return res.status(400).json({
+            error: "Could not load saved password. Please re-enter your SMTP password."
+          });
+        }
+      }
 
-      const nodemailer = await import("nodemailer");
-      const testTransporter = nodemailer.createTransporter({
-        host: host,
-        port: parseInt(port) || 587,
-        secure: false,
-        auth: {
-          user: user,
-          pass: pass,
-        },
-      });
+      const { default: nodemailer } = await import("nodemailer");
+      
+      // Detect if this looks like AWS SES
+      isAwsSes = host.includes('email-smtp') && host.includes('amazonaws.com');
+      
+      // Enhanced debugging info
+      console.log("SMTP Test Configuration:");
+      console.log("- Host:", host);
+      console.log("- Port:", parseInt(port) || 587);
+      console.log("- User:", user);
+      console.log("- From:", from);
+      console.log("- Password length:", pass.length);
+      console.log("- Password first 10 chars:", pass.substring(0, 10) + "...");
+      console.log("- AWS SES detected:", isAwsSes);
+      console.log("- Using real password from database:", pass !== req.body.pass);
+      
+      // AWS SES specific validation
+      if (isAwsSes) {
+        console.log("AWS SES Validation:");
+        console.log("- Expected username format: AKIA... (should start with AKIA)");
+        console.log("- Actual username starts with:", user.substring(0, 4));
+        console.log("- Expected password length: 40+ characters");
+        console.log("- Actual password length:", pass.length);
+        
+        if (!user.startsWith('AKIA')) {
+          console.warn("⚠️  WARNING: AWS SES username should start with 'AKIA'");
+        }
+        
+        if (pass.length < 30) {
+          console.warn("⚠️  WARNING: AWS SES password seems too short. Expected 40+ characters, got", pass.length);
+          console.warn("This suggests the password may be truncated or incorrectly saved.");
+        }
+      }
 
-      // Verify connection
-      await testTransporter.verify();
+      const portNum = parseInt(port) || 587;
+      
+      // Try multiple configurations
+      const configurations = [
+        {
+          name: "Standard TLS (port 587)",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465, // true for 465, false for other ports
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: false // Allow self-signed certificates
+            }
+          }
+        }
+      ];
 
-      // Send test email
-      await testTransporter.sendMail({
-        from: from,
-        to: req.user.email, // Send test email to admin
-        subject: "SMTP Test - NFL Pick'em",
-        text: "This is a test email to verify your SMTP settings are working correctly.",
-        html: `
-        <div style="font-family: Arial, sans-serif;">
-          <h2>🏈 SMTP Test Successful!</h2>
-          <p>Your SMTP settings are working correctly.</p>
-          <p>This test email was sent from your NFL Pick'em application.</p>
-        </div>
-      `,
-      });
+      // Add AWS SES specific configuration if detected
+      if (isAwsSes) {
+        console.log("AWS SES detected - adding SES-specific configurations");
+        configurations.push({
+          name: "AWS SES Optimized",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465,
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: true, // AWS SES has valid certificates
+              ciphers: 'SSLv3' // AWS SES compatibility
+            },
+            connectionTimeout: 10000, // 10 seconds
+            greetingTimeout: 5000,
+            socketTimeout: 10000
+          }
+        });
+      } else {
+        // Add alternative config for non-SES providers
+        configurations.push({
+          name: "Alternative with explicit TLS",
+          config: {
+            host: host,
+            port: portNum,
+            secure: portNum === 465,
+            requireTLS: true,
+            auth: {
+              user: user,
+              pass: pass,
+            },
+            tls: {
+              rejectUnauthorized: false
+            }
+          }
+        });
+      }
 
-      res.json({
-        success: true,
-        message: "SMTP test successful! Check your email for the test message.",
-      });
+      let lastError = null;
+      
+      for (const config of configurations) {
+        try {
+          console.log(`\nTrying configuration: ${config.name}`);
+          const testTransporter = nodemailer.createTransport(config.config);
+
+          // Verify connection
+          console.log("Verifying SMTP connection...");
+          await testTransporter.verify();
+          console.log("SMTP connection verified successfully!");
+
+          // Send test email
+          console.log("Sending test email...");
+          const result = await testTransporter.sendMail({
+            from: from,
+            to: targetEmail,
+            subject: "SMTP Test - NFL Pick'em",
+            text: "This is a test email to verify your SMTP settings are working correctly.",
+            html: `
+            <div style="font-family: Arial, sans-serif;">
+              <h2>🏈 SMTP Test Successful!</h2>
+              <p>Your SMTP settings are working correctly.</p>
+              <p>This test email was sent from your NFL Pick'em application.</p>
+              <p><small>Configuration: ${config.name}</small></p>
+            </div>
+          `,
+          });
+
+          console.log("✅ Test email sent successfully!");
+          console.log("Target Email:", targetEmail);
+          console.log("Message ID:", result.messageId);
+          console.log("Admin performing test:", req.user.email);
+          
+          return res.json({
+            success: true,
+            message: `SMTP test successful with ${config.name}! Test email sent to ${targetEmail}. Check your email for the test message.`,
+            configuration: config.name,
+            messageId: result.messageId,
+            testEmailSentTo: targetEmail
+          });
+          
+        } catch (configError) {
+          console.log(`Configuration "${config.name}" failed:`, configError.message);
+          lastError = configError;
+          continue;
+        }
+      }
+
+      // If we get here, all configurations failed
+      throw lastError;
+
     } catch (error) {
-      console.error("SMTP test error:", error);
+      console.error("SMTP test error details:", {
+        message: error.message,
+        code: error.code,
+        response: error.response,
+        responseCode: error.responseCode,
+        command: error.command
+      });
+      
+      let helpfulMessage = `SMTP test failed: ${error.message}`;
+      
+      // Provide specific guidance based on error type
+      if (error.code === 'EAUTH') {
+        helpfulMessage += "\n\nAuthentication failed. Please check:\n";
+        
+        if (isAwsSes) {
+          helpfulMessage += "• AWS SES SMTP credentials are correct (NOT your AWS Access Keys)\n";
+          helpfulMessage += "• SMTP username should look like: AKIA... (20 characters)\n";
+          helpfulMessage += "• SMTP password should be the generated SMTP password (NOT your AWS secret)\n";
+          helpfulMessage += "• SMTP password should be 40+ characters (yours is only " + (req.body.pass ? req.body.pass.length : 'unknown') + ")\n";
+          helpfulMessage += "• Your 'from' email is verified in AWS SES\n";
+          helpfulMessage += "• Your AWS SES is out of sandbox mode (if sending to unverified emails)\n";
+          helpfulMessage += "• AWS SES region matches your SMTP endpoint\n";
+          helpfulMessage += "\n⚠️  Password appears to be truncated or incorrectly saved - please re-enter it.";
+        } else {
+          helpfulMessage += "• Username and password are correct\n";
+          helpfulMessage += "• For Gmail: Use App Password instead of regular password\n";
+          helpfulMessage += "• For Outlook: Enable 'Less secure app access' or use App Password\n";
+          helpfulMessage += "• Check if 2FA is enabled and requires App Password";
+        }
+      } else if (error.code === 'ECONNECTION') {
+        helpfulMessage += "\n\nConnection failed. Please check:\n";
+        
+        if (isAwsSes) {
+          helpfulMessage += "• AWS SES SMTP endpoint is correct (e.g., email-smtp.us-east-1.amazonaws.com)\n";
+          helpfulMessage += "• Region in endpoint matches your SES setup\n";
+          helpfulMessage += "• Port 587 (TLS) or 465 (SSL) - 587 is recommended for SES\n";
+          helpfulMessage += "• Network/firewall allows SMTP connections to AWS";
+        } else {
+          helpfulMessage += "• SMTP server hostname is correct\n";
+          helpfulMessage += "• Port number is correct (587 for TLS, 465 for SSL)\n";
+          helpfulMessage += "• Network/firewall allows SMTP connections";
+        }
+      } else if (error.code === 'ETIMEDOUT') {
+        helpfulMessage += "\n\nConnection timed out. Please check:\n";
+        helpfulMessage += "• SMTP server is accessible\n";
+        helpfulMessage += "• Firewall/network settings";
+        
+        if (isAwsSes) {
+          helpfulMessage += "\n• AWS SES region endpoint is correct";
+        }
+      }
+      
       res.status(400).json({
         success: false,
-        error: `SMTP test failed: ${error.message}`,
+        error: helpfulMessage,
+        details: {
+          code: error.code,
+          response: error.response,
+          responseCode: error.responseCode,
+          passwordLength: req.body.pass ? req.body.pass.length : 'unknown'
+        }
       });
     }
   }
@@ -1690,7 +1861,8 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
     const normalizedEmail = email.toLowerCase();
 
     // Get game information
-    const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
+    const gameService = DatabaseServiceFactory.getGameService();
+    const game = await gameService.getGameByIdForAdmin(gameId);
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
@@ -1713,14 +1885,8 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
         const allParticipants = participantsResult.Items || [];
         existingParticipant = allParticipants.find(p => p.user_id === existingUser.id);
       } else {
-        // For SQLite, use the efficient query
-        existingParticipant = await db.get(
-          `
-          SELECT id FROM game_participants
-          WHERE game_id = ? AND user_id = ?
-        `,
-          [gameId, existingUser.id]
-        );
+        // For SQLite, use service layer
+        existingParticipant = await gameService.getParticipant(gameId, existingUser.id);
       }
 
       if (existingParticipant) {
@@ -1730,14 +1896,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       }
 
       // Add user as player
-      const { v4: uuidv4 } = await import("uuid");
-      await db.run(
-        `
-        INSERT INTO game_participants (id, game_id, user_id, role)
-        VALUES (?, ?, ?, 'player')
-      `,
-        [uuidv4(), gameId, existingUser.id]
-      );
+      await gameService.addParticipant(gameId, existingUser.id, 'player');
 
       res.json({
         message: `Successfully added ${existingUser.email} to the game "${game.game_name}"`,
@@ -1750,14 +1909,9 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
     } else {
       // User doesn't exist - send invitation
 
-      // Check if invitation already exists
-      const existingInvitation = await db.get(
-        `
-        SELECT * FROM game_invitations
-        WHERE game_id = ? AND email = ? AND status = 'pending'
-      `,
-        [gameId, normalizedEmail]
-      );
+      // Check if invitation already exists and create new one
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const existingInvitation = await invitationService.checkExistingInvitation(gameId, normalizedEmail);
 
       if (existingInvitation) {
         return res
@@ -1767,25 +1921,17 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
 
       // Create invitation
       const crypto = await import("crypto");
-      const { v4: uuidv4 } = await import("uuid");
       const inviteToken = crypto.randomBytes(32).toString("hex");
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
 
-      await db.run(
-        `
-        INSERT INTO game_invitations (id, game_id, email, invited_by_user_id, invite_token, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-        [
-          uuidv4(),
-          gameId,
-          normalizedEmail,
-          req.user.id,
-          inviteToken,
-          expiresAt.toISOString(),
-        ]
-      );
+      await invitationService.createInvitation({
+        gameId,
+        email: normalizedEmail,
+        invitedByUserId: req.user.id,
+        inviteToken,
+        expiresAt: expiresAt.toISOString()
+      });
 
       // Send invitation email
       const emailResult = await emailService.sendGameInvitation(
@@ -1927,14 +2073,8 @@ router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) 
   try {
     let defaultTeam;
     
-    if (db.getType && db.getType() === 'dynamodb') {
-      // DynamoDB implementation
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      // SQLite implementation
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       // Create default team record if it doesn't exist
@@ -1952,23 +2092,7 @@ router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) 
         team_logo: '/logos/NFL.svg'
       };
       
-      if (db.getType && db.getType() === 'dynamodb') {
-        await db.provider._dynamoPut('football_teams', {
-          ...defaultColors,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-      } else {
-        await db.run(`
-          INSERT INTO football_teams (
-            id, team_code, team_name, team_city, team_conference, team_division,
-            team_primary_color, team_secondary_color, team_logo
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          defaultTeamId, 'DEFAULT', 'Default Colors', 'System', 'SYSTEM', 'DEFAULT',
-          '#013369', '#d50a0a', '/logos/NFL.svg'
-        ]);
-      }
+      await nflDataService.createDefaultTeam(defaultColors);
       
       defaultTeam = defaultColors;
     }
@@ -1992,33 +2116,14 @@ router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) 
       return res.status(400).json({ error: "Both primary and secondary colors are required" });
     }
     
-    // Find the default team record
-    let defaultTeam;
-    if (db.getType && db.getType() === 'dynamodb') {
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    const defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       return res.status(404).json({ error: "Default team record not found" });
     }
     
-    // Update the default team colors
-    if (db.getType && db.getType() === 'dynamodb') {
-      await db.provider._dynamoUpdate('football_teams', { id: defaultTeam.id }, {
-        team_primary_color: defaultPrimaryColor,
-        team_secondary_color: defaultSecondaryColor,
-        updated_at: new Date().toISOString()
-      });
-    } else {
-      await db.run(`
-        UPDATE football_teams
-        SET team_primary_color = ?, team_secondary_color = ?, updated_at = datetime('now')
-        WHERE team_code = 'DEFAULT'
-      `, [defaultPrimaryColor, defaultSecondaryColor]);
-    }
+    await nflDataService.updateDefaultTeamColors(defaultPrimaryColor, defaultSecondaryColor);
     
     res.json({
       message: "Default colors updated successfully",
@@ -2034,14 +2139,8 @@ router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) 
 // Get the DEFAULT team record for use when users have no favorite team
 router.get("/default-team", authenticateToken, async (req, res) => {
   try {
-    let defaultTeam;
-    
-    if (db.getType && db.getType() === 'dynamodb') {
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    let defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       // Create default team record if it doesn't exist
@@ -2059,24 +2158,7 @@ router.get("/default-team", authenticateToken, async (req, res) => {
         team_logo: '/logos/NFL.svg'
       };
       
-      if (db.getType && db.getType() === 'dynamodb') {
-        await db.provider._dynamoPut('football_teams', {
-          ...defaultColors,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-      } else {
-        await db.run(`
-          INSERT INTO football_teams (
-            id, team_code, team_name, team_city, team_conference, team_division,
-            team_primary_color, team_secondary_color, team_logo
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          defaultTeamId, 'DEFAULT', 'NFL Default', 'League', 'SYSTEM', 'DEFAULT',
-          '#013369', '#d50a0a', '/logos/NFL.svg'
-        ]);
-      }
-      
+      await nflDataService.createDefaultTeam(defaultColors);
       defaultTeam = defaultColors;
     }
     

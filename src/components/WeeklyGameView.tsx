@@ -3,8 +3,9 @@ import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, Season, NFLGame, Pick, NFLTeam } from '../utils/api';
 import api from '../utils/api';
-import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
+import WeeklyStandingsView from './WeeklyStandingsView';
 
 interface WeeklyGameViewProps {
   gameId?: string;
@@ -40,6 +41,7 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
     userTotalPoints: number;
     userWeekPoints: number;
   } | null>(null);
+  const [showStandings, setShowStandings] = useState(false);
   
 
   useEffect(() => {
@@ -904,7 +906,7 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
             ))}
           </div>
 
-          {/* Score Update Badge - positioned after week buttons, only show for relevant weeks */}
+          {/* Score Update Badge and Standings Button - positioned after week buttons, only show for relevant weeks */}
           {currentSeason && (() => {
             // Only show ScoreUpdateBadge for weeks that have games which have started or completed
             const hasStartedOrCompletedGames = weekGames.some(game => {
@@ -945,7 +947,20 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
         {weeklyStats && game && (
           <div className="bg-white rounded-lg shadow-md mb-8">
             <div className="p-6 border-b">
-              <h3 className="text-xl font-bold text-gray-800">Week {currentWeek} Stats</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-800">Week {currentWeek} Stats</h3>
+                <button
+                  onClick={() => setShowStandings(!showStandings)}
+                  className={`inline-flex items-center space-x-2 px-3 py-1 border rounded-lg text-sm font-medium transition-colors ${
+                    showStandings
+                      ? 'bg-gray-100 border-gray-400 text-gray-800'
+                      : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <ChartBarIcon className="h-4 w-4" />
+                  <span>{showStandings ? 'Hide Standings' : 'Show Standings'}</span>
+                </button>
+              </div>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -975,6 +990,17 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Standings View */}
+        {showStandings && currentSeason && game && (
+          <div className="mb-8">
+            <WeeklyStandingsView
+              game={game}
+              currentSeason={currentSeason}
+              currentWeek={currentWeek}
+            />
           </div>
         )}
 
