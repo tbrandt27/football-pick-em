@@ -20,18 +20,37 @@ export DATABASE_PATH=${DATABASE_PATH:-./server/data/database.sqlite}
 
 # Process monitoring configuration
 MAX_RESTARTS=${MAX_RESTARTS:-5}
-RESTART_DELAY=${RESTART_DELAY:-5}
-HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
+RESTART_DELAY=${RESTART_DELAY:-10}
+HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60}
 MEMORY_LIMIT_MB=${MEMORY_LIMIT_MB:-512}
 
 # Create data and logs directories if they don't exist
 mkdir -p ./server/data
 mkdir -p ./logs
 
-# Initialize database if it doesn't exist
-if [ ! -f "$DATABASE_PATH" ]; then
-    echo "📊 Initializing database..."
-    node ./scripts/init-db.js
+# Initialize database based on type
+DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
+NODE_ENV=${NODE_ENV:-development}
+
+# Determine actual database type (handle 'auto' setting)
+ACTUAL_DB_TYPE=$DATABASE_TYPE
+if [ "$DATABASE_TYPE" = "auto" ]; then
+    if [ "$NODE_ENV" = "production" ]; then
+        ACTUAL_DB_TYPE="dynamodb"
+    else
+        ACTUAL_DB_TYPE="sqlite"
+    fi
+fi
+
+# Only initialize SQLite database if using SQLite
+if [ "$ACTUAL_DB_TYPE" = "sqlite" ]; then
+    if [ ! -f "$DATABASE_PATH" ]; then
+        echo "📊 Initializing database..."
+        node ./scripts/init-db.js
+    fi
+else
+    echo "📊 Using DynamoDB - skipping local database initialization..."
+    echo "ℹ️  DynamoDB tables should be created via infrastructure (CloudFormation/CDK)"
 fi
 
 # Function to log with timestamp
@@ -79,10 +98,12 @@ start_server() {
     SERVER_PID=$!
     log_with_timestamp "📋 Server started with PID: $SERVER_PID"
     
-    # Wait a moment for the server to start
-    sleep 3
+    # Wait longer for the server to fully initialize
+    sleep 5
     
     if is_process_running $SERVER_PID; then
+        # Wait additional time for Express app to be ready
+        sleep 3
         log_with_timestamp "✅ Server startup successful"
         return 0
     else
@@ -168,8 +189,8 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
             log_with_timestamp "⚠️  $RESTART_REASON"
         fi
         
-        # Check health endpoint (every 2 intervals to avoid too frequent checks)
-        if [ $((CURRENT_TIME - LAST_HEALTH_CHECK)) -ge $((HEALTH_CHECK_INTERVAL * 2)) ]; then
+        # Check health endpoint (every 3 intervals to avoid too frequent checks in production)
+        if [ $((CURRENT_TIME - LAST_HEALTH_CHECK)) -ge $((HEALTH_CHECK_INTERVAL * 3)) ]; then
             if ! check_server_health; then
                 NEEDS_RESTART=true
                 RESTART_REASON="Health check failed"

@@ -4,10 +4,12 @@ runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
 build:
   commands:
     build:
-      - echo "Installing dependencies..."
-      - npm ci --only=production
+      - echo "Installing all dependencies for build..."
+      - npm ci
       - echo "Building application..."
       - npm run build
+      - echo "Removing devDependencies after build..."
+      - npm prune --production
       - echo "Setting permissions..."
       - chmod +x scripts/start.sh
 
