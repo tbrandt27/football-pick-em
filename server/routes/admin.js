@@ -1104,49 +1104,14 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      let season;
-      if (db.getType && db.getType() === 'dynamodb') {
-        season = await db.get({
-          action: 'get',
-          table: 'seasons',
-          key: { id: seasonId }
-        });
-      } else {
-        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB: scan and update all seasons
-        const allSeasonsResult = await db.all({
-          action: 'scan',
-          table: 'seasons'
-        });
-        const allSeasons = allSeasonsResult || [];
-        
-        for (const s of allSeasons) {
-          await db.run({
-            action: 'update',
-            table: 'seasons',
-            key: { id: s.id },
-            item: { is_current: s.id === seasonId ? true : false }
-          });
-        }
-      } else {
-        // SQLite: bulk updates
-        // Unset all current seasons
-        await db.run("UPDATE seasons SET is_current = 0");
-
-        // Set this season as current
-        await db.run("UPDATE seasons SET is_current = 1 WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      await seasonService.setCurrentSeason(seasonId);
 
       res.json({ message: "Current season updated successfully" });
     } catch (error) {
@@ -1165,38 +1130,14 @@ router.put(
     try {
       const { seasonId } = req.params;
 
-      let season;
-      if (db.getType && db.getType() === 'dynamodb') {
-        season = await db.get({
-          action: 'get',
-          table: 'seasons',
-          key: { id: seasonId }
-        });
-      } else {
-        season = await db.get("SELECT * FROM seasons WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      const seasonService = DatabaseServiceFactory.getSeasonService();
+      const season = await seasonService.getSeasonById(seasonId);
       
       if (!season) {
         return res.status(404).json({ error: "Season not found" });
       }
 
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB: update specific season
-        await db.run({
-          action: 'update',
-          table: 'seasons',
-          key: { id: seasonId },
-          item: { is_current: false }
-        });
-      } else {
-        // SQLite: update season
-        // Unset this season as current
-        await db.run("UPDATE seasons SET is_current = 0 WHERE id = ?", [
-          seasonId,
-        ]);
-      }
+      await seasonService.updateSeasonCurrentStatus(seasonId, false);
 
       res.json({ message: "Season unset as current successfully" });
     } catch (error) {
@@ -1222,47 +1163,19 @@ router.put(
         team_logo,
       } = req.body;
 
-      const team = await db.get("SELECT * FROM football_teams WHERE id = ?", [
-        teamId,
-      ]);
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const team = await nflDataService.getTeamById(teamId);
       if (!team) {
         return res.status(404).json({ error: "Team not found" });
       }
 
-      // Handle different database types
-      if (db.getType && db.getType() === 'dynamodb') {
-        // DynamoDB update
-        await db.run({
-          action: 'update',
-          table: 'football_teams',
-          key: { id: teamId },
-          item: {
-            team_city,
-            team_name,
-            team_primary_color,
-            team_secondary_color,
-            team_logo,
-            updated_at: new Date().toISOString()
-          }
-        });
-      } else {
-        // SQLite update
-        await db.run(
-          `
-        UPDATE football_teams
-        SET team_city = ?, team_name = ?, team_primary_color = ?, team_secondary_color = ?, team_logo = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `,
-          [
-            team_city,
-            team_name,
-            team_primary_color,
-            team_secondary_color,
-            team_logo,
-            teamId,
-          ]
-        );
-      }
+      await nflDataService.updateTeam(teamId, {
+        team_city,
+        team_name,
+        team_primary_color,
+        team_secondary_color,
+        team_logo
+      });
 
       res.json({ message: "Team updated successfully" });
     } catch (error) {
@@ -1412,9 +1325,8 @@ router.put(
         return res.status(400).json({ error: "Season ID is required" });
       }
 
-      const game = await db.get("SELECT * FROM pickem_games WHERE id = ?", [
-        gameId,
-      ]);
+      const gameService = DatabaseServiceFactory.getGameService();
+      const game = await gameService.getGameByIdForAdmin(gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found" });
       }
@@ -1425,7 +1337,6 @@ router.put(
         return res.status(404).json({ error: "Season not found" });
       }
 
-      const gameService = DatabaseServiceFactory.getGameService();
       await gameService.updateGameSeason(gameId, seasonId);
 
       res.json({ message: "Game season updated successfully" });
@@ -2167,33 +2078,14 @@ router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) 
       return res.status(400).json({ error: "Both primary and secondary colors are required" });
     }
     
-    // Find the default team record
-    let defaultTeam;
-    if (db.getType && db.getType() === 'dynamodb') {
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    const defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       return res.status(404).json({ error: "Default team record not found" });
     }
     
-    // Update the default team colors
-    if (db.getType && db.getType() === 'dynamodb') {
-      await db.provider._dynamoUpdate('football_teams', { id: defaultTeam.id }, {
-        team_primary_color: defaultPrimaryColor,
-        team_secondary_color: defaultSecondaryColor,
-        updated_at: new Date().toISOString()
-      });
-    } else {
-      await db.run(`
-        UPDATE football_teams
-        SET team_primary_color = ?, team_secondary_color = ?, updated_at = datetime('now')
-        WHERE team_code = 'DEFAULT'
-      `, [defaultPrimaryColor, defaultSecondaryColor]);
-    }
+    await nflDataService.updateDefaultTeamColors(defaultPrimaryColor, defaultSecondaryColor);
     
     res.json({
       message: "Default colors updated successfully",
@@ -2209,14 +2101,8 @@ router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) 
 // Get the DEFAULT team record for use when users have no favorite team
 router.get("/default-team", authenticateToken, async (req, res) => {
   try {
-    let defaultTeam;
-    
-    if (db.getType && db.getType() === 'dynamodb') {
-      const result = await db.provider._dynamoScan('football_teams', { team_code: 'DEFAULT' });
-      defaultTeam = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-    } else {
-      defaultTeam = await db.get("SELECT * FROM football_teams WHERE team_code = 'DEFAULT'");
-    }
+    const nflDataService = DatabaseServiceFactory.getNFLDataService();
+    let defaultTeam = await nflDataService.getDefaultTeam();
     
     if (!defaultTeam) {
       // Create default team record if it doesn't exist
@@ -2234,24 +2120,7 @@ router.get("/default-team", authenticateToken, async (req, res) => {
         team_logo: '/logos/NFL.svg'
       };
       
-      if (db.getType && db.getType() === 'dynamodb') {
-        await db.provider._dynamoPut('football_teams', {
-          ...defaultColors,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-      } else {
-        await db.run(`
-          INSERT INTO football_teams (
-            id, team_code, team_name, team_city, team_conference, team_division,
-            team_primary_color, team_secondary_color, team_logo
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          defaultTeamId, 'DEFAULT', 'NFL Default', 'League', 'SYSTEM', 'DEFAULT',
-          '#013369', '#d50a0a', '/logos/NFL.svg'
-        ]);
-      }
-      
+      await nflDataService.createDefaultTeam(defaultColors);
       defaultTeam = defaultColors;
     }
     
