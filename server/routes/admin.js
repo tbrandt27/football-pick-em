@@ -1510,6 +1510,8 @@ router.put(
         const settingId = `${category}_${key}`;
         const processedValue = encrypted ? encrypt(value) : value;
 
+        // Clear service cache to ensure we get the correct service for current database type
+        DatabaseServiceFactory.clearCache();
         const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
         await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
       }
