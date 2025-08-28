@@ -1897,7 +1897,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
 
-      await invitationService.createGameInvitation({
+      await invitationService.createInvitation({
         gameId,
         email: normalizedEmail,
         invitedByUserId: req.user.id,
