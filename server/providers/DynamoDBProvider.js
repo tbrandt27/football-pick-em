@@ -508,6 +508,17 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       TableName: actualTableName
     };
 
+    console.log(`[DynamoDB] SCAN input debug:`, {
+      tableName,
+      actualTableName,
+      filters,
+      filtersType: typeof filters,
+      filtersKeys: Object.keys(filters || {}),
+      filtersValues: Object.values(filters || {}),
+      hasFilters: Object.keys(filters || {}).length > 0,
+      clientInitialized: !!this.docClient
+    });
+
     if (Object.keys(filters).length > 0) {
       const filterExpression = [];
       const expressionAttributeNames = {};
@@ -517,6 +528,13 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         const fieldName = `#field${index}`;
         const fieldValue = `:value${index}`;
         
+        console.log(`[DynamoDB] SCAN adding filter:`, {
+          field,
+          value: filters[field],
+          fieldName,
+          fieldValue
+        });
+        
         filterExpression.push(`${fieldName} = ${fieldValue}`);
         expressionAttributeNames[fieldName] = field;
         expressionAttributeValues[fieldValue] = filters[field];
@@ -525,6 +543,14 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       scanParams.FilterExpression = filterExpression.join(' AND ');
       scanParams.ExpressionAttributeNames = expressionAttributeNames;
       scanParams.ExpressionAttributeValues = expressionAttributeValues;
+      
+      console.log(`[DynamoDB] SCAN filter params:`, {
+        FilterExpression: scanParams.FilterExpression,
+        ExpressionAttributeNames: scanParams.ExpressionAttributeNames,
+        ExpressionAttributeValues: scanParams.ExpressionAttributeValues
+      });
+    } else {
+      console.log(`[DynamoDB] SCAN no filters applied - performing full table scan`);
     }
 
     console.log(`[DynamoDB] SCAN operation details:`, {

@@ -1883,7 +1883,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
 
       // Check if invitation already exists and create new one using service
       const invitationService = DatabaseServiceFactory.getInvitationService();
-      const existingInvitation = await invitationService.checkExistingGameInvitation(gameId, normalizedEmail);
+      const existingInvitation = await invitationService.checkExistingInvitation(gameId, normalizedEmail);
 
       if (existingInvitation) {
         return res

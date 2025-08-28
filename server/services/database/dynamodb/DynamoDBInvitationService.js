@@ -88,26 +88,70 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Invitation data with game info
    */
   async getInvitationByToken(inviteToken) {
-    // Scan for invitation with this token
-    const result = await this.db._dynamoScan('game_invitations', { invite_token: inviteToken });
-    
-    if (!result.Items || result.Items.length === 0) {
+    console.log(`[DynamoDBInvitationService] getInvitationByToken called with token:`, {
+      token: inviteToken,
+      tokenType: typeof inviteToken,
+      tokenLength: inviteToken?.length,
+      tokenDefined: !!inviteToken
+    });
+
+    // Validate invitation token
+    if (!inviteToken || typeof inviteToken !== 'string') {
+      console.warn(`[DynamoDBInvitationService] Invalid invite token provided:`, {
+        token: inviteToken,
+        type: typeof inviteToken
+      });
       return null;
     }
 
-    const invitation = result.Items[0];
-
-    // Get game information
     try {
-      const gameResult = await this.db._dynamoGet('pickem_games', { id: invitation.game_id });
-      if (gameResult.Item) {
-        invitation.game_name = gameResult.Item.game_name;
+      // Scan for invitation with this token
+      console.log(`[DynamoDBInvitationService] Scanning for invitation with token: ${inviteToken}`);
+      const result = await this.db._dynamoScan('game_invitations', { invite_token: inviteToken });
+      
+      console.log(`[DynamoDBInvitationService] Scan result:`, {
+        itemCount: result.Items?.length || 0,
+        scannedCount: result.ScannedCount,
+        hasItems: !!(result.Items && result.Items.length > 0)
+      });
+      
+      if (!result.Items || result.Items.length === 0) {
+        console.log(`[DynamoDBInvitationService] No invitation found for token: ${inviteToken}`);
+        return null;
       }
-    } catch (error) {
-      console.warn(`Could not fetch game for invitation ${invitation.id}:`, error);
-    }
 
-    return invitation;
+      const invitation = result.Items[0];
+      console.log(`[DynamoDBInvitationService] Found invitation:`, {
+        id: invitation.id,
+        email: invitation.email,
+        status: invitation.status,
+        gameId: invitation.game_id,
+        isAdminInvitation: invitation.is_admin_invitation
+      });
+
+      // Get game information only if it's not an admin invitation
+      if (!invitation.is_admin_invitation && invitation.game_id) {
+        try {
+          console.log(`[DynamoDBInvitationService] Fetching game info for ID: ${invitation.game_id}`);
+          const gameResult = await this.db._dynamoGet('pickem_games', { id: invitation.game_id });
+          if (gameResult.Item) {
+            invitation.game_name = gameResult.Item.game_name;
+            console.log(`[DynamoDBInvitationService] Game name found: ${invitation.game_name}`);
+          } else {
+            console.warn(`[DynamoDBInvitationService] Game not found for ID: ${invitation.game_id}`);
+          }
+        } catch (error) {
+          console.warn(`[DynamoDBInvitationService] Could not fetch game for invitation ${invitation.id}:`, error);
+        }
+      } else if (invitation.is_admin_invitation) {
+        invitation.game_name = 'Admin Invitation';
+      }
+
+      return invitation;
+    } catch (error) {
+      console.error(`[DynamoDBInvitationService] Error in getInvitationByToken:`, error);
+      throw error;
+    }
   }
 
   /**
