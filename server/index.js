@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync } from "fs";
 import { readFileSync } from "fs";
+import { createServer } from "net";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -23,6 +24,48 @@ import scheduler from "./services/scheduler.js";
 
 // Load environment variables
 dotenv.config();
+
+// Global error handlers to prevent server crashes
+process.on('uncaughtException', (error) => {
+  console.error('🚨 Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  
+  // Log the error but don't exit immediately - let the app try to recover
+  console.error('⚠️  Server continuing after uncaught exception...');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  
+  // Log the error but don't exit - let the app continue
+  console.error('⚠️  Server continuing after unhandled rejection...');
+});
+
+// Handle process signals gracefully
+let isShuttingDown = false;
+
+const gracefulShutdown = (signal) => {
+  if (isShuttingDown) {
+    console.log(`⚠️  Force shutdown on ${signal}`);
+    process.exit(1);
+  }
+  
+  isShuttingDown = true;
+  console.log(`🛑 Received ${signal}. Starting graceful shutdown...`);
+  
+  // Stop the scheduler first
+  scheduler.stop();
+  
+  // Give some time for cleanup
+  setTimeout(() => {
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  }, 5000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -162,10 +205,96 @@ app.get("*", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+// Function to find an available port
+const findAvailablePort = (startPort, maxAttempts = 10) => {
+  return new Promise((resolve, reject) => {
+    let currentPort = startPort;
+    let attempts = 0;
 
-  // Start automatic scheduler
-  console.log("🕐 Starting automatic scheduler...");
-  scheduler.start();
+    const tryPort = () => {
+      if (attempts >= maxAttempts) {
+        reject(new Error(`No available port found after ${maxAttempts} attempts starting from ${startPort}`));
+        return;
+      }
+
+      const server = createServer();
+      
+      server.listen(currentPort, () => {
+        server.once('close', () => {
+          resolve(currentPort);
+        });
+        server.close();
+      });
+      
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`⚠️  Port ${currentPort} is in use, trying ${currentPort + 1}...`);
+          currentPort++;
+          attempts++;
+          tryPort();
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    tryPort();
+  });
+};
+
+// Start server with port detection
+const startServer = async () => {
+  try {
+    let finalPort = PORT;
+    
+    // In development, try to find an available port if the default is in use
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        finalPort = await findAvailablePort(PORT);
+        if (finalPort !== PORT) {
+          console.log(`🔄 Using port ${finalPort} instead of ${PORT}`);
+          console.log(`⚠️  Update your Astro proxy configuration to point to port ${finalPort}`);
+          console.log(`   or stop the process using port ${PORT} and restart`);
+        }
+      } catch (portError) {
+        console.error('Failed to find available port:', portError.message);
+        console.log('🔧 Try stopping other processes or use a different PORT environment variable');
+        process.exit(1);
+      }
+    }
+
+    const server = app.listen(finalPort, () => {
+      console.log(`🚀 Server running on port ${finalPort}`);
+      console.log(`🌐 Access your app at: http://localhost:${finalPort}`);
+
+      // Start automatic scheduler
+      console.log("🕐 Starting automatic scheduler...");
+      scheduler.start();
+    });
+
+    // Handle server errors
+    server.on('error', (error) => {
+      console.error('🚨 Server error:', error);
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${finalPort} is already in use`);
+        if (process.env.NODE_ENV === 'production') {
+          console.error('🔧 In production, ensure the PORT environment variable is set to an available port');
+        } else {
+          console.error('🔧 Try stopping other processes or restart the development server');
+        }
+        process.exit(1);
+      }
+    });
+
+    return server;
+  } catch (error) {
+    console.error('🚨 Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+// Start the server
+startServer().catch(error => {
+  console.error('🚨 Server startup failed:', error);
+  process.exit(1);
 });

@@ -8,10 +8,27 @@ const ENCRYPTION_KEY =
   "football-pickem-default-key-32-chars!";
 
 function decrypt(encryptedText) {
-  const decipher = crypto.createDecipher("aes-256-cbc", ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    // Handle both old and new encryption formats
+    if (encryptedText.includes(':')) {
+      // New format with IV: iv:encryptedData
+      const [ivHex, encrypted] = encryptedText.split(':');
+      const iv = Buffer.from(ivHex, 'hex');
+      const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } else {
+      // Legacy format - return as-is for now to avoid breaking existing data
+      console.warn('Legacy encryption format detected. Consider re-encrypting this data.');
+      return encryptedText;
+    }
+  } catch (error) {
+    console.error('Failed to decrypt value:', error.message);
+    // Return the original text if decryption fails (might be unencrypted)
+    return encryptedText;
+  }
 }
 
 class EmailService {

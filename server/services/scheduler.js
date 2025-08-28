@@ -56,7 +56,12 @@ class SchedulerService {
       const season = await seasonService.getCurrentSeason();
       return season;
     } catch (error) {
-      console.error('Failed to get current season:', error);
+      console.error('[Scheduler] Failed to get current season:', error);
+      console.error('[Scheduler] Season error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       return null;
     }
   }
@@ -71,15 +76,20 @@ class SchedulerService {
       const currentSeason = await this.getCurrentSeason();
       if (!currentSeason) {
         console.log('[Scheduler] No current season set, skipping score update');
-        return false;
+        return { success: false, reason: 'No current season' };
       }
 
       const result = await espnService.updateGameScores();
       console.log('[Scheduler] Score update completed:', result);
-      return true;
+      return { success: true, result };
     } catch (error) {
       console.error('[Scheduler] Failed to update scores:', error);
-      return false;
+      console.error('[Scheduler] Score update error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return { success: false, error: error.message };
     }
   }
 
@@ -93,7 +103,7 @@ class SchedulerService {
       const currentSeason = await this.getCurrentSeason();
       if (!currentSeason) {
         console.log('[Scheduler] No current season set, skipping pick calculations');
-        return false;
+        return { success: false, reason: 'No current season' };
       }
 
       // Get season status to determine current week
@@ -116,10 +126,15 @@ class SchedulerService {
         }
       });
 
-      return result.totalUpdatedPicks > 0;
+      return { success: true, result, picksUpdated: result.totalUpdatedPicks > 0 };
     } catch (error) {
       console.error('[Scheduler] Failed to calculate picks:', error);
-      return false;
+      console.error('[Scheduler] Pick calculation error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return { success: false, error: error.message };
     }
   }
 
@@ -140,11 +155,17 @@ class SchedulerService {
     console.log('[Scheduler] Running score update...');
     
     try {
-      await this.updateScores();
-      console.log('[Scheduler] Score update completed');
+      const result = await this.updateScores();
+      console.log('[Scheduler] Score update completed successfully:', result);
     } catch (error) {
       console.error('[Scheduler] Score update failed:', error);
+      console.error('[Scheduler] Score update error stack:', error.stack);
+      
+      // Don't re-throw - let scheduler continue running
+      return false;
     }
+    
+    return true;
   }
 
   /**
@@ -159,11 +180,17 @@ class SchedulerService {
     console.log('[Scheduler] Running pick calculations...');
     
     try {
-      await this.calculatePicks();
-      console.log('[Scheduler] Pick calculations completed');
+      const result = await this.calculatePicks();
+      console.log('[Scheduler] Pick calculations completed successfully:', result);
     } catch (error) {
       console.error('[Scheduler] Pick calculations failed:', error);
+      console.error('[Scheduler] Pick calculations error stack:', error.stack);
+      
+      // Don't re-throw - let scheduler continue running
+      return false;
     }
+    
+    return true;
   }
 
   /**
@@ -174,17 +201,46 @@ class SchedulerService {
     
     try {
       // Update scores first
-      const scoresUpdated = await this.updateScores();
+      const scoresResult = await this.updateScores();
       
       // If scores were updated successfully, calculate picks
-      if (scoresUpdated) {
+      if (scoresResult.success) {
+        console.log('[Scheduler] Scores updated successfully, proceeding with pick calculations...');
         await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
-        await this.calculatePicks();
+        
+        const picksResult = await this.calculatePicks();
+        
+        console.log('[Scheduler] Full update cycle completed:', {
+          scoresUpdated: scoresResult.success,
+          picksCalculated: picksResult.success
+        });
+        
+        return {
+          success: true,
+          scoresResult,
+          picksResult
+        };
+      } else {
+        console.log('[Scheduler] Score update failed, skipping pick calculations');
+        return {
+          success: false,
+          reason: 'Score update failed',
+          scoresResult
+        };
       }
       
-      console.log('[Scheduler] Full update cycle completed');
     } catch (error) {
       console.error('[Scheduler] Update cycle failed:', error);
+      console.error('[Scheduler] Update cycle error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 
@@ -201,7 +257,9 @@ class SchedulerService {
     
     // Update scores every 15 minutes during game hours
     const scoreUpdateTask = cron.schedule('*/15 * * * *', () => {
-      this.runScoreUpdate();
+      this.runScoreUpdate().catch(error => {
+        console.error('[Scheduler] Score update task failed:', error);
+      });
     }, {
       scheduled: false, // Don't start immediately
       timezone: "America/New_York" // Use Eastern Time
@@ -209,7 +267,9 @@ class SchedulerService {
 
     // Calculate picks every hour during game days (less frequent)
     const pickCalculationTask = cron.schedule('0 * * * *', () => {
-      this.runPickCalculations();
+      this.runPickCalculations().catch(error => {
+        console.error('[Scheduler] Pick calculation task failed:', error);
+      });
     }, {
       scheduled: false,
       timezone: "America/New_York"
@@ -217,9 +277,15 @@ class SchedulerService {
 
     // Light score check every hour during off-hours on game days
     const offHoursCheckTask = cron.schedule('30 * * * *', () => {
-      if (this.isGameDay() && !this.isActiveGameTime()) {
-        console.log('[Scheduler] Off-hours check - updating scores only');
-        this.updateScores();
+      try {
+        if (this.isGameDay() && !this.isActiveGameTime()) {
+          console.log('[Scheduler] Off-hours check - updating scores only');
+          this.updateScores().catch(error => {
+            console.error('[Scheduler] Off-hours score update failed:', error);
+          });
+        }
+      } catch (error) {
+        console.error('[Scheduler] Off-hours check failed:', error);
       }
     }, {
       scheduled: false,
@@ -287,7 +353,17 @@ class SchedulerService {
    */
   async triggerUpdate() {
     console.log('[Scheduler] Manual update triggered');
-    await this.runUpdateCycle();
+    try {
+      const result = await this.runUpdateCycle();
+      console.log('[Scheduler] Manual update completed:', result);
+      return result;
+    } catch (error) {
+      console.error('[Scheduler] Manual update failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 }
 

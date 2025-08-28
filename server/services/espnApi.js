@@ -5,9 +5,13 @@ import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 class ESPNService {
   constructor() {
     this.baseUrl = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
-    this.timeout = 10000; // 10 seconds
+    this.timeout = 15000; // 15 seconds - increased for better reliability
+    this.maxRetries = 3;
+    this.retryDelay = 1000; // 1 second base delay
     this.nflDataService = null; // Will be initialized when needed
     this.seasonService = null; // Will be initialized when needed
+    this.consecutiveFailures = 0;
+    this.lastSuccessfulRequest = new Date();
   }
 
   getNFLDataService() {
@@ -25,19 +29,60 @@ class ESPNService {
   }
 
   async makeRequest(endpoint, params = {}) {
-    try {
-      const response = await axios.get(`${this.baseUrl}${endpoint}`, {
-        params,
-        timeout: this.timeout,
-        headers: {
-          'User-Agent': 'NFL-Pickem-App/1.0'
+    let lastError;
+    
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        console.log(`[ESPN] Making request to ${endpoint} (attempt ${attempt}/${this.maxRetries})`);
+        
+        const response = await axios.get(`${this.baseUrl}${endpoint}`, {
+          params,
+          timeout: this.timeout,
+          headers: {
+            'User-Agent': 'NFL-Pickem-App/1.0',
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          // Add connection pooling options
+          maxRedirects: 5,
+          validateStatus: (status) => status >= 200 && status < 300
+        });
+        
+        // Request successful - reset failure counter
+        this.consecutiveFailures = 0;
+        this.lastSuccessfulRequest = new Date();
+        
+        console.log(`[ESPN] Request successful for ${endpoint} on attempt ${attempt}`);
+        return response.data;
+        
+      } catch (error) {
+        lastError = error;
+        this.consecutiveFailures++;
+        
+        console.error(`[ESPN] Request failed for ${endpoint} (attempt ${attempt}/${this.maxRetries}):`, {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          consecutiveFailures: this.consecutiveFailures
+        });
+        
+        // If this was the last attempt, don't wait
+        if (attempt === this.maxRetries) {
+          break;
         }
-      });
-      return response.data;
-    } catch (error) {
-      console.error(`ESPN API request failed for ${endpoint}:`, error.message);
-      throw new Error(`Failed to fetch data from ESPN: ${error.message}`);
+        
+        // Calculate exponential backoff delay
+        const delay = this.retryDelay * Math.pow(2, attempt - 1);
+        console.log(`[ESPN] Retrying in ${delay}ms...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
+    
+    // All retries failed
+    console.error(`[ESPN] All ${this.maxRetries} attempts failed for ${endpoint}`);
+    throw new Error(`ESPN API request failed after ${this.maxRetries} attempts: ${lastError.message}`);
   }
 
   async fetchCurrentSeason() {
@@ -151,9 +196,11 @@ class ESPNService {
           const weekGames = await this.fetchWeeklyGames(week, 2, seasonInfo.year);
           allGames.push(...weekGames);
           
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Add longer delay between requests to be respectful to ESPN API
+          await new Promise(resolve => setTimeout(resolve, 250));
         } catch (error) {
           console.error(`Failed to fetch week ${week}:`, error);
+          // Continue with other weeks even if one fails
         }
       }
 

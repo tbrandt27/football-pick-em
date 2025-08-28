@@ -1385,17 +1385,150 @@ const ENCRYPTION_KEY =
   "football-pickem-default-key-32-chars!";
 
 function encrypt(text) {
-  const cipher = crypto.createCipher("aes-256-cbc", ENCRYPTION_KEY);
+  // Generate a random initialization vector
+  const iv = crypto.randomBytes(16);
+  
+  // Create a 32-byte key from the encryption key
+  const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+  
+  // Create cipher with key and IV
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+  
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
-  return encrypted;
+  
+  // Prepend IV to encrypted data (IV is not secret)
+  return iv.toString("hex") + ":" + encrypted;
 }
 
 function decrypt(encryptedText) {
-  const decipher = crypto.createDecipher("aes-256-cbc", ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    // Validate input
+    if (!encryptedText || typeof encryptedText !== 'string') {
+      console.warn("Invalid encrypted text provided to decrypt function");
+      return "";
+    }
+
+    // Check if this is the new format (contains ":")
+    if (encryptedText.includes(":")) {
+      // New format: IV:encrypted
+      const parts = encryptedText.split(":");
+      if (parts.length !== 2) {
+        throw new Error("Invalid encrypted format");
+      }
+      
+      const ivHex = parts[0];
+      const encrypted = parts[1];
+      
+      // Validate hex strings
+      if (!/^[0-9a-fA-F]+$/.test(ivHex) || !/^[0-9a-fA-F]+$/.test(encrypted)) {
+        throw new Error("Invalid hex format in encrypted data");
+      }
+      
+      // Validate IV length (should be 32 hex chars = 16 bytes)
+      if (ivHex.length !== 32) {
+        throw new Error("Invalid IV length");
+      }
+      
+      const iv = Buffer.from(ivHex, "hex");
+      
+      // Create a 32-byte key from the encryption key
+      const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+      
+      // Create decipher with key and IV
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      
+      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      
+      return decrypted;
+    } else {
+      // Legacy format: try multiple decryption methods
+      console.warn("Attempting to decrypt legacy encrypted value. Consider re-saving to use new encryption.");
+      
+      // Try method 1: Zero IV (most common legacy method)
+      try {
+        const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+        const iv = Buffer.alloc(16, 0);
+        
+        const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        
+        return decrypted;
+      } catch (method1Error) {
+        console.warn("Legacy decryption method 1 failed:", method1Error.message);
+      }
+      
+      // Try method 2: Different key derivation (if the original used a different method)
+      try {
+        const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32), 'utf8');
+        const iv = Buffer.alloc(16, 0);
+        
+        const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        
+        return decrypted;
+      } catch (method2Error) {
+        console.warn("Legacy decryption method 2 failed:", method2Error.message);
+      }
+      
+      // Try method 3: MD5 hash of key (another common legacy method)
+      try {
+        let key = crypto.createHash('md5').update(ENCRYPTION_KEY).digest();
+        key = Buffer.concat([key, key]); // Extend to 32 bytes
+        const iv = Buffer.alloc(16, 0);
+        
+        const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        
+        return decrypted;
+      } catch (method3Error) {
+        console.warn("Legacy decryption method 3 failed:", method3Error.message);
+      }
+      
+      // Try method 4: SHA256 hash of key
+      try {
+        let key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+        const iv = Buffer.alloc(16, 0);
+        
+        const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        
+        return decrypted;
+      } catch (method4Error) {
+        console.warn("Legacy decryption method 4 failed:", method4Error.message);
+      }
+      
+      // Try method 5: AES-128 instead of AES-256 (in case original was 128)
+      try {
+        const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 16); // 16 bytes for AES-128
+        const iv = Buffer.alloc(16, 0);
+        
+        const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        
+        return decrypted;
+      } catch (method5Error) {
+        console.warn("Legacy decryption method 5 failed:", method5Error.message);
+      }
+      
+      console.error("All legacy decryption methods failed for value");
+      return "";
+    }
+  } catch (error) {
+    console.error("Decryption error:", error);
+    console.log("Failed to decrypt value:", error.message);
+    console.log("Encrypted text length:", encryptedText?.length || 0);
+    console.log("Encryption key defined:", !!ENCRYPTION_KEY);
+    
+    // Return empty string so the UI doesn't break
+    return "";
+  }
 }
 
 // Get all settings by category
@@ -1426,15 +1559,27 @@ router.get(
       }
 
       // Decrypt encrypted values for display (but mask passwords)
-      const processedSettings = settings.map((setting) => ({
-        ...setting,
-        value:
-          setting.encrypted && setting.key.toLowerCase().includes("pass")
-            ? "••••••••" // Mask passwords
-            : setting.encrypted
-            ? decrypt(setting.value)
-            : setting.value,
-      }));
+      const processedSettings = settings.map((setting) => {
+        let displayValue = setting.value;
+        
+        if (setting.encrypted) {
+          if (setting.key.toLowerCase().includes("pass")) {
+            displayValue = "••••••••"; // Mask passwords
+          } else {
+            try {
+              displayValue = decrypt(setting.value);
+            } catch (error) {
+              console.warn(`Failed to decrypt setting ${setting.key}:`, error.message);
+              displayValue = ""; // Show empty value for failed decryption
+            }
+          }
+        }
+        
+        return {
+          ...setting,
+          value: displayValue,
+        };
+      });
 
       res.json({ settings: processedSettings });
     } catch (error) {
@@ -1509,6 +1654,54 @@ router.put(
   }
 );
 
+// Clear corrupted encrypted settings
+router.delete(
+  "/settings/:category/clear-encrypted",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { category } = req.params;
+
+      if (db.getType && db.getType() === 'dynamodb') {
+        // DynamoDB implementation - scan for encrypted settings in category
+        const result = await db.provider._dynamoScan('system_settings', { category });
+        const encryptedSettings = (result.Items || []).filter(setting => setting.encrypted);
+        
+        for (const setting of encryptedSettings) {
+          await db.provider._dynamoDelete('system_settings', { id: setting.id });
+        }
+        
+        res.json({
+          message: `Cleared ${encryptedSettings.length} corrupted encrypted settings from ${category}`,
+          cleared: encryptedSettings.map(s => s.key)
+        });
+      } else {
+        // SQLite implementation
+        const encryptedSettings = await db.all(
+          "SELECT id, key FROM system_settings WHERE category = ? AND encrypted = 1",
+          [category]
+        );
+        
+        if (encryptedSettings.length > 0) {
+          await db.run(
+            "DELETE FROM system_settings WHERE category = ? AND encrypted = 1",
+            [category]
+          );
+        }
+        
+        res.json({
+          message: `Cleared ${encryptedSettings.length} corrupted encrypted settings from ${category}`,
+          cleared: encryptedSettings.map(s => s.key)
+        });
+      }
+    } catch (error) {
+      console.error("Clear encrypted settings error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Test SMTP connection
 router.post(
   "/settings/smtp/test",
@@ -1516,7 +1709,7 @@ router.post(
   requireAdmin,
   async (req, res) => {
     try {
-      const { host, port, user, pass, from } = req.body;
+      let { host, port, user, pass, from } = req.body;
 
       if (!host || !user || !pass || !from) {
         return res
@@ -1524,8 +1717,67 @@ router.post(
           .json({ error: "All SMTP fields are required for testing" });
       }
 
-      const nodemailer = await import("nodemailer");
-      const testTransporter = nodemailer.createTransporter({
+      // If password is masked, retrieve the real password from database
+      if (pass === "••••••••") {
+        try {
+          let passwordSetting = null;
+          
+          if (db.getType && db.getType() === 'dynamodb') {
+            // DynamoDB implementation - get specific password setting
+            try {
+              const result = await db.provider._dynamoGet('system_settings', {
+                id: 'smtp_pass'
+              });
+              if (result && result.Item) {
+                passwordSetting = result.Item;
+              } else {
+                // Try alternative password key
+                const altResult = await db.provider._dynamoGet('system_settings', {
+                  id: 'smtp_password'
+                });
+                if (altResult && altResult.Item) {
+                  passwordSetting = altResult.Item;
+                }
+              }
+            } catch (error) {
+              console.error("Error retrieving password from DynamoDB:", error);
+              throw error;
+            }
+          } else {
+            // SQLite implementation - get specific password setting
+            try {
+              passwordSetting = await db.get(
+                "SELECT key, value, encrypted FROM system_settings WHERE category = 'smtp' AND (key = 'pass' OR key = 'password') LIMIT 1",
+                []
+              );
+            } catch (error) {
+              console.error("Error retrieving password from SQLite:", error);
+              throw error;
+            }
+          }
+          
+          if (passwordSetting && passwordSetting.encrypted) {
+            const decryptedPass = decrypt(passwordSetting.value);
+            // If decryption returns empty string, it failed
+            if (!decryptedPass || decryptedPass === "") {
+              throw new Error("Decryption returned empty result");
+            }
+            pass = decryptedPass;
+            console.log("Successfully retrieved and decrypted stored SMTP password");
+          } else {
+            throw new Error("No stored encrypted password found");
+          }
+        } catch (error) {
+          console.warn("Failed to retrieve/decrypt stored SMTP password:", error.message);
+          return res.status(400).json({
+            error: "Cannot use stored password due to encryption issues. Please enter your actual SMTP password in the password field instead of using the masked (••••••••) value. After testing successfully, you can save your settings again to fix the encryption.",
+            suggestion: "Clear the password field and enter your real SMTP password to test."
+          });
+        }
+      }
+
+      const { default: nodemailer } = await import("nodemailer");
+      const testTransporter = nodemailer.createTransport({
         host: host,
         port: parseInt(port) || 587,
         secure: false,

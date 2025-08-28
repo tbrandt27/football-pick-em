@@ -16,18 +16,28 @@ export default defineConfig({
     server: {
       proxy: {
         "/api": {
-          target:
-            process.env.NODE_ENV === "production"
-              ? `http://localhost:${process.env.BACKEND_PORT || 3001}`
-              : "http://localhost:3001",
+          target: `http://localhost:${process.env.BACKEND_PORT || process.env.PORT || 3001}`,
           changeOrigin: true,
+          configure: (proxy, options) => {
+            proxy.on('error', (err, req, res) => {
+              console.log('Proxy error for /api:', err.message);
+              if (err.message.includes('ECONNREFUSED')) {
+                console.log('Backend server not available. Make sure it\'s running on port', options.target);
+              }
+            });
+          }
         },
         "/logos": {
-          target:
-            process.env.NODE_ENV === "production"
-              ? `http://localhost:${process.env.BACKEND_PORT || 3001}`
-              : "http://localhost:3001",
+          target: `http://localhost:${process.env.BACKEND_PORT || process.env.PORT || 3001}`,
           changeOrigin: true,
+          configure: (proxy, options) => {
+            proxy.on('error', (err, req, res) => {
+              console.log('Proxy error for /logos:', err.message);
+              if (err.message.includes('ECONNREFUSED')) {
+                console.log('Backend server not available. Make sure it\'s running on port', options.target);
+              }
+            });
+          }
         },
       },
     },
