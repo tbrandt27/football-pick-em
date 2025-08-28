@@ -1512,8 +1512,30 @@ router.put(
 
         // Clear service cache to ensure we get the correct service for current database type
         DatabaseServiceFactory.clearCache();
+        
+        // Debug: Log environment and database type information
+        console.log('[DEBUG] Settings Update Environment Info:');
+        console.log('- NODE_ENV:', process.env.NODE_ENV);
+        console.log('- DATABASE_TYPE:', process.env.DATABASE_TYPE);
+        console.log('- Detected DB Type:', db.getType());
+        console.log('- Factory Provider Type:', DatabaseServiceFactory.getDatabaseType());
+        
         const systemSettingsService = DatabaseServiceFactory.getSystemSettingsService();
-        await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
+        console.log('[DEBUG] Selected Service:', systemSettingsService.constructor.name);
+        
+        // Failsafe: If we detect DynamoDB but got SQLite service, force the correct service
+        if (db.getType() === 'dynamodb' && systemSettingsService.constructor.name === 'SQLiteSystemSettingsService') {
+          console.error('[ERROR] Database type mismatch detected! DB is DynamoDB but service is SQLite');
+          console.error('[ERROR] This indicates an environment configuration issue');
+          
+          // Import and use DynamoDB service directly as failsafe
+          const { default: DynamoDBSystemSettingsService } = await import('../services/database/dynamodb/DynamoDBSystemSettingsService.js');
+          const fallbackService = new DynamoDBSystemSettingsService();
+          console.log('[FAILSAFE] Using DynamoDB service directly');
+          await fallbackService.updateSetting(category, key, processedValue, encrypted, description);
+        } else {
+          await systemSettingsService.updateSetting(category, key, processedValue, encrypted, description);
+        }
       }
 
       // Refresh email service transporter if SMTP settings were updated
