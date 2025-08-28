@@ -82,6 +82,49 @@ class Database {
     return this.provider ? this.provider.getType() : 'unknown';
   }
 
+  // Expose DynamoDB-specific methods when using DynamoDB provider
+  async _dynamoScan(tableName, filters = {}) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoScan is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoScan(tableName, filters);
+  }
+
+  async _dynamoPut(tableName, item) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoPut is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoPut(tableName, item);
+  }
+
+  async _dynamoGet(tableName, key) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoGet is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoGet(tableName, key);
+  }
+
+  async _dynamoUpdate(tableName, key, updates) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoUpdate is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoUpdate(tableName, key, updates);
+  }
+
+  async _dynamoDelete(tableName, key) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoDelete is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoDelete(tableName, key);
+  }
+
+  async _dynamoQuery(tableName, conditions, indexName = null) {
+    if (!this.provider || this.provider.getType() !== 'dynamodb') {
+      throw new Error('_dynamoQuery is only available with DynamoDB provider');
+    }
+    return await this.provider._dynamoQuery(tableName, conditions, indexName);
+  }
+
   // Close database connection
   async close() {
     if (this.provider) {

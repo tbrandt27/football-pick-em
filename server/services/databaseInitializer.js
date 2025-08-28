@@ -63,12 +63,24 @@ export default class DatabaseInitializer {
 
     try {
       // Check if teams exist
-      const teams = await this.db.all('SELECT * FROM football_teams LIMIT 1');
+      let teams;
+      if (this.db.getType() === 'dynamodb') {
+        const teamsResult = await this.db._dynamoScan('football_teams');
+        teams = teamsResult?.Items || [];
+      } else {
+        teams = await this.db.all('SELECT * FROM football_teams LIMIT 1');
+      }
       checks.teams = !teams || teams.length === 0;
       
       // Check if current season exists
       const currentYear = new Date().getFullYear().toString();
-      const season = await this.db.get('SELECT id FROM seasons WHERE season = ?', [currentYear]);
+      let season;
+      if (this.db.getType() === 'dynamodb') {
+        const seasonsResult = await this.db._dynamoScan('seasons', { season: currentYear });
+        season = seasonsResult?.Items?.[0] || null;
+      } else {
+        season = await this.db.get('SELECT id FROM seasons WHERE season = ?', [currentYear]);
+      }
       checks.season = !season;
       
       // Check if admin user exists (using env var email)
@@ -81,12 +93,25 @@ export default class DatabaseInitializer {
       }
       
       if (adminEmail) {
-        const adminUser = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
+        let adminUser;
+        if (this.db.getType() === 'dynamodb') {
+          const usersResult = await this.db._dynamoScan('users', { email: adminEmail.toLowerCase() });
+          adminUser = usersResult?.Items?.[0] || null;
+        } else {
+          adminUser = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
+        }
         checks.adminUser = !adminUser;
         
         // Also check for any users created with placeholder emails and mark for cleanup
         try {
-          const allUsers = await this.db.all('SELECT * FROM users');
+          let allUsers;
+          if (this.db.getType() === 'dynamodb') {
+            const usersResult = await this.db._dynamoScan('users');
+            allUsers = usersResult?.Items || [];
+          } else {
+            allUsers = await this.db.all('SELECT * FROM users');
+          }
+          
           const placeholderUser = (allUsers || []).find(user =>
             user.email && user.email.includes('{{resolve:secretsmanager')
           );
@@ -99,7 +124,13 @@ export default class DatabaseInitializer {
         }
       } else {
         // If no admin email env var, check for any admin user
-        const anyAdmin = await this.db.get('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
+        let anyAdmin;
+        if (this.db.getType() === 'dynamodb') {
+          const usersResult = await this.db._dynamoScan('users', { is_admin: true });
+          anyAdmin = usersResult?.Items?.[0] || null;
+        } else {
+          anyAdmin = await this.db.get('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
+        }
         checks.adminUser = !anyAdmin;
       }
 
@@ -189,7 +220,14 @@ export default class DatabaseInitializer {
 
     try {
       // First, clean up ALL users with the target email to prevent duplicates
-      const allUsers = await this.db.all('SELECT * FROM users');
+      let allUsers;
+      if (this.db.getType() === 'dynamodb') {
+        const usersResult = await this.db._dynamoScan('users');
+        allUsers = usersResult?.Items || [];
+      } else {
+        allUsers = await this.db.all('SELECT * FROM users');
+      }
+      
       const usersToDelete = (allUsers || []).filter(user => {
         return (user.email && user.email.includes('{{resolve:secretsmanager')) ||
                (user.email && user.email.toLowerCase() === adminEmail.toLowerCase());
@@ -201,11 +239,7 @@ export default class DatabaseInitializer {
         for (const user of usersToDelete) {
           console.log(`🧹 Removing user: ${user.email} (ID: ${user.id})`);
           if (this.db.getType() === 'dynamodb') {
-            await this.db.run({
-              action: 'delete',
-              table: 'users',
-              key: { id: user.id }
-            });
+            await this.db._dynamoDelete('users', { id: user.id });
           } else {
             await this.db.run('DELETE FROM users WHERE id = ?', [user.id]);
           }
@@ -213,7 +247,14 @@ export default class DatabaseInitializer {
       }
 
       // Double-check no admin user exists with this email
-      const existingAdmin = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
+      let existingAdmin;
+      if (this.db.getType() === 'dynamodb') {
+        const usersResult = await this.db._dynamoScan('users', { email: adminEmail.toLowerCase() });
+        existingAdmin = usersResult?.Items?.[0] || null;
+      } else {
+        existingAdmin = await this.db.get('SELECT id FROM users WHERE email = ?', [adminEmail.toLowerCase()]);
+      }
+      
       if (existingAdmin) {
         console.log(`ℹ️  Admin user with email ${adminEmail} already exists after cleanup, skipping creation`);
         return;
@@ -224,20 +265,16 @@ export default class DatabaseInitializer {
 
       if (this.db.getType() === 'dynamodb') {
         // DynamoDB format
-        await this.db.run({
-          action: 'put',
-          table: 'users',
-          item: {
-            id: adminId,
-            email: adminEmail.toLowerCase(),
-            password: hashedPassword,
-            first_name: "Admin",
-            last_name: "User",
-            is_admin: true,
-            email_verified: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
+        await this.db._dynamoPut('users', {
+          id: adminId,
+          email: adminEmail.toLowerCase(),
+          password: hashedPassword,
+          first_name: "Admin",
+          last_name: "User",
+          is_admin: true,
+          email_verified: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
       } else {
         // SQLite format
@@ -267,13 +304,11 @@ export default class DatabaseInitializer {
       
       if (this.db.getType && this.db.getType() === 'dynamodb') {
         // For DynamoDB, check if we have games
-        const games = await this.db.all({
-          action: 'scan',
-          table: 'football_games'
-        });
+        const gamesResult = await this.db._dynamoScan('football_games');
+        const games = gamesResult?.Items || [];
         
         // If no games exist, or very few games (less than expected for a season)
-        const gamesCount = games ? games.length : 0;
+        const gamesCount = games.length;
         const minExpectedGames = 250; // Roughly 16 teams * 17 weeks
         
         if (gamesCount < minExpectedGames) {
@@ -312,12 +347,9 @@ export default class DatabaseInitializer {
       const currentYear = new Date().getFullYear().toString();
       
       if (this.db.getType && this.db.getType() === 'dynamodb') {
-        const seasons = await this.db.all({
-          action: 'scan',
-          table: 'seasons',
-          conditions: { is_current: true }
-        });
-        currentSeason = seasons && seasons.length > 0 ? seasons[0] : null;
+        const seasonsResult = await this.db._dynamoScan('seasons', { is_current: true });
+        const seasons = seasonsResult?.Items || [];
+        currentSeason = seasons.length > 0 ? seasons[0] : null;
       } else {
         currentSeason = await this.db.get('SELECT * FROM seasons WHERE is_current = 1');
       }
