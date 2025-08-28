@@ -158,9 +158,11 @@ const UsersManager: React.FC = () => {
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || `Email verified for ${userName}`;
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 5000);
         }
       } else {
@@ -251,9 +253,11 @@ const UsersManager: React.FC = () => {
           <div>Temporary password: <code class="bg-green-200 px-2 py-1 rounded font-mono">${confirmInviteData.tempPassword}</code></div>
           <div class="text-sm mt-1">Send this password to the user securely</div>
         `;
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 15000); // Show longer for password
         }
         
@@ -285,9 +289,11 @@ const UsersManager: React.FC = () => {
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.textContent = `User "${userName}" (${userEmail}) deleted successfully`;
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 5000);
         }
       } else {
@@ -330,9 +336,11 @@ const UsersManager: React.FC = () => {
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || 'User invitation sent successfully';
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 5000);
         }
         
@@ -379,9 +387,11 @@ const UsersManager: React.FC = () => {
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || 'Admin invitation sent successfully';
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 5000);
         }
         
@@ -419,9 +429,11 @@ const UsersManager: React.FC = () => {
         const successDiv = document.createElement('div');
         successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || `Password reset email sent to ${userName}`;
-        const errorDiv = document.querySelector('.bg-red-100');
-        if (errorDiv && errorDiv.parentNode) {
-          errorDiv.parentNode.insertBefore(successDiv, errorDiv);
+        
+        // Insert success message at the top of the main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent && mainContent.firstChild) {
+          mainContent.insertBefore(successDiv, mainContent.firstChild);
           setTimeout(() => successDiv.remove(), 5000);
         }
       } else {
