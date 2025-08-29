@@ -93,23 +93,44 @@ class ConfigService {
       };
       
       // Load configuration values, resolving ARNs as needed
-      this.cache.set('JWT_SECRET', await resolveValue('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production'));
-      this.cache.set('SETTINGS_ENCRYPTION_KEY', await resolveValue('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!'));
-      this.cache.set('ADMIN_EMAIL', await resolveValue('ADMIN_EMAIL', 'admin@nflpickem.com'));
-      this.cache.set('ADMIN_PASSWORD', await resolveValue('ADMIN_PASSWORD', 'admin123'));
+      // In production or LocalStack environments, no fallback values should be used for security
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+      const requireSecrets = isProduction || isLocalStack;
+      
+      const jwtFallback = requireSecrets ? null : 'your-super-secret-jwt-key-change-this-in-production';
+      const encryptionFallback = requireSecrets ? null : 'football-pickem-default-key-32-chars!';
+      const adminEmailFallback = requireSecrets ? null : 'admin@nflpickem.com';
+      const adminPasswordFallback = requireSecrets ? null : 'admin123';
+      
+      this.cache.set('JWT_SECRET', await resolveValue('JWT_SECRET', jwtFallback));
+      this.cache.set('SETTINGS_ENCRYPTION_KEY', await resolveValue('SETTINGS_ENCRYPTION_KEY', encryptionFallback));
+      this.cache.set('ADMIN_EMAIL', await resolveValue('ADMIN_EMAIL', adminEmailFallback));
+      this.cache.set('ADMIN_PASSWORD', await resolveValue('ADMIN_PASSWORD', adminPasswordFallback));
 
       console.log('✅ Configuration loaded successfully');
     } catch (error) {
       console.error('❌ Failed to initialize configuration service:', error);
       
-      // Fallback to default values
-      console.log('🔄 Using fallback configuration values...');
+      // In production or LocalStack environments, do not use fallback values for security
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+      const requireSecrets = isProduction || isLocalStack;
+      
+      if (requireSecrets) {
+        const environment = isProduction ? 'production' : 'LocalStack';
+        console.error(`❌ ${environment} environment requires all secrets to be properly configured`);
+        throw new Error(`Critical configuration failed in ${environment} environment. All secrets must be properly configured.`);
+      }
+      
+      // Fallback to default values only in local development
+      console.log('🔄 Using fallback configuration values for local development...');
       this.cache.set('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production');
       this.cache.set('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!');
       this.cache.set('ADMIN_EMAIL', 'admin@nflpickem.com');
       this.cache.set('ADMIN_PASSWORD', 'admin123');
       
-      console.log('⚠️  Configuration loaded with fallback values');
+      console.log('⚠️  Configuration loaded with fallback values (development only)');
     }
   }
 
@@ -138,28 +159,72 @@ class ConfigService {
    * Get JWT secret
    */
   getJwtSecret() {
-    return this.get('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    const requireSecrets = isProduction || isLocalStack;
+    const fallback = requireSecrets ? null : 'your-super-secret-jwt-key-change-this-in-production';
+    const secret = this.get('JWT_SECRET', fallback);
+    
+    if (requireSecrets && !secret) {
+      const environment = isProduction ? 'production' : 'LocalStack';
+      throw new Error(`JWT_SECRET is required in ${environment} environment`);
+    }
+    
+    return secret;
   }
 
   /**
    * Get settings encryption key
    */
   getSettingsEncryptionKey() {
-    return this.get('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    const requireSecrets = isProduction || isLocalStack;
+    const fallback = requireSecrets ? null : 'football-pickem-default-key-32-chars!';
+    const key = this.get('SETTINGS_ENCRYPTION_KEY', fallback);
+    
+    if (requireSecrets && !key) {
+      const environment = isProduction ? 'production' : 'LocalStack';
+      throw new Error(`SETTINGS_ENCRYPTION_KEY is required in ${environment} environment`);
+    }
+    
+    return key;
   }
 
   /**
    * Get admin email
    */
   getAdminEmail() {
-    return this.get('ADMIN_EMAIL', 'admin@nflpickem.com');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    const requireSecrets = isProduction || isLocalStack;
+    const fallback = requireSecrets ? null : 'admin@nflpickem.com';
+    const email = this.get('ADMIN_EMAIL', fallback);
+    
+    if (requireSecrets && !email) {
+      const environment = isProduction ? 'production' : 'LocalStack';
+      throw new Error(`ADMIN_EMAIL is required in ${environment} environment`);
+    }
+    
+    return email;
   }
 
   /**
    * Get admin password
    */
   getAdminPassword() {
-    return this.get('ADMIN_PASSWORD', 'admin123');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    const requireSecrets = isProduction || isLocalStack;
+    const fallback = requireSecrets ? null : 'admin123';
+    const password = this.get('ADMIN_PASSWORD', fallback);
+    
+    if (requireSecrets && !password) {
+      const environment = isProduction ? 'production' : 'LocalStack';
+      throw new Error(`ADMIN_PASSWORD is required in ${environment} environment`);
+    }
+    
+    return password;
   }
 
   /**

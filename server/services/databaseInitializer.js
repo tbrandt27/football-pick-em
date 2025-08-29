@@ -241,11 +241,7 @@ export default class DatabaseInitializer {
 
       console.log("✅ Admin user created successfully");
       console.log(`   Email: ${adminEmail}`);
-      console.log("   Password: [from environment variables]");
-      
-      if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
-        console.log("   🚨 Using default credentials - configure ADMIN_EMAIL and ADMIN_PASSWORD env vars!");
-      }
+      console.log("   Password: [from configuration service]");
     } catch (error) {
       console.error(`❌ Failed to create admin user: ${error.message}`);
     }

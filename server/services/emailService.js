@@ -92,42 +92,63 @@ class EmailService {
     // First try to load settings from database
     const dbSettings = await this.loadSmtpSettings();
 
-    // For development, use a test account or local SMTP
-    // For production, you would use your actual email service
-    if (
-      process.env.NODE_ENV === "production" ||
-      (dbSettings && dbSettings.host)
-    ) {
-      // Use database settings if available, otherwise fall back to environment variables
-      const smtpConfig =
-        dbSettings && dbSettings.host
-          ? {
-              host: dbSettings.host,
-              port: parseInt(dbSettings.port) || 587,
-              secure: false,
-              auth: {
-                user: dbSettings.user,
-                pass: dbSettings.pass,
-              },
-            }
-          : {
-              host: process.env.SMTP_HOST,
-              port: process.env.SMTP_PORT || 587,
-              secure: false,
-              auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-              },
-            };
-
+    if (process.env.NODE_ENV === "production") {
+      // Production: Only use database settings, no fallback to local env vars
+      if (dbSettings && dbSettings.host && dbSettings.user && dbSettings.pass) {
+        const smtpConfig = {
+          host: dbSettings.host,
+          port: parseInt(dbSettings.port) || 587,
+          secure: false,
+          auth: {
+            user: dbSettings.user,
+            pass: dbSettings.pass,
+          },
+        };
+        this.transporter = nodemailer.createTransport(smtpConfig);
+        console.log("✅ Production SMTP configured using database settings");
+      } else {
+        // In production, if database settings are missing/invalid, disable email
+        console.error("❌ Production SMTP configuration failed: Database settings missing or invalid");
+        console.error("   Required: host, user, pass in system_settings table");
+        console.error("   Email functionality will be disabled until SMTP is properly configured");
+        this.transporter = null;
+      }
+    } else if (dbSettings && dbSettings.host) {
+      // Development with database settings
+      const smtpConfig = {
+        host: dbSettings.host,
+        port: parseInt(dbSettings.port) || 587,
+        secure: false,
+        auth: {
+          user: dbSettings.user,
+          pass: dbSettings.pass,
+        },
+      };
       this.transporter = nodemailer.createTransport(smtpConfig);
+      console.log("📧 Development SMTP configured using database settings");
     } else {
-      // Development: Log emails to console
-      this.transporter = nodemailer.createTransport({
-        streamTransport: true,
-        newline: "unix",
-        buffer: true,
-      });
+      // Development without database settings: use environment variables or console logging
+      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const smtpConfig = {
+          host: process.env.SMTP_HOST,
+          port: process.env.SMTP_PORT || 587,
+          secure: false,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        };
+        this.transporter = nodemailer.createTransporter(smtpConfig);
+        console.log("📧 Development SMTP configured using environment variables");
+      } else {
+        // Development fallback: Log emails to console
+        this.transporter = nodemailer.createTransporter({
+          streamTransport: true,
+          newline: "unix",
+          buffer: true,
+        });
+        console.log("📧 Development mode: Emails will be logged to console");
+      }
     }
   }
 
@@ -194,6 +215,10 @@ class EmailService {
 
     try {
       if (process.env.NODE_ENV === "production") {
+        if (!this.transporter) {
+          console.error("Cannot send invitation email: SMTP not configured in production");
+          return { success: false, error: "SMTP not configured. Please configure SMTP settings in admin panel." };
+        }
         const result = await this.transporter.sendMail(mailOptions);
         console.log("Invitation email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
@@ -280,6 +305,10 @@ class EmailService {
 
     try {
       if (process.env.NODE_ENV === "production") {
+        if (!this.transporter) {
+          console.error("Cannot send admin invitation email: SMTP not configured in production");
+          return { success: false, error: "SMTP not configured. Please configure SMTP settings in admin panel." };
+        }
         const result = await this.transporter.sendMail(mailOptions);
         console.log("Admin invitation email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
@@ -367,6 +396,10 @@ class EmailService {
 
     try {
       if (process.env.NODE_ENV === "production") {
+        if (!this.transporter) {
+          console.error("Cannot send password reset email: SMTP not configured in production");
+          return { success: false, error: "SMTP not configured. Please configure SMTP settings in admin panel." };
+        }
         const result = await this.transporter.sendMail(mailOptions);
         console.log("Password reset email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
