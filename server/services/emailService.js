@@ -43,31 +43,63 @@ function decrypt(encryptedText) {
 
 // Helper function to resolve the base URL for email links
 function resolveBaseUrl() {
-  let baseUrl = process.env.CLIENT_URL || "http://localhost:4321";
+  let baseUrl = process.env.CLIENT_URL;
+  
+  // If CLIENT_URL is not set, try to find App Runner service URL from environment
+  if (!baseUrl && process.env.NODE_ENV === 'production') {
+    // Check for potential App Runner environment variables
+    const appRunnerUrl = process.env.AWS_APPRUNNER_SERVICE_URL ||
+                        process.env.APPRUNNER_SERVICE_URL ||
+                        process.env._AWS_APPRUNNER_SERVICE_URL ||
+                        process.env.SERVICE_URL ||
+                        process.env.AWS_SERVICE_URL ||
+                        process.env.APPRUNNER_URL;
+    
+    if (appRunnerUrl) {
+      baseUrl = appRunnerUrl;
+      console.log(`[EmailService] Found App Runner service URL in environment: ${baseUrl}`);
+    } else {
+      console.error('[EmailService] CRITICAL: No CLIENT_URL or App Runner service URL found in production!');
+      console.error('[EmailService] Available options:');
+      console.error('[EmailService] 1. Set CLIENT_URL=https://your-service.region.awsapprunner.com');
+      console.error('[EmailService] 2. Use CLIENT_URL=${AWS_APPRUNNER_SERVICE_URL} if AWS provides it');
+      baseUrl = "http://localhost:4321"; // Fallback to prevent crashes
+    }
+  } else if (!baseUrl) {
+    // Development fallback
+    baseUrl = "http://localhost:4321";
+  }
   
   // If CLIENT_URL contains the literal placeholder, try to resolve it
-  if (baseUrl.includes('${AWS_APPRUNNER_SERVICE_URL}')) {
-    console.warn('[EmailService] CLIENT_URL contains unresolved placeholder');
+  if (baseUrl && baseUrl.includes('${AWS_APPRUNNER_SERVICE_URL}')) {
+    console.warn('[EmailService] CLIENT_URL contains unresolved placeholder: ${AWS_APPRUNNER_SERVICE_URL}');
     
     // Try to get the actual service URL from various AWS App Runner environment variables
     const appRunnerUrl = process.env.AWS_APPRUNNER_SERVICE_URL ||
                         process.env.APPRUNNER_SERVICE_URL ||
-                        process.env._AWS_APPRUNNER_SERVICE_URL;
+                        process.env._AWS_APPRUNNER_SERVICE_URL ||
+                        process.env.SERVICE_URL ||
+                        process.env.AWS_SERVICE_URL ||
+                        process.env.APPRUNNER_URL;
     
     if (appRunnerUrl) {
       baseUrl = appRunnerUrl;
-      console.log(`[EmailService] Resolved base URL from AWS environment to: ${baseUrl}`);
+      console.log(`[EmailService] Resolved placeholder to: ${baseUrl}`);
     } else {
-      // Log the issue but don't crash in production
-      console.error('[EmailService] Could not resolve CLIENT_URL placeholder in production');
+      console.error('[EmailService] Could not resolve ${AWS_APPRUNNER_SERVICE_URL} placeholder');
+      console.error('[EmailService] No App Runner service URL found in environment variables');
+      console.error('[EmailService] Try setting CLIENT_URL to the actual service URL instead');
       baseUrl = "http://localhost:4321"; // Safe fallback
     }
-  } else if (process.env.NODE_ENV === 'production' && !baseUrl.startsWith('https://')) {
+  } else if (process.env.NODE_ENV === 'production' && baseUrl === "http://localhost:4321") {
+    // This means we fell back to localhost in production
+    console.error('[EmailService] Using localhost fallback in production - email links will not work!');
+  } else if (process.env.NODE_ENV === 'production' && baseUrl && !baseUrl.startsWith('https://')) {
     // In production, ensure HTTPS
     console.warn(`[EmailService] Production CLIENT_URL should use HTTPS: ${baseUrl}`);
   }
   
-  return baseUrl;
+  return baseUrl || "http://localhost:4321";
 }
 
 class EmailService {
