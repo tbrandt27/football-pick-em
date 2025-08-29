@@ -93,8 +93,21 @@ export default class DatabaseInitializer {
         await configService.initialize();
       }
       
-      // Get admin email using the config service
-      adminEmail = configService.getAdminEmail();
+      // Validate that ConfigService is properly initialized in production
+      if (process.env.NODE_ENV === 'production' && !configService.isInitialized()) {
+        throw new Error('ConfigService failed to initialize in production environment');
+      }
+      
+      // Get admin email using the config service with error handling
+      try {
+        adminEmail = configService.getAdminEmail();
+      } catch (error) {
+        console.error("❌ Failed to get admin email from config service:", error.message);
+        if (process.env.NODE_ENV === 'production') {
+          throw error; // Fail hard in production
+        }
+        adminEmail = null; // Continue with fallback in development
+      }
       
       if (adminEmail) {
         let adminUser;
@@ -192,9 +205,25 @@ export default class DatabaseInitializer {
       await configService.initialize();
     }
 
-    // Get admin credentials using the config service
-    const adminEmail = configService.getAdminEmail();
-    const adminPassword = configService.getAdminPassword();
+    // Validate that ConfigService is properly initialized in production
+    if (process.env.NODE_ENV === 'production' && !configService.isInitialized()) {
+      throw new Error('ConfigService failed to initialize in production environment');
+    }
+
+    // Get admin credentials using the config service with error handling
+    let adminEmail, adminPassword;
+    try {
+      adminEmail = configService.getAdminEmail();
+      adminPassword = configService.getAdminPassword();
+    } catch (error) {
+      console.error("❌ Failed to get admin credentials from config service:", error.message);
+      if (process.env.NODE_ENV === 'production') {
+        throw error; // Fail hard in production
+      }
+      // In development, skip admin user creation if credentials unavailable
+      console.log("⚠️  Skipping admin user creation due to missing credentials");
+      return;
+    }
 
     console.log(`📧 Admin email resolved to: ${adminEmail}`);
     console.log(`🔑 Admin password source: ${configService.isInitialized() ? 'Configuration service' : 'fallback values'}`);

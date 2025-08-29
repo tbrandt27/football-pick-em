@@ -3,8 +3,23 @@ import db from "../models/database.js";
 import crypto from "crypto";
 import configService from "./configService.js";
 
-// Get encryption key from config service
-const getEncryptionKey = () => configService.getSettingsEncryptionKey();
+// Get encryption key from config service with proper error handling
+const getEncryptionKey = () => {
+  try {
+    if (!configService.isInitialized()) {
+      throw new Error('SETTINGS_ENCRYPTION_KEY is required in production environment');
+    }
+    return configService.getSettingsEncryptionKey();
+  } catch (error) {
+    console.error('Password decryption failed:', error.message);
+    // In production, this should fail hard to prevent security issues
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
+    // In development, return a fallback key
+    return 'football-pickem-default-key-32-chars!';
+  }
+};
 
 function decrypt(encryptedText) {
   try {
