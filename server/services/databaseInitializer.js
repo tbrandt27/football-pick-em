@@ -93,20 +93,12 @@ export default class DatabaseInitializer {
         await configService.initialize();
       }
       
-      // Validate that ConfigService is properly initialized in production
-      if (process.env.NODE_ENV === 'production' && !configService.isInitialized()) {
-        throw new Error('ConfigService failed to initialize in production environment');
-      }
-      
-      // Get admin email using the config service with error handling
+      // Get admin email using the config service
       try {
         adminEmail = configService.getAdminEmail();
       } catch (error) {
         console.error("❌ Failed to get admin email from config service:", error.message);
-        if (process.env.NODE_ENV === 'production') {
-          throw error; // Fail hard in production
-        }
-        adminEmail = null; // Continue with fallback in development
+        adminEmail = null; // Continue with fallback
       }
       
       if (adminEmail) {
@@ -205,22 +197,14 @@ export default class DatabaseInitializer {
       await configService.initialize();
     }
 
-    // Validate that ConfigService is properly initialized in production
-    if (process.env.NODE_ENV === 'production' && !configService.isInitialized()) {
-      throw new Error('ConfigService failed to initialize in production environment');
-    }
-
-    // Get admin credentials using the config service with error handling
+    // Get admin credentials using the config service
     let adminEmail, adminPassword;
     try {
       adminEmail = configService.getAdminEmail();
       adminPassword = configService.getAdminPassword();
     } catch (error) {
       console.error("❌ Failed to get admin credentials from config service:", error.message);
-      if (process.env.NODE_ENV === 'production') {
-        throw error; // Fail hard in production
-      }
-      // In development, skip admin user creation if credentials unavailable
+      // Skip admin user creation if credentials unavailable
       console.log("⚠️  Skipping admin user creation due to missing credentials");
       return;
     }

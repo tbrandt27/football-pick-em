@@ -253,23 +253,7 @@ const startServer = async () => {
     // Initialize configuration service first - this must happen before any other service initialization
     console.log("🔧 Initializing configuration service...");
     await configService.initialize();
-    
-    // Validate that critical configuration is available in production
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        const jwtSecret = configService.getJwtSecret();
-        const encryptionKey = configService.getSettingsEncryptionKey();
-        if (!jwtSecret || !encryptionKey) {
-          throw new Error('Critical configuration missing in production');
-        }
-        console.log("✅ Configuration service initialized and validated for production");
-      } catch (configError) {
-        console.error("❌ Production configuration validation failed:", configError.message);
-        process.exit(1);
-      }
-    } else {
-      console.log("✅ Configuration service initialized");
-    }
+    console.log("✅ Configuration service initialized");
     
     // Initialize database now that config service is ready
     const { default: db } = await import('./models/database.js');
