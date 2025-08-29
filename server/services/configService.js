@@ -34,15 +34,41 @@ class ConfigService {
     console.log('🔧 Initializing configuration service...');
 
     try {
-      console.log('🔧 Loading configuration from environment variables');
+      console.log('🔧 Loading configuration from environment variables and secrets...');
       
-      // Load from environment variables (App Runner injects secrets directly)
-      this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
-      this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || 'football-pickem-default-key-32-chars!');
-      this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || 'admin@nflpickem.com');
-      this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || 'admin123');
+      // Helper function to resolve potential ARNs
+      const resolveValue = async (key, fallback) => {
+        const envValue = process.env[key];
+        if (!envValue) {
+          console.log(`🔧 ${key}: Using fallback (no env var)`);
+          return fallback;
+        }
+        
+        // Check if it's an AWS Secrets Manager ARN
+        if (envValue.startsWith('arn:aws:secretsmanager:')) {
+          try {
+            console.log(`🔐 ${key}: Resolving from Secrets Manager...`);
+            const secretValue = await secretsManager.getSecret(envValue, null, fallback);
+            console.log(`✅ ${key}: Successfully resolved from Secrets Manager`);
+            return secretValue;
+          } catch (error) {
+            console.error(`❌ ${key}: Failed to resolve from Secrets Manager: ${error.message}`);
+            console.log(`🔄 ${key}: Using fallback value`);
+            return fallback;
+          }
+        } else {
+          console.log(`🔧 ${key}: Using direct environment value`);
+          return envValue;
+        }
+      };
+      
+      // Load configuration values, resolving ARNs as needed
+      this.cache.set('JWT_SECRET', await resolveValue('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production'));
+      this.cache.set('SETTINGS_ENCRYPTION_KEY', await resolveValue('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!'));
+      this.cache.set('ADMIN_EMAIL', await resolveValue('ADMIN_EMAIL', 'admin@nflpickem.com'));
+      this.cache.set('ADMIN_PASSWORD', await resolveValue('ADMIN_PASSWORD', 'admin123'));
 
-      console.log('✅ Configuration loaded from environment variables');
+      console.log('✅ Configuration loaded successfully');
     } catch (error) {
       console.error('❌ Failed to initialize configuration service:', error);
       
