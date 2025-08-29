@@ -2,7 +2,12 @@ import dotenv from "dotenv";
 import DatabaseProviderFactory from "../providers/DatabaseProviderFactory.js";
 import DatabaseInitializer from "../services/databaseInitializer.js";
 
-dotenv.config();
+// Load environment variables conditionally
+// When using LocalStack (USE_LOCALSTACK=true), .env.local is already loaded by dotenv-cli
+// so we skip loading .env to avoid conflicts
+if (process.env.USE_LOCALSTACK !== 'true') {
+  dotenv.config({ override: false });
+}
 
 class Database {
   constructor() {

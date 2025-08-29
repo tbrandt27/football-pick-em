@@ -23,8 +23,12 @@ import healthRoutes from "./routes/health.js";
 import scheduler from "./services/scheduler.js";
 import configService from "./services/configService.js";
 
-// Load environment variables
-dotenv.config();
+// Load environment variables conditionally
+// When using LocalStack (USE_LOCALSTACK=true), .env.local is already loaded by dotenv-cli
+// so we skip loading .env to avoid conflicts
+if (process.env.USE_LOCALSTACK !== 'true') {
+  dotenv.config({ override: false });
+}
 
 // Global error handlers to prevent server crashes
 process.on('uncaughtException', (error) => {
@@ -250,6 +254,10 @@ const startServer = async () => {
     console.log("🔧 Initializing configuration service...");
     await configService.initialize();
     console.log("✅ Configuration service initialized");
+    
+    // Refresh email service now that config service is ready
+    const { default: emailService } = await import('./services/emailService.js');
+    await emailService.refreshTransporter();
 
     let finalPort = PORT;
     

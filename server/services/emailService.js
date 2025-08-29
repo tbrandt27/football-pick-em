@@ -20,11 +20,10 @@ function decrypt(encryptedText) {
       return decrypted;
     } else {
       // Legacy format - return as-is for now to avoid breaking existing data
-      console.warn('Legacy encryption format detected. Consider re-encrypting this data.');
       return encryptedText;
     }
   } catch (error) {
-    console.error('Failed to decrypt value:', error.message);
+    console.error('Password decryption failed:', error.message);
     // Return the original text if decryption fails (might be unencrypted)
     return encryptedText;
   }
@@ -105,49 +104,64 @@ class EmailService {
           },
         };
         this.transporter = nodemailer.createTransport(smtpConfig);
-        console.log("✅ Production SMTP configured using database settings");
+        console.log("SMTP configured using database settings");
       } else {
         // In production, if database settings are missing/invalid, disable email
-        console.error("❌ Production SMTP configuration failed: Database settings missing or invalid");
-        console.error("   Required: host, user, pass in system_settings table");
-        console.error("   Email functionality will be disabled until SMTP is properly configured");
+        console.error("Production SMTP configuration failed: Database settings missing or invalid");
+        console.error("Required: host, user, pass in system_settings table");
         this.transporter = null;
       }
     } else if (dbSettings && dbSettings.host) {
       // Development with database settings
+      const isLocalhost = dbSettings.host === 'localhost' || dbSettings.host === '127.0.0.1';
+      
       const smtpConfig = {
         host: dbSettings.host,
         port: parseInt(dbSettings.port) || 587,
         secure: false,
-        auth: {
+      };
+      
+      // For localhost (LocalStack), disable authentication
+      if (!isLocalhost) {
+        // Use authentication for real SMTP servers
+        smtpConfig.auth = {
           user: dbSettings.user,
           pass: dbSettings.pass,
-        },
-      };
+        };
+      }
+      
       this.transporter = nodemailer.createTransport(smtpConfig);
-      console.log("📧 Development SMTP configured using database settings");
+      console.log(`SMTP configured using database settings (${dbSettings.host}:${dbSettings.port})`);
     } else {
       // Development without database settings: use environment variables or console logging
       if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const isLocalhost = process.env.SMTP_HOST === 'localhost' || process.env.SMTP_HOST === '127.0.0.1';
+        
         const smtpConfig = {
           host: process.env.SMTP_HOST,
           port: process.env.SMTP_PORT || 587,
           secure: false,
-          auth: {
+        };
+        
+        // For localhost (LocalStack), disable authentication
+        if (!isLocalhost) {
+          // Use authentication for real SMTP servers
+          smtpConfig.auth = {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
-          },
-        };
-        this.transporter = nodemailer.createTransporter(smtpConfig);
-        console.log("📧 Development SMTP configured using environment variables");
+          };
+        }
+        
+        this.transporter = nodemailer.createTransport(smtpConfig);
+        console.log(`SMTP configured using environment variables (${smtpConfig.host}:${smtpConfig.port})`);
       } else {
         // Development fallback: Log emails to console
-        this.transporter = nodemailer.createTransporter({
+        this.transporter = nodemailer.createTransport({
           streamTransport: true,
           newline: "unix",
           buffer: true,
         });
-        console.log("📧 Development mode: Emails will be logged to console");
+        console.log("Email service configured for console logging (development mode)");
       }
     }
   }
@@ -223,13 +237,25 @@ class EmailService {
         console.log("Invitation email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
       } else {
-        // Development: Log email to console
-        console.log("\n=== EMAIL INVITATION (Development Mode) ===");
+        // Development: Try to send if SMTP is configured, otherwise log to console
+        if (this.transporter && this.transporter.options && !this.transporter.options.streamTransport) {
+          try {
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log("Game invitation email sent:", result.messageId);
+            return { success: true, messageId: result.messageId };
+          } catch (smtpError) {
+            console.error("SMTP failed, falling back to console log:", smtpError.message);
+            // Fall through to console logging
+          }
+        }
+        
+        // Fallback: Log email to console
+        console.log("\n=== EMAIL INVITATION (Development Mode - Console Only) ===");
         console.log("To:", toEmail);
         console.log("Subject:", mailOptions.subject);
         console.log("Invite URL:", inviteUrl);
-        console.log("==========================================\n");
-        return { success: true, messageId: "dev-mode" };
+        console.log("=========================================================\n");
+        return { success: true, messageId: "dev-mode-console" };
       }
     } catch (error) {
       console.error("Failed to send invitation email:", error);
@@ -313,13 +339,25 @@ class EmailService {
         console.log("Admin invitation email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
       } else {
-        // Development: Log email to console
-        console.log("\n=== ADMIN INVITATION EMAIL (Development Mode) ===");
+        // Development: Try to send if SMTP is configured, otherwise log to console
+        if (this.transporter && this.transporter.options && !this.transporter.options.streamTransport) {
+          try {
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log("Admin invitation email sent:", result.messageId);
+            return { success: true, messageId: result.messageId };
+          } catch (smtpError) {
+            console.error("SMTP failed, falling back to console log:", smtpError.message);
+            // Fall through to console logging
+          }
+        }
+        
+        // Fallback: Log email to console
+        console.log("\n=== ADMIN INVITATION EMAIL (Development Mode - Console Only) ===");
         console.log("To:", toEmail);
         console.log("Subject:", mailOptions.subject);
         console.log("Invite URL:", inviteUrl);
-        console.log("===============================================\n");
-        return { success: true, messageId: "dev-mode" };
+        console.log("==============================================================\n");
+        return { success: true, messageId: "dev-mode-console" };
       }
     } catch (error) {
       console.error("Failed to send admin invitation email:", error);
@@ -404,13 +442,25 @@ class EmailService {
         console.log("Password reset email sent:", result.messageId);
         return { success: true, messageId: result.messageId };
       } else {
-        // Development: Log email to console
-        console.log("\n=== PASSWORD RESET EMAIL (Development Mode) ===");
+        // Development: Try to send if SMTP is configured, otherwise log to console
+        if (this.transporter && this.transporter.options && !this.transporter.options.streamTransport) {
+          try {
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log("Password reset email sent:", result.messageId);
+            return { success: true, messageId: result.messageId };
+          } catch (smtpError) {
+            console.error("SMTP failed, falling back to console log:", smtpError.message);
+            // Fall through to console logging
+          }
+        }
+        
+        // Fallback: Log email to console
+        console.log("\n=== PASSWORD RESET EMAIL (Development Mode - Console Only) ===");
         console.log("To:", toEmail);
         console.log("Subject:", mailOptions.subject);
         console.log("Reset URL:", resetUrl);
-        console.log("===============================================\n");
-        return { success: true, messageId: "dev-mode" };
+        console.log("============================================================\n");
+        return { success: true, messageId: "dev-mode-console" };
       }
     } catch (error) {
       console.error("Failed to send password reset email:", error);
