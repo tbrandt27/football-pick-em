@@ -1,7 +1,7 @@
 {
   "name": "football-pickem",
   "type": "module",
-  "version": "0.9.21",
+  "version": "0.10.0",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -9,6 +9,8 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "astro dev",
     "dev:backend": "nodemon server/index.js",
+    "dev:local": "concurrently \"npm run dev:frontend\" \"npm run dev:backend:local\"",
+    "dev:backend:local": "npx dotenv-cli -e .env.local -- npm run dev:backend",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
@@ -18,7 +20,14 @@
     "init-db": "node scripts/init-db.js",
     "check-backend": "node scripts/check-backend.js",
     "docker:build": "docker build -t football-pickem -f Dockerfile.backup .",
-    "docker:run": "docker run -p 8080:8080 football-pickem"
+    "docker:run": "docker run -p 8080:8080 football-pickem",
+    "localstack:start": "localstack start",
+    "localstack:stop": "localstack stop",
+    "localstack:status": "localstack status",
+    "localstack:setup": "node scripts/setup-localstack.js",
+    "localstack:test": "node scripts/test-localstack.js",
+    "localstack:reset": "localstack stop && localstack start --detached && sleep 10 && npm run localstack:setup",
+    "localstack:logs": "localstack logs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",
@@ -58,6 +67,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/nodemailer": "^6.4.17",
     "@types/uuid": "^10.0.0",
+    "dotenv-cli": "^7.4.2",
     "nodemon": "^3.1.10"
   }
 }

@@ -17,6 +17,7 @@ database.sqlite
 
 # environment variables
 .env
+.env.local
 .env.production
 
 # macOS-specific files
@@ -24,5 +25,17 @@ database.sqlite
 
 # jetbrains setting folder
 .idea/
+
+# LocalStack runtime files and data
+.localstack/
+localstack_data/
+tmp/localstack/
+volume/
+localstack.log
+*.localstack.log
+
+# LocalStack persistent data (if enabled)
+localstack-data/
+.localstack-data/
 
 support_docs/

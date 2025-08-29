@@ -1,0 +1,39 @@
+# LocalStack Configuration for Football Pick'em
+# This file configures LocalStack when running globally
+
+version: "3.0"
+
+# Services to enable
+services:
+  - dynamodb
+  - secretsmanager
+  - s3
+  - cloudformation
+
+# DynamoDB specific configuration
+dynamodb:
+  error_probability: 0.0
+  heap_size: 256m
+  
+# Disable unnecessary features for faster startup
+disable_cors_checks: true
+disable_custom_cors_s3: true
+skip_infra_downloads: true
+
+# Persistence configuration (optional)
+# persistence: true
+
+# Debug settings
+debug: false
+log_level: INFO
+
+# Network configuration
+host: localhost
+port: 4566
+
+# Lambda configuration (if needed later)
+lambda:
+  executor: local
+  
+# Security (disable for local development)
+enforce_iam: false

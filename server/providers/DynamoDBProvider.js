@@ -9,6 +9,8 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     this.docClient = null;
     this.tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || 'football_pickem_';
     this.region = process.env.AWS_REGION || 'us-east-1';
+    this.isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    this.localStackEndpoint = process.env.LOCALSTACK_ENDPOINT || 'http://localhost:4566';
     
     // Table name mappings
     this.tables = {
@@ -28,11 +30,15 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   async initialize() {
     console.log(`[DynamoDB] Connecting to DynamoDB in region: ${this.region}`);
     console.log(`[DynamoDB] Table prefix: ${this.tablePrefix}`);
+    console.log(`[DynamoDB] LocalStack mode: ${this.isLocalStack ? 'ENABLED' : 'DISABLED'}`);
+    if (this.isLocalStack) {
+      console.log(`[DynamoDB] LocalStack endpoint: ${this.localStackEndpoint}`);
+    }
     console.log(`[DynamoDB] Using credentials: ${process.env.AWS_ACCESS_KEY_ID ? 'Yes (Access Key)' : 'No (IAM Role/Profile)'}`);
     
     // Initialize DynamoDB client
     try {
-      this.client = new DynamoDBClient({
+      const clientConfig = {
         region: this.region,
         // Add credentials configuration if needed
         ...(process.env.AWS_ACCESS_KEY_ID && {
@@ -41,8 +47,16 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
             secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
           }
         })
-      });
+      };
 
+      // Configure LocalStack endpoint if enabled
+      if (this.isLocalStack) {
+        clientConfig.endpoint = this.localStackEndpoint;
+        clientConfig.forcePathStyle = true; // Required for LocalStack
+        console.log(`[DynamoDB] Configuring for LocalStack at ${this.localStackEndpoint}`);
+      }
+
+      this.client = new DynamoDBClient(clientConfig);
       this.docClient = DynamoDBDocumentClient.from(this.client);
       
       console.log("[DynamoDB] Client initialized successfully");
@@ -58,7 +72,11 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
     
     // Note: Table creation would typically be handled by infrastructure (CloudFormation, CDK, etc.)
-    console.log("[DynamoDB] Tables should be created via infrastructure (CloudFormation/CDK)");
+    if (this.isLocalStack) {
+      console.log("[DynamoDB] LocalStack mode - tables can be created via setup scripts");
+    } else {
+      console.log("[DynamoDB] Production mode - tables should be created via infrastructure (CloudFormation/CDK)");
+    }
   }
 
   async close() {
@@ -229,15 +247,6 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         throw error;
       }
 
-      console.log(`[DynamoDB] === _dynamoPut START ===`);
-      console.log(`[DynamoDB] Input table name: "${tableName}"`);
-      console.log(`[DynamoDB] Input item:`, JSON.stringify(item, null, 2));
-      console.log(`[DynamoDB] Item keys:`, Object.keys(item));
-      console.log(`[DynamoDB] Item type validation:`, {
-        id: { value: item.id, type: typeof item.id, present: !!item.id },
-        game_name: { value: item.game_name, type: typeof item.game_name, present: !!item.game_name }
-      });
-      
       // Add timestamps
       const now = new Date().toISOString();
       const itemWithTimestamps = {
@@ -246,94 +255,59 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         updated_at: now
       };
 
-      const actualTableName = this.tables[tableName] || tableName;
-      console.log(`[DynamoDB] Table name mapping:`, {
-        inputTableName: tableName,
-        actualTableName,
-        mappingFound: !!this.tables[tableName],
-        tablePrefix: this.tablePrefix,
-        availableMappings: Object.keys(this.tables)
+      // Remove null and undefined values - DynamoDB doesn't accept them
+      const cleanedItem = {};
+      Object.keys(itemWithTimestamps).forEach(key => {
+        const value = itemWithTimestamps[key];
+        if (value !== null && value !== undefined) {
+          cleanedItem[key] = value;
+        }
       });
 
-      console.log(`[DynamoDB] Item with timestamps:`, JSON.stringify(itemWithTimestamps, null, 2));
-
-      // Validate required fields based on table
-      if (tableName === 'pickem_games') {
-        console.log(`[DynamoDB] Validating pickem_games required fields:`);
-        const validations = {
-          id: { required: true, present: !!item.id, value: item.id },
-          game_name: { required: true, present: !!item.game_name, value: item.game_name },
-          type: { required: false, present: !!item.type, value: item.type },
-          commissioner_id: { required: false, present: !!item.commissioner_id, value: item.commissioner_id },
-          season_id: { required: false, present: !!item.season_id, value: item.season_id },
-          is_active: { required: false, present: item.is_active !== undefined, value: item.is_active }
-        };
-        
-        console.log(`[DynamoDB] Field validations:`, validations);
-        
-        if (!item.id) {
-          throw new Error(`Missing required field 'id' for pickem_games table. Current value: ${item.id}`);
-        }
-        if (!item.game_name) {
-          throw new Error(`Missing required field 'game_name' for pickem_games table. Current value: ${item.game_name}`);
-        }
-        
-        console.log(`[DynamoDB] All required fields validated successfully`);
+      // Log null filtering only when values are actually removed
+      const removedFields = Object.keys(itemWithTimestamps).filter(key =>
+        itemWithTimestamps[key] === null || itemWithTimestamps[key] === undefined
+      );
+      if (removedFields.length > 0) {
+        console.log(`[DynamoDB] Filtered out null/undefined fields: [${removedFields.join(', ')}]`);
       }
 
-      console.log(`[DynamoDB] Creating PutCommand...`);
+      const actualTableName = this.tables[tableName] || tableName;
+
+      // Validate required fields based on table using cleaned item
+      if (tableName === 'pickem_games') {
+        if (!cleanedItem.id) {
+          throw new Error(`Missing required field 'id' for pickem_games table. Current value: ${cleanedItem.id}`);
+        }
+        if (!cleanedItem.game_name) {
+          throw new Error(`Missing required field 'game_name' for pickem_games table. Current value: ${cleanedItem.game_name}`);
+        }
+      }
+
       const command = new PutCommand({
         TableName: actualTableName,
-        Item: itemWithTimestamps
+        Item: cleanedItem
       });
       
-      console.log(`[DynamoDB] PutCommand created:`, {
-        TableName: command.input.TableName,
-        Item: command.input.Item,
-        ItemKeys: Object.keys(command.input.Item),
-        commandType: command.constructor.name
-      });
-      
-      console.log(`[DynamoDB] Sending PUT command to DynamoDB...`);
       const startTime = Date.now();
-      
       const result = await this.docClient.send(command);
-      
       const duration = Date.now() - startTime;
-      console.log(`[DynamoDB] PUT completed in ${duration}ms`);
-      console.log(`[DynamoDB] PUT result:`, {
-        tableName: actualTableName,
-        itemId: item.id,
-        httpStatusCode: result.$metadata?.httpStatusCode,
-        requestId: result.$metadata?.requestId,
-        cfId: result.$metadata?.cfId,
-        attempts: result.$metadata?.attempts,
-        totalRetryDelay: result.$metadata?.totalRetryDelay
-      });
       
-      console.log(`[DynamoDB] === _dynamoPut SUCCESS ===`);
-      return { id: item.id };
+      this._logPerformance('PUT', duration, { tableName: actualTableName, itemId: cleanedItem.id });
+      
+      return { id: cleanedItem.id };
     } catch (error) {
-      console.error(`[DynamoDB] === _dynamoPut FAILED ===`);
-      console.error(`[DynamoDB] Error details:`, {
-        tableName,
-        actualTableName: this.tables[tableName] || tableName,
-        inputItem: item,
-        errorMessage: error.message,
-        errorCode: error.name,
-        errorType: error.constructor.name,
+      console.error(`[DynamoDB] PUT operation failed:`, {
+        tableName: this.tables[tableName] || tableName,
+        error: error.message,
+        code: error.name,
         httpStatusCode: error.$metadata?.httpStatusCode,
-        requestId: error.$metadata?.requestId,
-        retryable: error.$retryable,
-        time: error.time
+        requestId: error.$metadata?.requestId
       });
       
-      console.error(`[DynamoDB] Full error object:`, error);
-      console.error(`[DynamoDB] Error stack:`, error.stack);
-      
-      // Check for specific DynamoDB errors
+      // Check for specific DynamoDB errors and provide helpful context
       if (error.name === 'ResourceNotFoundException') {
-        console.error(`[DynamoDB] Table not found! Available tables:`, Object.values(this.tables));
+        console.error(`[DynamoDB] Table not found. Available tables:`, Object.values(this.tables));
       } else if (error.name === 'ValidationException') {
         console.error(`[DynamoDB] Validation error - check item structure`);
       } else if (error.name === 'AccessDeniedException') {
@@ -410,12 +384,6 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
 
     const actualTableName = this.tables[tableName] || tableName;
-    console.log(`[DynamoDB] DELETE operation details:`, {
-      tableName,
-      actualTableName,
-      key
-    });
-
     const command = new DeleteCommand({
       TableName: actualTableName,
       Key: key
@@ -423,16 +391,10 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     
     try {
       const result = await this.docClient.send(command);
-      console.log(`[DynamoDB] DELETE successful:`, {
-        tableName: actualTableName,
-        key,
-        httpStatusCode: result.$metadata?.httpStatusCode
-      });
       return result;
     } catch (error) {
       console.error(`[DynamoDB] DELETE failed:`, {
         tableName: actualTableName,
-        key,
         error: error.message,
         code: error.name
       });
@@ -508,17 +470,6 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       TableName: actualTableName
     };
 
-    console.log(`[DynamoDB] SCAN input debug:`, {
-      tableName,
-      actualTableName,
-      filters,
-      filtersType: typeof filters,
-      filtersKeys: Object.keys(filters || {}),
-      filtersValues: Object.values(filters || {}),
-      hasFilters: Object.keys(filters || {}).length > 0,
-      clientInitialized: !!this.docClient
-    });
-
     if (Object.keys(filters).length > 0) {
       const filterExpression = [];
       const expressionAttributeNames = {};
@@ -528,13 +479,6 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         const fieldName = `#field${index}`;
         const fieldValue = `:value${index}`;
         
-        console.log(`[DynamoDB] SCAN adding filter:`, {
-          field,
-          value: filters[field],
-          fieldName,
-          fieldValue
-        });
-        
         filterExpression.push(`${fieldName} = ${fieldValue}`);
         expressionAttributeNames[fieldName] = field;
         expressionAttributeValues[fieldValue] = filters[field];
@@ -543,43 +487,25 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       scanParams.FilterExpression = filterExpression.join(' AND ');
       scanParams.ExpressionAttributeNames = expressionAttributeNames;
       scanParams.ExpressionAttributeValues = expressionAttributeValues;
-      
-      console.log(`[DynamoDB] SCAN filter params:`, {
-        FilterExpression: scanParams.FilterExpression,
-        ExpressionAttributeNames: scanParams.ExpressionAttributeNames,
-        ExpressionAttributeValues: scanParams.ExpressionAttributeValues
-      });
-    } else {
-      console.log(`[DynamoDB] SCAN no filters applied - performing full table scan`);
     }
-
-    console.log(`[DynamoDB] SCAN operation details:`, {
-      tableName,
-      actualTableName,
-      filters,
-      hasFilters: Object.keys(filters).length > 0,
-      clientInitialized: !!this.docClient
-    });
 
     const command = new ScanCommand(scanParams);
     try {
       const result = await this.docClient.send(command);
-      console.log(`[DynamoDB] SCAN successful:`, {
-        tableName: actualTableName,
-        itemCount: result.Items?.length || 0,
-        scannedCount: result.ScannedCount,
-        httpStatusCode: result.$metadata?.httpStatusCode
-      });
+      // Only log for large scans or slow operations
+      if (result.ScannedCount > 100 || result.Items?.length > 50) {
+        console.log(`[DynamoDB] Large SCAN completed:`, {
+          tableName: actualTableName,
+          itemCount: result.Items?.length || 0,
+          scannedCount: result.ScannedCount
+        });
+      }
       return result;
     } catch (error) {
       console.error(`[DynamoDB] SCAN failed:`, {
         tableName: actualTableName,
         error: error.message,
-        code: error.name,
-        clientState: {
-          client: !!this.client,
-          docClient: !!this.docClient
-        }
+        code: error.name
       });
       throw error;
     }

@@ -87,6 +87,12 @@ export default class DatabaseInitializer {
       // Check if admin user exists (try Secrets Manager first in production)
       let adminEmail;
       
+      // Ensure configService is initialized before getting admin email
+      if (!configService.isInitialized()) {
+        console.log("🔧 ConfigService not initialized, initializing now...");
+        await configService.initialize();
+      }
+      
       // Get admin email using the config service
       adminEmail = configService.getAdminEmail();
       
@@ -100,26 +106,8 @@ export default class DatabaseInitializer {
         }
         checks.adminUser = !adminUser;
         
-        // Also check for any users created with placeholder emails and mark for cleanup
-        try {
-          let allUsers;
-          if (this.db.getType() === 'dynamodb') {
-            const usersResult = await this.db._dynamoScan('users');
-            allUsers = usersResult?.Items || [];
-          } else {
-            allUsers = await this.db.all('SELECT * FROM users');
-          }
-          
-          const placeholderUser = (allUsers || []).find(user =>
-            user.email && user.email.includes('{{resolve:secretsmanager')
-          );
-          if (placeholderUser) {
-            console.log("🧹 Found user with placeholder email, will clean up during seeding");
-            checks.adminUser = true; // Force admin user recreation
-          }
-        } catch (error) {
-          console.log("Note: Could not check for placeholder users");
-        }
+        // Legacy placeholder email cleanup code removed - no longer needed
+        // The configService now properly resolves secrets without placeholders
       } else {
         // If no admin email env var, check for any admin user
         let anyAdmin;
@@ -198,6 +186,12 @@ export default class DatabaseInitializer {
   async createAdminUser() {
     console.log("👤 Creating admin user...");
 
+    // Ensure configService is initialized before getting admin credentials
+    if (!configService.isInitialized()) {
+      console.log("🔧 ConfigService not initialized, initializing now...");
+      await configService.initialize();
+    }
+
     // Get admin credentials using the config service
     const adminEmail = configService.getAdminEmail();
     const adminPassword = configService.getAdminPassword();
@@ -206,34 +200,7 @@ export default class DatabaseInitializer {
     console.log(`🔑 Admin password source: ${configService.isInitialized() ? 'Configuration service' : 'fallback values'}`);
 
     try {
-      // First, clean up ALL users with the target email to prevent duplicates
-      let allUsers;
-      if (this.db.getType() === 'dynamodb') {
-        const usersResult = await this.db._dynamoScan('users');
-        allUsers = usersResult?.Items || [];
-      } else {
-        allUsers = await this.db.all('SELECT * FROM users');
-      }
-      
-      const usersToDelete = (allUsers || []).filter(user => {
-        return (user.email && user.email.includes('{{resolve:secretsmanager')) ||
-               (user.email && user.email.toLowerCase() === adminEmail.toLowerCase());
-      });
-      
-      if (usersToDelete.length > 0) {
-        console.log(`🧹 Cleaning up ${usersToDelete.length} existing users with email ${adminEmail} or placeholder emails`);
-        
-        for (const user of usersToDelete) {
-          console.log(`🧹 Removing user: ${user.email} (ID: ${user.id})`);
-          if (this.db.getType() === 'dynamodb') {
-            await this.db._dynamoDelete('users', { id: user.id });
-          } else {
-            await this.db.run('DELETE FROM users WHERE id = ?', [user.id]);
-          }
-        }
-      }
-
-      // Double-check no admin user exists with this email
+      // Check if admin user already exists with this email
       let existingAdmin;
       if (this.db.getType() === 'dynamodb') {
         const usersResult = await this.db._dynamoScan('users', { email: adminEmail.toLowerCase() });

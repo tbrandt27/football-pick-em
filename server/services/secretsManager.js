@@ -10,12 +10,26 @@ class SecretsManagerService {
     this.client = null;
     this.cache = new Map();
     this.cacheExpiry = 5 * 60 * 1000; // 5 minutes
-    this.enabled = process.env.NODE_ENV === 'production' && process.env.AWS_REGION;
+    this.isLocalStack = process.env.USE_LOCALSTACK === 'true';
+    this.localStackEndpoint = process.env.LOCALSTACK_ENDPOINT || 'http://localhost:4566';
+    this.enabled = (process.env.NODE_ENV === 'production' && process.env.AWS_REGION) || this.isLocalStack;
     
     if (this.enabled) {
-      this.client = new SecretsManagerClient({
+      const clientConfig = {
         region: process.env.AWS_REGION || 'us-east-1'
-      });
+      };
+
+      // Configure LocalStack endpoint if enabled
+      if (this.isLocalStack) {
+        clientConfig.endpoint = this.localStackEndpoint;
+        clientConfig.credentials = {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test'
+        };
+        console.log(`[SecretsManager] Configuring for LocalStack at ${this.localStackEndpoint}`);
+      }
+
+      this.client = new SecretsManagerClient(clientConfig);
     }
   }
 
@@ -28,7 +42,8 @@ class SecretsManagerService {
    */
   async getSecret(secretName, key = null, fallback = null) {
     if (!this.enabled) {
-      console.log(`🔐 Secrets Manager disabled, using fallback for ${secretName}${key ? `.${key}` : ''}`);
+      const reason = this.isLocalStack ? 'LocalStack not configured' : 'Production mode not enabled';
+      console.log(`🔐 Secrets Manager disabled (${reason}), using fallback for ${secretName}${key ? `.${key}` : ''}`);
       return fallback;
     }
 
@@ -44,7 +59,8 @@ class SecretsManagerService {
     }
 
     try {
-      console.log(`🔐 Retrieving secret: ${secretName}${key ? `.${key}` : ''}`);
+      const endpoint = this.isLocalStack ? ` (LocalStack: ${this.localStackEndpoint})` : '';
+      console.log(`🔐 Retrieving secret: ${secretName}${key ? `.${key}` : ''}${endpoint}`);
       
       const command = new GetSecretValueCommand({
         SecretId: secretName
@@ -76,11 +92,12 @@ class SecretsManagerService {
         timestamp: Date.now()
       });
       
-      console.log(`✅ Successfully retrieved secret: ${secretName}${key ? `.${key}` : ''}`);
+      console.log(`✅ Successfully retrieved secret: ${secretName}${key ? `.${key}` : ''}${endpoint}`);
       return secretValue;
       
     } catch (error) {
-      console.error(`❌ Failed to retrieve secret ${secretName}${key ? `.${key}` : ''}: ${error.message}`);
+      const endpoint = this.isLocalStack ? ` (LocalStack: ${this.localStackEndpoint})` : '';
+      console.error(`❌ Failed to retrieve secret ${secretName}${key ? `.${key}` : ''}${endpoint}: ${error.message}`);
       
       // Return fallback value
       if (fallback !== null) {

@@ -46,14 +46,21 @@ class ConfigService {
         
         // Check if it's an AWS Secrets Manager ARN
         if (envValue.startsWith('arn:aws:secretsmanager:')) {
-          try {
-            console.log(`🔐 ${key}: Resolving from Secrets Manager...`);
-            const secretValue = await secretsManager.getSecret(envValue, null, fallback);
-            console.log(`✅ ${key}: Successfully resolved from Secrets Manager`);
-            return secretValue;
-          } catch (error) {
-            console.error(`❌ ${key}: Failed to resolve from Secrets Manager: ${error.message}`);
-            console.log(`🔄 ${key}: Using fallback value`);
+          // Only try to resolve secrets in production runtime or LocalStack development mode
+          if ((process.env.NODE_ENV === 'production' || process.env.USE_LOCALSTACK === 'true') && typeof window === 'undefined') {
+            try {
+              console.log(`🔐 ${key}: Resolving from Secrets Manager...`);
+              // For compound secrets, extract the specific key from the JSON
+              const secretValue = await secretsManager.getSecret(envValue, key, fallback);
+              console.log(`✅ ${key}: Successfully resolved from Secrets Manager`);
+              return secretValue;
+            } catch (error) {
+              console.error(`❌ ${key}: Failed to resolve from Secrets Manager: ${error.message}`);
+              console.log(`🔄 ${key}: Using fallback value`);
+              return fallback;
+            }
+          } else {
+            console.log(`🔧 ${key}: Skipping Secrets Manager resolution (build time or development)`);
             return fallback;
           }
         } else {
@@ -92,7 +99,7 @@ class ConfigService {
   get(key, fallback = null) {
     if (!this.initialized) {
       console.warn(`⚠️  Configuration service not initialized, using fallback for ${key}`);
-      return process.env[key] || fallback;
+      return fallback;
     }
 
     const value = this.cache.get(key);
