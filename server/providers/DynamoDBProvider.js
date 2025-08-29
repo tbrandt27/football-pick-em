@@ -470,7 +470,10 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       TableName: actualTableName
     };
 
-    if (Object.keys(filters).length > 0) {
+    const startTime = Date.now();
+    const hasFilters = Object.keys(filters).length > 0;
+
+    if (hasFilters) {
       const filterExpression = [];
       const expressionAttributeNames = {};
       const expressionAttributeValues = {};
@@ -492,20 +495,38 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     const command = new ScanCommand(scanParams);
     try {
       const result = await this.docClient.send(command);
-      // Only log for large scans or slow operations
-      if (result.ScannedCount > 100 || result.Items?.length > 50) {
-        console.log(`[DynamoDB] Large SCAN completed:`, {
-          tableName: actualTableName,
-          itemCount: result.Items?.length || 0,
-          scannedCount: result.ScannedCount
-        });
+      const duration = Date.now() - startTime;
+      
+      // Enhanced logging with performance metrics
+      const logData = {
+        tableName: actualTableName,
+        itemCount: result.Items?.length || 0,
+        scannedCount: result.ScannedCount,
+        duration: `${duration}ms`,
+        hasFilters,
+        filterCount: Object.keys(filters).length,
+        efficiency: result.ScannedCount > 0 ? ((result.Items?.length || 0) / result.ScannedCount * 100).toFixed(1) + '%' : '0%'
+      };
+
+      // Log all scans with performance data, but highlight problematic ones
+      if (result.ScannedCount > 100 || duration > 500 || (result.Items?.length || 0) > 50) {
+        console.warn(`[DynamoDB] Large/Slow SCAN:`, logData);
+      } else {
+        console.log(`[DynamoDB] SCAN completed:`, logData);
       }
+
+      // Track performance metrics
+      this._logPerformance('SCAN', duration, logData);
+      
       return result;
     } catch (error) {
+      const duration = Date.now() - startTime;
       console.error(`[DynamoDB] SCAN failed:`, {
         tableName: actualTableName,
         error: error.message,
-        code: error.name
+        code: error.name,
+        duration: `${duration}ms`,
+        hasFilters
       });
       throw error;
     }
@@ -578,8 +599,57 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   _logPerformance(operation, duration, details = {}) {
     if (duration > 1000) {
       console.warn(`[DynamoDB] Slow operation detected: ${operation} took ${duration}ms`, details);
+      
+      // Log optimization suggestions for slow operations
+      if (operation === 'SCAN' && details.scannedCount > 100) {
+        console.warn(`[DynamoDB] Optimization suggestion: Consider using Query instead of Scan, or add a GSI for better performance`);
+      }
     } else if (duration > 500) {
       console.log(`[DynamoDB] Operation ${operation} took ${duration}ms`, details);
     }
+
+    // Track metrics for monitoring dashboard
+    if (!this.performanceMetrics) {
+      this.performanceMetrics = {
+        operationCounts: {},
+        totalDuration: {},
+        slowOperations: 0
+      };
+    }
+
+    this.performanceMetrics.operationCounts[operation] = (this.performanceMetrics.operationCounts[operation] || 0) + 1;
+    this.performanceMetrics.totalDuration[operation] = (this.performanceMetrics.totalDuration[operation] || 0) + duration;
+    
+    if (duration > 1000) {
+      this.performanceMetrics.slowOperations++;
+    }
+  }
+
+  // Get performance statistics
+  getPerformanceStats() {
+    if (!this.performanceMetrics) return null;
+    
+    const stats = {
+      totalOperations: Object.values(this.performanceMetrics.operationCounts).reduce((a, b) => a + b, 0),
+      slowOperations: this.performanceMetrics.slowOperations,
+      operationBreakdown: {},
+      averageDurations: {}
+    };
+
+    for (const [operation, count] of Object.entries(this.performanceMetrics.operationCounts)) {
+      stats.operationBreakdown[operation] = count;
+      stats.averageDurations[operation] = Math.round(this.performanceMetrics.totalDuration[operation] / count);
+    }
+
+    return stats;
+  }
+
+  // Reset performance metrics
+  resetPerformanceStats() {
+    this.performanceMetrics = {
+      operationCounts: {},
+      totalDuration: {},
+      slowOperations: 0
+    };
   }
 }

@@ -1,12 +1,15 @@
 import cron from 'node-cron';
 import espnService from './espnApi.js';
 import pickCalculator from './pickCalculator.js';
+import onDemandUpdates from './onDemandUpdates.js';
 import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 
 class SchedulerService {
   constructor() {
     this.isRunning = false;
     this.currentTasks = new Map();
+    this.gameCache = new Map();
+    this.cacheExpiry = 15 * 60 * 1000; // 15 minutes
   }
 
   /**
@@ -32,6 +35,47 @@ class SchedulerService {
     // Game days: Sunday (0), Monday (1), Thursday (4), Saturday (6)
     const gameDays = [0, 1, 4, 6];
     return gameDays.includes(dayOfWeek);
+  }
+
+  /**
+   * Check if there are actual games scheduled for today
+   */
+  async hasGamesToday() {
+    try {
+      const cacheKey = 'games_today';
+      const cached = this.gameCache.get(cacheKey);
+      
+      if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
+        console.log('[Scheduler] Using cached games check');
+        return cached.hasGames;
+      }
+
+      const nflDataService = DatabaseServiceFactory.getNFLDataService();
+      const currentSeason = await nflDataService.getCurrentSeason();
+      
+      if (!currentSeason) {
+        console.log('[Scheduler] No current season set');
+        return false;
+      }
+
+      // Use the optimized method to check for games today
+      const today = new Date();
+      const hasGames = await nflDataService.hasGamesOnDate(currentSeason.id, today);
+      
+      // Cache the result
+      this.gameCache.set(cacheKey, {
+        hasGames,
+        timestamp: Date.now()
+      });
+      
+      console.log(`[Scheduler] Games today check: ${hasGames ? 'Yes' : 'No'}`);
+      return hasGames;
+      
+    } catch (error) {
+      console.error('[Scheduler] Error checking for games today:', error);
+      // Default to true to avoid missing game updates if there's an error
+      return true;
+    }
   }
 
   /**
@@ -147,9 +191,30 @@ class SchedulerService {
       return;
     }
 
-    if (!this.isActiveGameTime()) {
-      console.log('[Scheduler] Outside active game hours, skipping score updates');
+    const hasGames = await this.hasGamesToday();
+    if (!hasGames) {
+      console.log('[Scheduler] No games scheduled today, skipping score updates');
       return;
+    }
+
+    if (!this.isActiveGameTime()) {
+      console.log('[Scheduler] Outside active game hours, checking if scores are stale...');
+      
+      // Use on-demand service to check if scores are stale
+      const currentSeason = await this.getCurrentSeason();
+      if (!currentSeason) {
+        console.log('[Scheduler] No current season, skipping update');
+        return;
+      }
+      
+      const seasonStatus = await espnService.getCurrentSeasonStatus();
+      const currentWeek = seasonStatus.week;
+      
+      const staleCheck = await onDemandUpdates.updateScoresIfStale(currentSeason.id, currentWeek);
+      if (!staleCheck.updated) {
+        console.log('[Scheduler] Scores are recent, skipping update');
+        return;
+      }
     }
 
     console.log('[Scheduler] Running score update...');
@@ -169,11 +234,17 @@ class SchedulerService {
   }
 
   /**
-   * Run pick calculations only  
+   * Run pick calculations only
    */
   async runPickCalculations() {
     if (!this.isGameDay()) {
       console.log('[Scheduler] Not a game day, skipping pick calculations');
+      return;
+    }
+
+    const hasGames = await this.hasGamesToday();
+    if (!hasGames) {
+      console.log('[Scheduler] No games scheduled today, skipping pick calculations');
       return;
     }
 
@@ -275,14 +346,32 @@ class SchedulerService {
       timezone: "America/New_York"
     });
 
-    // Light score check every hour during off-hours on game days
-    const offHoursCheckTask = cron.schedule('30 * * * *', () => {
+    // Extended check every 6 hours during off-hours on game days with actual games
+    const offHoursCheckTask = cron.schedule('0 */6 * * *', async () => {
       try {
+        // Only check if it's a potential game day AND outside active hours
         if (this.isGameDay() && !this.isActiveGameTime()) {
-          console.log('[Scheduler] Off-hours check - updating scores only');
-          this.updateScores().catch(error => {
-            console.error('[Scheduler] Off-hours score update failed:', error);
-          });
+          const hasGames = await this.hasGamesToday();
+          if (hasGames) {
+            console.log('[Scheduler] Off-hours check (every 6 hours) - checking for stale scores...');
+            
+            // Use staleness check to avoid unnecessary updates
+            const currentSeason = await this.getCurrentSeason();
+            if (currentSeason) {
+              const seasonStatus = await espnService.getCurrentSeasonStatus();
+              const staleCheck = await onDemandUpdates.updateScoresIfStale(currentSeason.id, seasonStatus.week);
+              
+              if (staleCheck.updated) {
+                console.log('[Scheduler] Off-hours update completed:', staleCheck);
+              } else {
+                console.log('[Scheduler] Off-hours check - scores are recent, no update needed');
+              }
+            }
+          } else {
+            console.log('[Scheduler] Off-hours check - no games today, skipping');
+          }
+        } else if (!this.isGameDay()) {
+          console.log('[Scheduler] Off-hours check - not a game day, skipping');
         }
       } catch (error) {
         console.error('[Scheduler] Off-hours check failed:', error);
@@ -304,9 +393,10 @@ class SchedulerService {
     
     this.isRunning = true;
     console.log('[Scheduler] Automatic updates started');
-    console.log('[Scheduler] - Score updates every 15 minutes during active game hours (1 PM - 11 PM ET)');
-    console.log('[Scheduler] - Pick calculations every hour during game days');
-    console.log('[Scheduler] - Off-hours score checks at 30 minutes past each hour');
+    console.log('[Scheduler] - Score updates every 15 minutes during active game hours (1 PM - 11 PM ET) on game days with scheduled games');
+    console.log('[Scheduler] - Pick calculations every hour during game days with scheduled games');
+    console.log('[Scheduler] - Off-hours staleness checks every 6 hours on game days with scheduled games');
+    console.log('[Scheduler] - Zero activity on non-game days (Tue, Wed, Fri) and days without scheduled games');
   }
 
   /**
@@ -334,17 +424,21 @@ class SchedulerService {
   /**
    * Get scheduler status
    */
-  getStatus() {
-    const nextUpdate = this.isRunning ? 
-      'Scores: every 15 min (game hours), Picks: hourly' : 
+  async getStatus() {
+    const nextUpdate = this.isRunning ?
+      'Scores: every 15 min (game hours), Picks: hourly' :
       'Not scheduled';
+    
+    const hasGames = this.isRunning ? await this.hasGamesToday() : false;
     
     return {
       isRunning: this.isRunning,
       isGameDay: this.isGameDay(),
+      hasGamesToday: hasGames,
       isActiveGameTime: this.isActiveGameTime(),
       activeTasks: Array.from(this.currentTasks.keys()),
-      nextUpdate
+      nextUpdate,
+      cacheSize: this.gameCache.size
     };
   }
 

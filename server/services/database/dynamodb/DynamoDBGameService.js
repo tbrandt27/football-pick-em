@@ -75,28 +75,33 @@ export default class DynamoDBGameService extends IGameService {
         .replace(/^-+|-+$/g, "");
     };
 
-    // Scan all games to find by slug (could be optimized with GSI)
-    const allGames = await this.db._dynamoScan('pickem_games');
-    
-    if (!allGames.Items) {
-      return null;
+    // First check if user is a participant in any games to avoid unnecessary full scan
+    const userParticipations = await this.db._dynamoScan('game_participants', {
+      user_id: userId
+    });
+
+    if (!userParticipations.Items || userParticipations.Items.length === 0) {
+      throw new Error('Access denied');
     }
 
-    // Find game by matching slug
-    const game = allGames.Items.find((g) => createGameSlug(g.game_name) === gameSlug);
+    // Only scan games that the user participates in
+    const userGameIds = userParticipations.Items.map(p => p.game_id);
+    let game = null;
+
+    // Batch get games the user participates in instead of scanning all games
+    for (const gameId of userGameIds) {
+      const gameResult = await this.db._dynamoGet('pickem_games', { id: gameId });
+      if (gameResult.Item && createGameSlug(gameResult.Item.game_name) === gameSlug) {
+        game = gameResult.Item;
+        break;
+      }
+    }
 
     if (!game) {
       return null;
     }
 
-    // Check if user has access
-    const isParticipant = await this.getParticipant(game.id, userId);
-    const isCommissioner = game.commissioner_id === userId;
-
-    if (!isParticipant && !isCommissioner) {
-      throw new Error('Access denied');
-    }
-
+    // User already verified to have access through participation check
     // Get commissioner name
     if (game.commissioner_id) {
       const commissioner = await this.db._dynamoGet('users', {

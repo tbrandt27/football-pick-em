@@ -230,4 +230,54 @@ export default class SQLiteNFLDataService extends INFLDataService {
       WHERE id = ?
     `, [gameId]);
   }
+
+  /**
+   * Get football games by date range
+   * @param {string} seasonId - Season ID
+   * @param {Date} startDate - Start date
+   * @param {Date} endDate - End date
+   * @returns {Promise<Array>} Football games in date range
+   */
+  async getGamesByDateRange(seasonId, startDate, endDate) {
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
+    return await db.all(`
+      SELECT * FROM football_games
+      WHERE season_id = ?
+      AND date(game_date) >= date(?)
+      AND date(game_date) < date(?)
+      ORDER BY game_date ASC
+    `, [seasonId, startDateStr, endDateStr]);
+  }
+
+  /**
+   * Get football games for today
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Array>} Football games scheduled for today
+   */
+  async getGamesToday(seasonId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    return this.getGamesByDateRange(seasonId, today, tomorrow);
+  }
+
+  /**
+   * Check if there are any games scheduled for a specific date
+   * @param {string} seasonId - Season ID
+   * @param {Date} date - Date to check
+   * @returns {Promise<boolean>} True if games exist for the date
+   */
+  async hasGamesOnDate(seasonId, date) {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+    
+    const games = await this.getGamesByDateRange(seasonId, startOfDay, endOfDay);
+    return games.length > 0;
+  }
 }

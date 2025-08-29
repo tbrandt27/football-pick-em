@@ -4,6 +4,7 @@ import DatabaseProviderFactory from '../providers/DatabaseProviderFactory.js';
 import db from '../models/database.js';
 import { requireHealthAccess, sanitizeHealthResponse } from '../middleware/healthAuth.js';
 import scheduler from '../services/scheduler.js';
+import espnService from '../services/espnApi.js';
 
 const router = express.Router();
 
@@ -327,6 +328,88 @@ router.get('/dynamodb/test/:tableName?', async (req, res) => {
       error: error.message
     };
     res.status(500).json(sanitizeHealthResponse(result, req));
+  }
+});
+
+/**
+ * Performance monitoring endpoint
+ */
+router.get('/performance', async (req, res) => {
+  try {
+    const performanceData = {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        external: Math.round(process.memoryUsage().external / 1024 / 1024)
+      },
+      database: null,
+      espn: null,
+      scheduler: null
+    };
+
+    // Database performance stats
+    if (db && db.provider && db.provider.getPerformanceStats) {
+      performanceData.database = db.provider.getPerformanceStats();
+    }
+
+    // ESPN API cache stats
+    if (espnService.getCacheStats) {
+      performanceData.espn = espnService.getCacheStats();
+    }
+
+    // Scheduler status
+    if (scheduler.getStatus) {
+      performanceData.scheduler = await scheduler.getStatus();
+    }
+
+    const sanitizedResult = sanitizeHealthResponse(performanceData, req);
+    res.json(sanitizedResult);
+  } catch (error) {
+    console.error('Performance monitoring error:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve performance data',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Clear performance metrics endpoint
+ */
+router.post('/performance/reset', async (req, res) => {
+  try {
+    const resetResults = {};
+
+    // Reset database performance stats
+    if (db && db.provider && db.provider.resetPerformanceStats) {
+      db.provider.resetPerformanceStats();
+      resetResults.database = 'reset';
+    }
+
+    // Clear ESPN cache
+    if (espnService.clearExpiredCache) {
+      const cleared = espnService.clearExpiredCache();
+      resetResults.espn = `cleared ${cleared} expired entries`;
+    }
+
+    const result = {
+      message: 'Performance metrics reset',
+      timestamp: new Date().toISOString(),
+      results: resetResults
+    };
+
+    res.json(sanitizeHealthResponse(result, req));
+  } catch (error) {
+    console.error('Performance reset error:', error);
+    res.status(500).json({
+      error: 'Failed to reset performance metrics',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

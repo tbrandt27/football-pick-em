@@ -360,9 +360,8 @@ class EmailService {
     // Ensure transporter is initialized before sending
     await this.initializeTransporter();
     
-    const resetUrl = `${
-      process.env.CLIENT_URL || "http://localhost:4321"
-    }/reset-password?token=${resetToken}`;
+    const baseUrl = resolveBaseUrl();
+    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
     const fromEmail =
       this.smtpSettings && this.smtpSettings.from

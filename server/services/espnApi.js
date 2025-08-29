@@ -12,6 +12,16 @@ class ESPNService {
     this.seasonService = null; // Will be initialized when needed
     this.consecutiveFailures = 0;
     this.lastSuccessfulRequest = new Date();
+    
+    // Add caching
+    this.cache = new Map();
+    this.cacheHits = 0;
+    this.cacheMisses = 0;
+    this.cacheExpiry = {
+      scoreboard: 5 * 60 * 1000, // 5 minutes for scoreboard data
+      season: 60 * 60 * 1000,    // 1 hour for season info
+      schedule: 30 * 60 * 1000   // 30 minutes for schedule data
+    };
   }
 
   getNFLDataService() {
@@ -28,7 +38,57 @@ class ESPNService {
     return this.seasonService;
   }
 
-  async makeRequest(endpoint, params = {}) {
+  /**
+   * Generate cache key for request
+   */
+  generateCacheKey(endpoint, params = {}) {
+    const paramsString = Object.keys(params).sort().map(key => `${key}=${params[key]}`).join('&');
+    return `${endpoint}?${paramsString}`;
+  }
+
+  /**
+   * Get cached response if valid
+   */
+  getCachedResponse(cacheKey, cacheType = 'scoreboard') {
+    const cached = this.cache.get(cacheKey);
+    if (!cached) {
+      this.cacheMisses++;
+      return null;
+    }
+    
+    const expiry = this.cacheExpiry[cacheType] || this.cacheExpiry.scoreboard;
+    const isExpired = (Date.now() - cached.timestamp) > expiry;
+    
+    if (isExpired) {
+      this.cache.delete(cacheKey);
+      this.cacheMisses++;
+      return null;
+    }
+    
+    this.cacheHits++;
+    console.log(`[ESPN] Using cached response for ${cacheKey}`);
+    return cached.data;
+  }
+
+  /**
+   * Cache response
+   */
+  setCachedResponse(cacheKey, data) {
+    this.cache.set(cacheKey, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  async makeRequest(endpoint, params = {}, cacheType = 'scoreboard') {
+    // Check cache first
+    const cacheKey = this.generateCacheKey(endpoint, params);
+    const cachedResponse = this.getCachedResponse(cacheKey, cacheType);
+    
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
     let lastError;
     
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
@@ -53,6 +113,10 @@ class ESPNService {
         this.lastSuccessfulRequest = new Date();
         
         console.log(`[ESPN] Request successful for ${endpoint} on attempt ${attempt}`);
+        
+        // Cache the response
+        this.setCachedResponse(cacheKey, response.data);
+        
         return response.data;
         
       } catch (error) {
@@ -87,7 +151,7 @@ class ESPNService {
 
   async fetchCurrentSeason() {
     try {
-      const data = await this.makeRequest('/scoreboard');
+      const data = await this.makeRequest('/scoreboard', {}, 'season');
       if (data.season && data.season.year) {
         return {
           year: data.season.year.toString(),
@@ -115,7 +179,7 @@ class ESPNService {
         dates: currentYear,
         week: week,
         seasontype: seasonType // 1=preseason, 2=regular, 3=postseason
-      });
+      }, 'scoreboard');
 
       if (!data.events || !Array.isArray(data.events)) {
         console.warn('No events found in ESPN response');
@@ -400,6 +464,53 @@ class ESPNService {
       console.error('Failed to get current season status:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    const now = Date.now();
+    let validEntries = 0;
+    let expiredEntries = 0;
+    
+    for (const [key, value] of this.cache.entries()) {
+      const age = now - value.timestamp;
+      if (age > this.cacheExpiry.scoreboard) {
+        expiredEntries++;
+      } else {
+        validEntries++;
+      }
+    }
+    
+    return {
+      totalEntries: this.cache.size,
+      validEntries,
+      expiredEntries,
+      cacheHitRatio: this.cacheHits / Math.max(1, this.cacheHits + this.cacheMisses)
+    };
+  }
+
+  /**
+   * Clear expired cache entries
+   */
+  clearExpiredCache() {
+    const now = Date.now();
+    let cleared = 0;
+    
+    for (const [key, value] of this.cache.entries()) {
+      const age = now - value.timestamp;
+      if (age > this.cacheExpiry.scoreboard) {
+        this.cache.delete(key);
+        cleared++;
+      }
+    }
+    
+    if (cleared > 0) {
+      console.log(`[ESPN] Cleared ${cleared} expired cache entries`);
+    }
+    
+    return cleared;
   }
 
   async updateGameScores() {
