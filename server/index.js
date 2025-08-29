@@ -271,6 +271,12 @@ const startServer = async () => {
       console.log("✅ Configuration service initialized");
     }
     
+    // Initialize database now that config service is ready
+    const { default: db } = await import('./models/database.js');
+    console.log("🔧 Initializing database...");
+    await db.initialize();
+    console.log("✅ Database initialized");
+    
     // Initialize email service now that config service is ready
     const { default: emailService } = await import('./services/emailService.js');
     await emailService.refreshTransporter();

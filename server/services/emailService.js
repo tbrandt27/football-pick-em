@@ -48,33 +48,29 @@ function decrypt(encryptedText) {
 function resolveBaseUrl() {
   let baseUrl = process.env.CLIENT_URL || "http://localhost:4321";
   
-  console.log(`[EmailService] Raw CLIENT_URL: ${process.env.CLIENT_URL}`);
-  
   // If CLIENT_URL contains the literal placeholder, try to resolve it
   if (baseUrl.includes('${AWS_APPRUNNER_SERVICE_URL}')) {
-    console.log('[EmailService] CLIENT_URL contains placeholder, attempting to resolve...');
+    console.warn('[EmailService] CLIENT_URL contains unresolved placeholder');
     
     // Try to get the actual service URL from various AWS App Runner environment variables
     const appRunnerUrl = process.env.AWS_APPRUNNER_SERVICE_URL ||
                         process.env.APPRUNNER_SERVICE_URL ||
                         process.env._AWS_APPRUNNER_SERVICE_URL;
     
-    console.log(`[EmailService] Available environment variables:`);
-    console.log(`  AWS_APPRUNNER_SERVICE_URL: ${process.env.AWS_APPRUNNER_SERVICE_URL}`);
-    console.log(`  APPRUNNER_SERVICE_URL: ${process.env.APPRUNNER_SERVICE_URL}`);
-    console.log(`  _AWS_APPRUNNER_SERVICE_URL: ${process.env._AWS_APPRUNNER_SERVICE_URL}`);
-    
     if (appRunnerUrl) {
       baseUrl = appRunnerUrl;
-      console.log(`[EmailService] Resolved base URL to: ${baseUrl}`);
+      console.log(`[EmailService] Resolved base URL from AWS environment to: ${baseUrl}`);
+    } else if (process.env.NODE_ENV === 'production') {
+      // In production, fail if CLIENT_URL cannot be resolved
+      throw new Error('CLIENT_URL contains unresolved placeholder and no AWS App Runner URL found in production');
     } else {
-      // Hard-code the actual App Runner URL as a fallback
-      // TODO: Replace with your actual App Runner service URL
-      baseUrl = "https://w34g9vjcpz.us-east-1.awsapprunner.com"; // Replace with actual URL
-      console.warn(`[EmailService] Could not resolve AWS_APPRUNNER_SERVICE_URL, using hardcoded fallback: ${baseUrl}`);
+      // Development fallback only
+      baseUrl = "http://localhost:4321";
+      console.log(`[EmailService] Development fallback: ${baseUrl}`);
     }
-  } else {
-    console.log(`[EmailService] Using CLIENT_URL as-is: ${baseUrl}`);
+  } else if (process.env.NODE_ENV === 'production' && !baseUrl.startsWith('https://')) {
+    // In production, ensure HTTPS
+    console.warn(`[EmailService] Production CLIENT_URL should use HTTPS: ${baseUrl}`);
   }
   
   return baseUrl;

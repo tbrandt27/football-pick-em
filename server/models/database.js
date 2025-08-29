@@ -12,10 +12,25 @@ if (process.env.USE_LOCALSTACK !== 'true') {
 class Database {
   constructor() {
     this.provider = null;
-    this.initialize();
+    this.initialized = false;
+    this.initializationPromise = null;
   }
 
   async initialize() {
+    if (this.initialized) {
+      return;
+    }
+
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = this._performInitialization();
+    await this.initializationPromise;
+    this.initialized = true;
+  }
+
+  async _performInitialization() {
     try {
       this.provider = DatabaseProviderFactory.createProvider();
       await this.provider.initialize();
@@ -52,6 +67,7 @@ class Database {
 
   // Helper method to run queries with promises
   async run(sql, params = []) {
+    await this.initialize();
     if (!this.provider) {
       throw new Error("Database provider not initialized");
     }
@@ -60,6 +76,7 @@ class Database {
 
   // Helper method to get single row
   async get(sql, params = []) {
+    await this.initialize();
     if (!this.provider) {
       throw new Error("Database provider not initialized");
     }
@@ -68,6 +85,7 @@ class Database {
 
   // Helper method to get all rows
   async all(sql, params = []) {
+    await this.initialize();
     if (!this.provider) {
       throw new Error("Database provider not initialized");
     }
@@ -76,6 +94,7 @@ class Database {
 
   // Execute a transaction
   async transaction(callback) {
+    await this.initialize();
     if (!this.provider) {
       throw new Error("Database provider not initialized");
     }
@@ -89,6 +108,7 @@ class Database {
 
   // Expose DynamoDB-specific methods when using DynamoDB provider
   async _dynamoScan(tableName, filters = {}) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoScan is only available with DynamoDB provider');
     }
@@ -96,6 +116,7 @@ class Database {
   }
 
   async _dynamoPut(tableName, item) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoPut is only available with DynamoDB provider');
     }
@@ -103,6 +124,7 @@ class Database {
   }
 
   async _dynamoGet(tableName, key) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoGet is only available with DynamoDB provider');
     }
@@ -110,6 +132,7 @@ class Database {
   }
 
   async _dynamoUpdate(tableName, key, updates) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoUpdate is only available with DynamoDB provider');
     }
@@ -117,6 +140,7 @@ class Database {
   }
 
   async _dynamoDelete(tableName, key) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoDelete is only available with DynamoDB provider');
     }
@@ -124,6 +148,7 @@ class Database {
   }
 
   async _dynamoQuery(tableName, conditions, indexName = null) {
+    await this.initialize();
     if (!this.provider || this.provider.getType() !== 'dynamodb') {
       throw new Error('_dynamoQuery is only available with DynamoDB provider');
     }
