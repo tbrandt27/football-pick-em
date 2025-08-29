@@ -53,6 +53,18 @@ const UsersManager: React.FC = () => {
   });
   const [confirmingInvitation, setConfirmingInvitation] = useState(false);
   const [sendingPasswordReset, setSendingPasswordReset] = useState<string | null>(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
+  const [resetPasswordData, setResetPasswordData] = useState({
+    userId: '',
+    userName: '',
+    userEmail: ''
+  });
+  const [deleteUserData, setDeleteUserData] = useState({
+    userId: '',
+    userName: '',
+    userEmail: ''
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -628,9 +640,12 @@ const UsersManager: React.FC = () => {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(`Send password reset email to ${userData.first_name} ${userData.last_name} (${userData.email})?\n\nThis will send them an email with a link to reset their password.`)) {
-                                sendPasswordReset(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
-                              }
+                              setResetPasswordData({
+                                userId: userData.id,
+                                userName: `${userData.first_name} ${userData.last_name}`,
+                                userEmail: userData.email
+                              });
+                              setShowResetPasswordModal(true);
                             }}
                             disabled={sendingPasswordReset === userData.id}
                             className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium"
@@ -639,9 +654,12 @@ const UsersManager: React.FC = () => {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(`Are you sure you want to delete user "${userData.first_name} ${userData.last_name}" (${userData.email})?\n\nThis will permanently delete:\n- All their picks and game data\n- Their game participations\n- Any games they commissioned will be transferred to you\n\nThis action cannot be undone.`)) {
-                                deleteUser(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
-                              }
+                              setDeleteUserData({
+                                userId: userData.id,
+                                userName: `${userData.first_name} ${userData.last_name}`,
+                                userEmail: userData.email
+                              });
+                              setShowDeleteUserModal(true);
                             }}
                             className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
                           >
@@ -986,6 +1004,104 @@ const UsersManager: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Password Confirmation Modal */}
+        {showResetPasswordModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Send Password Reset Email</h3>
+              <p className="text-gray-600 mb-4">
+                Send password reset email to <strong>{resetPasswordData.userName}</strong> ({resetPasswordData.userEmail})?
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                This will send them an email with a link to reset their password.
+              </p>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResetPasswordModal(false);
+                    setResetPasswordData({ userId: '', userName: '', userEmail: '' });
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sendPasswordReset(resetPasswordData.userId, resetPasswordData.userName, resetPasswordData.userEmail);
+                    setShowResetPasswordModal(false);
+                    setResetPasswordData({ userId: '', userName: '', userEmail: '' });
+                  }}
+                  className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors"
+                >
+                  Send Reset Email
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete User Confirmation Modal */}
+        {showDeleteUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-red-700">Delete User Account</h3>
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to delete user <strong>{deleteUserData.userName}</strong> ({deleteUserData.userEmail})?
+              </p>
+              
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      This action cannot be undone
+                    </h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      <p>This will permanently delete:</p>
+                      <ul className="list-disc list-inside mt-1">
+                        <li>All their picks and game data</li>
+                        <li>Their game participations</li>
+                        <li>Any games they commissioned will be transferred to you</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteUserModal(false);
+                    setDeleteUserData({ userId: '', userName: '', userEmail: '' });
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteUser(deleteUserData.userId, deleteUserData.userName, deleteUserData.userEmail);
+                    setShowDeleteUserModal(false);
+                    setDeleteUserData({ userId: '', userName: '', userEmail: '' });
+                  }}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete User
+                </button>
+              </div>
             </div>
           </div>
         )}
