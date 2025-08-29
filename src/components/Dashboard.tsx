@@ -83,9 +83,14 @@ const Dashboard: React.FC = () => {
       if (currentSeasonResponse.success && currentSeasonResponse.data) {
         setCurrentSeason(currentSeasonResponse.data.season);
         
-        // Load picks data for each game
-        if (gamesResponse.success && gamesResponse.data && seasonStatusResponse.success && seasonStatusResponse.data) {
-          await loadGamePicksData(gamesResponse.data.games, currentSeasonResponse.data.season.id, seasonStatusResponse.data.status);
+        // Load picks data for each game - try to load even if some data is missing
+        if (gamesResponse.success && gamesResponse.data && currentSeasonResponse.success && currentSeasonResponse.data) {
+          // Use season status if available, otherwise use fallback values
+          const seasonStatus = seasonStatusResponse.success && seasonStatusResponse.data
+            ? seasonStatusResponse.data.status
+            : { week: 1, isPreseason: true, year: '2024', type: 1, typeText: 'Preseason', isRegularSeason: false, isPostseason: false };
+          
+          await loadGamePicksData(gamesResponse.data.games, currentSeasonResponse.data.season.id, seasonStatus);
         }
       }
     } catch (err) {
@@ -214,6 +219,19 @@ const Dashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load game picks data:', error);
+      // If the entire function fails, set fallback data for all games
+      const fallbackData = games.reduce((acc, game) => {
+        acc[game.id] = {
+          userPicks: 0,
+          totalPicks: 0,
+          playersWithAllPicks: 0,
+          userTotalPoints: 0,
+          userWeekPoints: 0
+        };
+        return acc;
+      }, {} as Record<string, { userPicks: number; totalPicks: number; playersWithAllPicks: number; userTotalPoints: number; userWeekPoints: number }>);
+      
+      setGamePicksData(fallbackData);
     }
   };
 
