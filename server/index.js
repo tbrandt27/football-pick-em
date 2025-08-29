@@ -255,16 +255,21 @@ const startServer = async () => {
     await configService.initialize();
     console.log("✅ Configuration service initialized");
     
-    // Initialize database now that config service is ready
+    // Initialize database connection (without seeding)
     const { default: db } = await import('./models/database.js');
-    console.log("🔧 Initializing database...");
+    console.log("🔧 Initializing database connection...");
     await db.initialize();
-    console.log("✅ Database initialized");
+    console.log("✅ Database connection initialized");
     
     // Initialize email service now that config service is ready
     const { default: emailService } = await import('./services/emailService.js');
     await emailService.refreshTransporter();
     console.log("📧 Email service initialized");
+    
+    // Now initialize database data/seeding with all services ready
+    console.log("🔧 Initializing database data...");
+    await db.initializeData();
+    console.log("✅ Database data initialized");
 
     let finalPort = PORT;
     

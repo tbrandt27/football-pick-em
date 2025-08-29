@@ -36,14 +36,19 @@ class Database {
       await this.provider.initialize();
       console.log(`Database initialized with provider: ${this.provider.getType()}`);
       
-      // Auto-seed database if needed
-      const initializer = new DatabaseInitializer(this);
-      await initializer.initialize();
+      // Don't auto-seed during basic initialization - let the main server control this
       
     } catch (error) {
       console.error("Error initializing database:", error);
       throw error;
     }
+  }
+
+  // Separate method for database seeding/initialization
+  async initializeData() {
+    await this.initialize(); // Ensure database is ready
+    const initializer = new DatabaseInitializer(this);
+    await initializer.initialize();
   }
 
   // Method to reinitialize database connection (used when switching databases)
