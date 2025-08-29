@@ -68,8 +68,26 @@ class ConfigService {
             console.log(`🔧 ${key}: Skipping Secrets Manager resolution (build time or development)`);
             return fallback;
           }
+        } else if (envValue.startsWith('{') && envValue.includes(`"${key}"`)) {
+          // Handle case where AWS auto-resolved the secret ARN to the full JSON
+          try {
+            console.log(`🔍 ${key}: Detected auto-resolved secret JSON, extracting key...`);
+            const parsedSecret = JSON.parse(envValue);
+            const extractedValue = parsedSecret[key];
+            if (extractedValue !== undefined) {
+              console.log(`✅ ${key}: Successfully extracted from auto-resolved secret`);
+              return extractedValue;
+            } else {
+              console.warn(`⚠️ ${key}: Key not found in auto-resolved secret, using fallback`);
+              return fallback;
+            }
+          } catch (parseError) {
+            console.error(`❌ ${key}: Failed to parse auto-resolved secret JSON: ${parseError.message}`);
+            console.log(`🔄 ${key}: Using fallback value`);
+            return fallback;
+          }
         } else {
-          console.log(`🔧 ${key}: Using direct environment value`);
+          console.log(`� ${key}: Using direct environment value`);
           return envValue;
         }
       };
