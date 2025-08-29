@@ -4,19 +4,16 @@ runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
 build:
   commands:
     build:
-      - echo "Setting up build environment..."
-      - node --version
-      - npm --version
       - echo "Installing dependencies..."
-      - npm ci --verbose
-      - echo "Checking installed packages..."
-      - npm list --depth=0
+      - npm ci
       - echo "Building application..."
-      - NODE_ENV=production npm run build
-      - echo "Verifying build output..."
-      - ls -la dist/ || echo "No dist directory found"
+      - npm run build
       - echo "Setting permissions..."
       - chmod +x scripts/start.sh
+  env:
+    # Build-time environment (no secrets here)
+    - name: NODE_ENV
+      value: production
 
 run:
   runtime-version: nodejs18  # Match the runtime above
@@ -25,7 +22,7 @@ run:
     port: 8080
     env: PORT
   env:
-    # Application Environment
+    # Runtime Environment Configuration
     - name: NODE_ENV
       value: production
     - name: CLIENT_URL
@@ -43,31 +40,27 @@ run:
     - name: DATABASE_TYPE
       value: "auto"  # Uses DynamoDB in production, SQLite in development
     
-    # DynamoDB Configuration (no file path needed - cloud service)
+    # DynamoDB Configuration
     - name: DYNAMODB_TABLE_PREFIX
       value: "football_pickem_"
     - name: AWS_REGION
       value: "us-east-1"
-    
-    # SQLite fallback (only used if DATABASE_TYPE=sqlite explicitly set)
-    # - name: DATABASE_PATH
-    #   value: "./server/data/database.sqlite"
 
-    # Security Configuration - will be retrieved from Secrets Manager at runtime
+    # Security Configuration - retrieved from Secrets Manager at runtime
     - name: JWT_SECRET
-      value: "runtime-secret-retrieval"
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:jwt_secret}}"
     - name: SETTINGS_ENCRYPTION_KEY
-      value: "runtime-secret-retrieval"
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:settings_encryption_key}}"
 
-    # Admin Configuration - will be retrieved from Secrets Manager at runtime
+    # Admin Configuration
     - name: ADMIN_EMAIL
-      value: "admin@nflpickem.com"
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_email}}"
     - name: ADMIN_PASSWORD
-      value: "runtime-secret-retrieval"
+      value: "{{resolve:secretsmanager:football-pickem/jwt-secret:SecretString:admin_password}}"
 
-    # Enable Secrets Manager runtime retrieval
+    # Enable Secrets Manager runtime retrieval (disabled for now since using resolve syntax)
     - name: USE_SECRETS_MANAGER
-      value: "true"
+      value: "false"
     - name: SECRETS_SECRET_NAME
       value: "football-pickem/jwt-secret"
 
