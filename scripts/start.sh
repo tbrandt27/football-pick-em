@@ -81,7 +81,9 @@ get_memory_usage() {
     if [ -n "$1" ] && is_process_running "$1"; then
         # Get RSS memory in KB and convert to MB
         MEMORY_KB=$(ps -o rss= -p "$1" 2>/dev/null | tr -d ' ' || echo "0")
-        if [ -n "$MEMORY_KB" ] && [ "$MEMORY_KB" -gt 0 ] 2>/dev/null; then
+        # Ensure MEMORY_KB is a valid number, default to 0 if not
+        MEMORY_KB=${MEMORY_KB:-0}
+        if [ "$MEMORY_KB" != "0" ] && [ "$MEMORY_KB" -gt 0 ] 2>/dev/null; then
             echo $((MEMORY_KB / 1024))
         else
             echo "0"
@@ -153,6 +155,13 @@ SHUTDOWN_REQUESTED=false
 SERVER_PID=""
 LAST_HEALTH_CHECK=0
 
+# Ensure all numeric variables have valid defaults for arithmetic operations
+MAX_RESTARTS=${MAX_RESTARTS:-5}
+RESTART_DELAY=${RESTART_DELAY:-10}
+HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60}
+MEMORY_LIMIT_MB=${MEMORY_LIMIT_MB:-512}
+PORT=${PORT:-8080}
+
 # Initial server start
 if ! start_server; then
     log_with_timestamp "❌ Initial server start failed"
@@ -174,6 +183,9 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
     NEEDS_RESTART=false
     RESTART_REASON=""
     
+    # Ensure CURRENT_TIME is valid
+    CURRENT_TIME=${CURRENT_TIME:-$(date +%s)}
+    
     # Check if process is still running
     if ! is_process_running $SERVER_PID; then
         NEEDS_RESTART=true
@@ -182,14 +194,23 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
     else
         # Check memory usage
         MEMORY_USAGE=$(get_memory_usage $SERVER_PID)
-        # Ensure MEMORY_USAGE is a valid number before comparison
-        if [ -n "$MEMORY_USAGE" ] && [ "$MEMORY_USAGE" -gt 0 ] 2>/dev/null && [ "$MEMORY_USAGE" -gt "$MEMORY_LIMIT_MB" ] 2>/dev/null; then
+        # Ensure MEMORY_USAGE is a valid number before comparison, default to 0 if empty
+        MEMORY_USAGE=${MEMORY_USAGE:-0}
+        MEMORY_LIMIT_MB=${MEMORY_LIMIT_MB:-512}
+        
+        # Only check memory limit if we have valid numbers
+        if [ "$MEMORY_USAGE" != "0" ] && [ "$MEMORY_USAGE" -gt 0 ] 2>/dev/null && [ "$MEMORY_USAGE" -gt "$MEMORY_LIMIT_MB" ] 2>/dev/null; then
             NEEDS_RESTART=true
             RESTART_REASON="Memory limit exceeded (${MEMORY_USAGE}MB > ${MEMORY_LIMIT_MB}MB)"
             log_with_timestamp "⚠️  $RESTART_REASON"
         fi
         
         # Check health endpoint (every 3 intervals to avoid too frequent checks in production)
+        # Ensure variables are initialized for arithmetic operations
+        CURRENT_TIME=${CURRENT_TIME:-$(date +%s)}
+        LAST_HEALTH_CHECK=${LAST_HEALTH_CHECK:-0}
+        HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60}
+        
         if [ $((CURRENT_TIME - LAST_HEALTH_CHECK)) -ge $((HEALTH_CHECK_INTERVAL * 3)) ]; then
             if ! check_server_health; then
                 NEEDS_RESTART=true
@@ -204,6 +225,10 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
     
     # Restart if needed
     if [ "$NEEDS_RESTART" = "true" ]; then
+        # Ensure restart count variables are properly initialized
+        RESTART_COUNT=${RESTART_COUNT:-0}
+        MAX_RESTARTS=${MAX_RESTARTS:-5}
+        
         if [ $RESTART_COUNT -ge $MAX_RESTARTS ]; then
             log_with_timestamp "💀 Maximum restart limit ($MAX_RESTARTS) reached. Exiting."
             stop_server
