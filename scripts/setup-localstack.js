@@ -110,19 +110,35 @@ const tableDefs = [
   {
     TableName: `${TABLE_PREFIX}game_participants`,
     KeySchema: [
-      { AttributeName: 'game_id', KeyType: 'HASH' },
-      { AttributeName: 'user_id', KeyType: 'RANGE' }
+      { AttributeName: 'id', KeyType: 'HASH' }
     ],
     AttributeDefinitions: [
+      { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
       { AttributeName: 'user_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'user-games-index',
+        IndexName: 'game_id-index',
         KeySchema: [
-          { AttributeName: 'user_id', KeyType: 'HASH' },
-          { AttributeName: 'game_id', KeyType: 'RANGE' }
+          { AttributeName: 'game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'user_id-index',
+        KeySchema: [
+          { AttributeName: 'user_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'game_id-user_id-index',
+        KeySchema: [
+          { AttributeName: 'game_id', KeyType: 'HASH' },
+          { AttributeName: 'user_id', KeyType: 'RANGE' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -187,20 +203,44 @@ const tableDefs = [
   {
     TableName: `${TABLE_PREFIX}picks`,
     KeySchema: [
-      { AttributeName: 'user_id', KeyType: 'HASH' },
-      { AttributeName: 'game_id', KeyType: 'RANGE' }
+      { AttributeName: 'id', KeyType: 'HASH' }
     ],
     AttributeDefinitions: [
+      { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'user_id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
-      { AttributeName: 'pickem_game_id', AttributeType: 'S' }
+      { AttributeName: 'season_id_week', AttributeType: 'S' },
+      { AttributeName: 'user_game_football', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'pickem-game-index',
+        IndexName: 'user_id-index',
         KeySchema: [
-          { AttributeName: 'pickem_game_id', KeyType: 'HASH' },
-          { AttributeName: 'user_id', KeyType: 'RANGE' }
+          { AttributeName: 'user_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'game_id-index',
+        KeySchema: [
+          { AttributeName: 'game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id_week-index',
+        KeySchema: [
+          { AttributeName: 'season_id_week', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'user_game_football-index',
+        KeySchema: [
+          { AttributeName: 'user_game_football', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -211,12 +251,48 @@ const tableDefs = [
   {
     TableName: `${TABLE_PREFIX}weekly_standings`,
     KeySchema: [
-      { AttributeName: 'pickem_game_id', KeyType: 'HASH' },
-      { AttributeName: 'week_season', KeyType: 'RANGE' }
+      { AttributeName: 'id', KeyType: 'HASH' }
     ],
     AttributeDefinitions: [
-      { AttributeName: 'pickem_game_id', AttributeType: 'S' },
-      { AttributeName: 'week_season', AttributeType: 'S' }
+      { AttributeName: 'id', AttributeType: 'S' },
+      { AttributeName: 'user_id', AttributeType: 'S' },
+      { AttributeName: 'game_id', AttributeType: 'S' },
+      { AttributeName: 'season_id_week', AttributeType: 'S' },
+      { AttributeName: 'game_season_week', AttributeType: 'S' }
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'user_id-index',
+        KeySchema: [
+          { AttributeName: 'user_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'game_id-index',
+        KeySchema: [
+          { AttributeName: 'game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id_week-index',
+        KeySchema: [
+          { AttributeName: 'season_id_week', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'game_season_week-index',
+        KeySchema: [
+          { AttributeName: 'game_season_week', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      }
     ],
     BillingMode: 'PAY_PER_REQUEST'
   },
@@ -252,29 +328,17 @@ const tableDefs = [
   }
 ];
 
-// Secret definitions
+// Secret definitions - single secret with all keys
 const secretDefs = [
   {
     Name: 'football-pickem/dev/jwt-secret',
     SecretString: JSON.stringify({
-      JWT_SECRET: 'local-development-jwt-secret-key-super-secure'
-    }),
-    Description: 'JWT secret for local development'
-  },
-  {
-    Name: 'football-pickem/dev/encryption-key',
-    SecretString: JSON.stringify({
-      SETTINGS_ENCRYPTION_KEY: 'local-development-encryption-key-32'
-    }),
-    Description: 'Settings encryption key for local development'
-  },
-  {
-    Name: 'football-pickem/dev/admin-credentials',
-    SecretString: JSON.stringify({
+      JWT_SECRET: 'local-development-jwt-secret-key-super-secure',
+      SETTINGS_ENCRYPTION_KEY: 'local-development-encryption-key-32',
       ADMIN_EMAIL: 'admin@localhost',
       ADMIN_PASSWORD: 'admin123'
     }),
-    Description: 'Admin credentials for local development'
+    Description: 'All application secrets for local development'
   }
 ];
 

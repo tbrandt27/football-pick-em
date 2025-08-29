@@ -388,20 +388,79 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
 
     const actualTableName = this.tables[tableName] || tableName;
+    
+    // Add detailed logging for delete operations
+    console.log(`[DynamoDB] DELETE operation details:`, {
+      tableName: actualTableName,
+      originalTableName: tableName,
+      key: key,
+      keyType: typeof key,
+      keyKeys: Object.keys(key || {}),
+      keyValues: Object.values(key || {}),
+      keyValuesTypes: Object.values(key || {}).map(v => typeof v)
+    });
+
+    // Enhanced key validation
+    if (!key || typeof key !== 'object' || Object.keys(key).length === 0) {
+      throw new Error(`Invalid key structure for DELETE operation. Key must be a non-empty object. Received: ${JSON.stringify(key)}`);
+    }
+
+    // Validate each key value
+    for (const [keyName, keyValue] of Object.entries(key)) {
+      if (keyValue === null || keyValue === undefined || keyValue === '') {
+        throw new Error(`Invalid key value for "${keyName}": ${keyValue}. Key values cannot be null, undefined, or empty string.`);
+      }
+      
+      // Ensure key values are primitive types (string, number, boolean)
+      if (typeof keyValue === 'object') {
+        throw new Error(`Invalid key value type for "${keyName}": ${typeof keyValue}. Key values must be primitive types (string, number, boolean).`);
+      }
+    }
+
+    // For users table, ensure we only have the 'id' key
+    if (tableName === 'users') {
+      const keyNames = Object.keys(key);
+      if (keyNames.length !== 1 || keyNames[0] !== 'id') {
+        throw new Error(`Invalid key structure for users table. Expected only 'id' key, but got: ${JSON.stringify(keyNames)}`);
+      }
+      
+      if (typeof key.id !== 'string' || key.id.trim() === '') {
+        throw new Error(`Invalid user ID: "${key.id}". User ID must be a non-empty string.`);
+      }
+    }
+
     const command = new DeleteCommand({
       TableName: actualTableName,
       Key: key
     });
     
     try {
+      console.log(`[DynamoDB] Sending DELETE command for table ${actualTableName} with key:`, JSON.stringify(key, null, 2));
       const result = await this.docClient.send(command);
+      console.log(`[DynamoDB] DELETE operation successful for table ${actualTableName}, key: ${JSON.stringify(key)}`);
       return result;
     } catch (error) {
       console.error(`[DynamoDB] DELETE failed:`, {
         tableName: actualTableName,
+        originalTableName: tableName,
+        key: key,
         error: error.message,
-        code: error.name
+        code: error.name,
+        httpStatusCode: error.$metadata?.httpStatusCode,
+        requestId: error.$metadata?.requestId,
+        stackTrace: error.stack
       });
+      
+      // Provide specific guidance for validation errors
+      if (error.name === 'ValidationException') {
+        if (error.message.includes('conditions on the keys')) {
+          console.error(`[DynamoDB] Key validation error: The key structure doesn't match the table schema.`);
+          console.error(`[DynamoDB] Provided key:`, JSON.stringify(key, null, 2));
+          console.error(`[DynamoDB] For users table, expected: { "id": "string-value" }`);
+          console.error(`[DynamoDB] Ensure the key contains only the table's partition key (and sort key if applicable).`);
+        }
+      }
+      
       throw error;
     }
   }
