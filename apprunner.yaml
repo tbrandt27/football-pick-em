@@ -4,12 +4,17 @@ runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
 build:
   commands:
     build:
-      - echo "Installing all dependencies for build..."
-      - npm ci
+      - echo "Setting up build environment..."
+      - node --version
+      - npm --version
+      - echo "Installing dependencies..."
+      - npm ci --verbose
+      - echo "Checking installed packages..."
+      - npm list --depth=0
       - echo "Building application..."
-      - npm run build
-      - echo "Removing devDependencies after build..."
-      - npm prune --production
+      - NODE_ENV=production npm run build
+      - echo "Verifying build output..."
+      - ls -la dist/ || echo "No dist directory found"
       - echo "Setting permissions..."
       - chmod +x scripts/start.sh
 
