@@ -34,46 +34,24 @@ class ConfigService {
     console.log('🔧 Initializing configuration service...');
 
     try {
-      if (process.env.NODE_ENV === 'production' && process.env.USE_SECRETS_MANAGER === 'true') {
-        console.log('🔐 Loading secrets from AWS Secrets Manager...');
-        
-        const secretName = process.env.SECRETS_SECRET_NAME || 'football-pickem/jwt-secret';
-        
-        // Load all secrets at once
-        const secrets = await secretsManager.getSecrets(secretName, {
-          jwt_secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
-          settings_encryption_key: process.env.SETTINGS_ENCRYPTION_KEY || 'football-pickem-default-key-32-chars!',
-          admin_email: process.env.ADMIN_EMAIL || 'admin@nflpickem.com',
-          admin_password: process.env.ADMIN_PASSWORD || 'admin123'
-        });
-
-        // Cache the secrets
-        this.cache.set('JWT_SECRET', secrets.jwt_secret);
-        this.cache.set('SETTINGS_ENCRYPTION_KEY', secrets.settings_encryption_key);
-        this.cache.set('ADMIN_EMAIL', secrets.admin_email);
-        this.cache.set('ADMIN_PASSWORD', secrets.admin_password);
-
-        console.log('✅ Configuration loaded from AWS Secrets Manager');
-      } else {
-        console.log('🔧 Loading configuration from environment variables');
-        
-        // Development mode or Secrets Manager disabled - use environment variables
-        this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
-        this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || 'football-pickem-default-key-32-chars!');
-        this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || 'admin@nflpickem.com');
-        this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || 'admin123');
-
-        console.log('✅ Configuration loaded from environment variables');
-      }
-    } catch (error) {
-      console.error('❌ Failed to initialize configuration service:', error);
+      console.log('🔧 Loading configuration from environment variables');
       
-      // Fallback to environment variables even in production
-      console.log('🔄 Falling back to environment variables...');
+      // Load from environment variables (App Runner injects secrets directly)
       this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production');
       this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || 'football-pickem-default-key-32-chars!');
       this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || 'admin@nflpickem.com');
       this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || 'admin123');
+
+      console.log('✅ Configuration loaded from environment variables');
+    } catch (error) {
+      console.error('❌ Failed to initialize configuration service:', error);
+      
+      // Fallback to default values
+      console.log('🔄 Using fallback configuration values...');
+      this.cache.set('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production');
+      this.cache.set('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!');
+      this.cache.set('ADMIN_EMAIL', 'admin@nflpickem.com');
+      this.cache.set('ADMIN_PASSWORD', 'admin123');
       
       console.log('⚠️  Configuration loaded with fallback values');
     }
@@ -152,7 +130,7 @@ class ConfigService {
   getStatus() {
     return {
       initialized: this.initialized,
-      secretsManagerEnabled: process.env.NODE_ENV === 'production' && process.env.USE_SECRETS_MANAGER === 'true',
+      secretsManagerEnabled: false,
       configuredKeys: Array.from(this.cache.keys()),
       environment: process.env.NODE_ENV || 'development'
     };
