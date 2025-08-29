@@ -117,6 +117,40 @@ export async function registerWithInvite(userData: {
   }
 }
 
+export async function forgotPassword(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await api.forgotPassword(email);
+    
+    if (response.success) {
+      return { success: true };
+    } else {
+      return { success: false, error: response.error || 'Failed to send reset email' };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send reset email'
+    };
+  }
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await api.resetPassword(token, newPassword);
+    
+    if (response.success) {
+      return { success: true };
+    } else {
+      return { success: false, error: response.error || 'Failed to reset password' };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reset password'
+    };
+  }
+}
+
 export function logout() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');

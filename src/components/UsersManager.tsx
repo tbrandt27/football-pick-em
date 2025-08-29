@@ -615,7 +615,7 @@ const UsersManager: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {userData.id !== user?.id && (
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => toggleAdminStatus(userData.id, !userData.is_admin)}
                             className={`px-3 py-1 rounded text-xs font-medium ${
@@ -625,6 +625,17 @@ const UsersManager: React.FC = () => {
                             }`}
                           >
                             {userData.is_admin ? 'Remove Admin' : 'Make Admin'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Send password reset email to ${userData.first_name} ${userData.last_name} (${userData.email})?\n\nThis will send them an email with a link to reset their password.`)) {
+                                sendPasswordReset(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
+                              }
+                            }}
+                            disabled={sendingPasswordReset === userData.id}
+                            className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium"
+                          >
+                            {sendingPasswordReset === userData.id ? 'Sending...' : 'Reset Password'}
                           </button>
                           <button
                             onClick={() => {
