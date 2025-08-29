@@ -129,24 +129,13 @@ const Login: React.FC = () => {
         <button
           type="button"
           onClick={() => { setMode('register'); setError(''); setSuccess(''); }}
-          className={`flex-1 py-2 px-4 text-center font-medium transition-colors ${
+          className={`flex-1 py-2 px-4 text-center font-medium rounded-r-lg transition-colors ${
             mode === 'register'
               ? 'bg-blue-600 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
           Register
-        </button>
-        <button
-          type="button"
-          onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
-          className={`flex-1 py-2 px-4 text-center font-medium rounded-r-lg transition-colors ${
-            mode === 'forgot'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Reset Password
         </button>
       </div>
 
