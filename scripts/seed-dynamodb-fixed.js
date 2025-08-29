@@ -102,16 +102,6 @@ class DynamoDBSeeder {
         const teamId = uuidv4();
         const now = new Date().toISOString();
         
-        // Map team codes to logo filenames
-        const logoMap = {
-          'LAR': 'LAR.svg',
-          'LAC': 'LAC.svg',
-          'LV': 'LV.svg'
-        };
-        
-        const logoFilename = logoMap[team.code] || `${team.code}.svg`;
-        const logoPath = `/logos/${logoFilename}`;
-        
         const teamItem = {
           id: teamId,
           team_code: team.code,
@@ -119,7 +109,7 @@ class DynamoDBSeeder {
           team_city: team.city,
           team_conference: team.conference,
           team_division: team.division,
-          team_logo: logoPath,
+          team_logo: `/logos/${team.code}.svg`,
           team_primary_color: team.primaryColor,
           team_secondary_color: team.secondaryColor,
           created_at: now,

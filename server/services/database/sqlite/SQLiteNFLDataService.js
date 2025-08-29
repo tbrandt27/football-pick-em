@@ -280,4 +280,83 @@ export default class SQLiteNFLDataService extends INFLDataService {
     const games = await this.getGamesByDateRange(seasonId, startOfDay, endOfDay);
     return games.length > 0;
   }
+
+  /**
+   * Get team by ID
+   * @param {string} teamId - Team ID
+   * @returns {Promise<Object|null>} Team or null
+   */
+  async getTeamById(teamId) {
+    return await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+  }
+
+  /**
+   * Update team
+   * @param {string} teamId - Team ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated team
+   */
+  async updateTeam(teamId, updates) {
+    const existingTeam = await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+    if (!existingTeam) {
+      throw new Error('Team not found');
+    }
+
+    const updateFields = [];
+    const params = [];
+    
+    Object.keys(updates).forEach(key => {
+      if (updates[key] !== undefined) {
+        updateFields.push(`${key} = ?`);
+        params.push(updates[key]);
+      }
+    });
+    
+    if (updateFields.length > 0) {
+      updateFields.push('updated_at = datetime("now")');
+      params.push(teamId);
+      
+      await db.run(`
+        UPDATE football_teams
+        SET ${updateFields.join(', ')}
+        WHERE id = ?
+      `, params);
+    }
+    
+    return await db.get('SELECT * FROM football_teams WHERE id = ?', [teamId]);
+  }
+
+  /**
+   * Get game count by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Object>} Game count result
+   */
+  async getGameCountBySeason(seasonId) {
+    const result = await db.get(`
+      SELECT COUNT(*) as count FROM football_games
+      WHERE season_id = ?
+    `, [seasonId]);
+    return { count: result.count || 0 };
+  }
+
+  /**
+   * Update game time
+   * @param {string} gameId - Game ID
+   * @param {string} startTime - New start time
+   * @returns {Promise<Object>} Updated game
+   */
+  async updateGameTime(gameId, startTime) {
+    const existingGame = await db.get('SELECT * FROM football_games WHERE id = ?', [gameId]);
+    if (!existingGame) {
+      throw new Error('Football game not found');
+    }
+
+    await db.run(`
+      UPDATE football_games
+      SET start_time = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `, [startTime, gameId]);
+
+    return await db.get('SELECT * FROM football_games WHERE id = ?', [gameId]);
+  }
 }

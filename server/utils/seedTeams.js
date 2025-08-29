@@ -65,15 +65,7 @@ export async function seedTeams() {
       const existingTeam = await db.get('SELECT id FROM football_teams WHERE team_code = ?', [team.code]);
       
       if (!existingTeam) {
-        // Map team codes to logo filenames - some codes don't match exactly
-        const logoMap = {
-          'LAR': 'LA.svg',
-          'LAC': 'SD.svg', // Chargers still use SD logo
-          'LV': 'OAK.svg'  // Raiders still use OAK logo
-        };
-        
-        const logoFilename = logoMap[team.code] || `${team.code}.svg`;
-        const logoPath = `/logos/${logoFilename}`;
+        const logoPath = `/logos/${team.code}.svg`;
         
         await db.run(`
           INSERT INTO football_teams (
@@ -160,15 +152,7 @@ async function seedTeamsDynamoDB() {
       }
       
       if (!existingTeam) {
-        // Map team codes to logo filenames
-        const logoMap = {
-          'LAR': 'LA.svg',
-          'LAC': 'SD.svg', // Chargers still use SD logo
-          'LV': 'OAK.svg'  // Raiders still use OAK logo
-        };
-        
-        const logoFilename = logoMap[team.code] || `${team.code}.svg`;
-        const logoPath = `/logos/${logoFilename}`;
+        const logoPath = `/logos/${team.code}.svg`;
         
         // Create team item with proper structure for DynamoDB
         const teamItem = {
@@ -220,15 +204,7 @@ async function updateExistingTeam(teamId, teamData) {
       return;
     }
     
-    // Map team codes to logo filenames
-    const logoMap = {
-      'LAR': 'LA.svg',
-      'LAC': 'SD.svg',
-      'LV': 'OAK.svg'
-    };
-    
-    const logoFilename = logoMap[teamData.code] || `${teamData.code}.svg`;
-    const logoPath = `/logos/${logoFilename}`;
+    const logoPath = `/logos/${teamData.code}.svg`;
     
     // Update any missing fields
     const updates = {};
@@ -278,20 +254,13 @@ export async function updateTeamLogos() {
   console.log('Updating team logos...');
   
   try {
-    const logoMap = {
-      'LAR': 'LA.svg',
-      'LAC': 'SD.svg',
-      'LV': 'OAK.svg'
-    };
-    
     const teams = await db.all('SELECT id, team_code FROM football_teams WHERE team_logo IS NULL OR team_logo = ""');
     
     for (const team of teams) {
-      const logoFilename = logoMap[team.team_code] || `${team.team_code}.svg`;
-      const logoPath = `/logos/${logoFilename}`;
+      const logoPath = `/logos/${team.team_code}.svg`;
       
       await db.run('UPDATE football_teams SET team_logo = ? WHERE id = ?', [logoPath, team.id]);
-      console.log(`Updated ${team.team_code} with logo ${logoFilename}`);
+      console.log(`Updated ${team.team_code} with logo ${team.team_code}.svg`);
     }
     
     console.log('Team logos update completed');
@@ -305,14 +274,7 @@ export async function updateTeamLogos() {
 // Helper function to update existing DynamoDB teams
 async function updateExistingTeamDynamoDB(existingTeam, teamData) {
   try {
-    const logoMap = {
-      'LAR': 'LA.svg',
-      'LAC': 'SD.svg',
-      'LV': 'OAK.svg'
-    };
-    
-    const logoFilename = logoMap[teamData.code] || `${teamData.code}.svg`;
-    const logoPath = `/logos/${logoFilename}`;
+    const logoPath = `/logos/${teamData.code}.svg`;
     
     // Check what fields need updating
     const updates = {};

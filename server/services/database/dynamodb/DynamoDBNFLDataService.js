@@ -243,4 +243,74 @@ export default class DynamoDBNFLDataService extends INFLDataService {
     const games = await this.getGamesByDateRange(seasonId, startOfDay, endOfDay);
     return games.length > 0;
   }
+
+  /**
+   * Get team by ID
+   * @param {string} teamId - Team ID
+   * @returns {Promise<Object|null>} Team or null
+   */
+  async getTeamById(teamId) {
+    const teamResult = await this.db._dynamoGet('football_teams', { id: teamId });
+    return teamResult.Item || null;
+  }
+
+  /**
+   * Update team
+   * @param {string} teamId - Team ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated team
+   */
+  async updateTeam(teamId, updates) {
+    const existingTeamResult = await this.db._dynamoGet('football_teams', { id: teamId });
+    if (!existingTeamResult.Item) {
+      throw new Error('Team not found');
+    }
+
+    const updateData = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    await this.db._dynamoUpdate('football_teams', { id: teamId }, updateData);
+
+    // Return updated team
+    const updatedResult = await this.db._dynamoGet('football_teams', { id: teamId });
+    return updatedResult.Item;
+  }
+
+  /**
+   * Get game count by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Object>} Game count result
+   */
+  async getGameCountBySeason(seasonId) {
+    const gamesResult = await this.db._dynamoScan('football_games', {
+      season_id: seasonId
+    });
+    return { count: gamesResult.Items ? gamesResult.Items.length : 0 };
+  }
+
+  /**
+   * Update game time
+   * @param {string} gameId - Game ID
+   * @param {string} startTime - New start time
+   * @returns {Promise<Object>} Updated game
+   */
+  async updateGameTime(gameId, startTime) {
+    const existingGameResult = await this.db._dynamoGet('football_games', { id: gameId });
+    if (!existingGameResult.Item) {
+      throw new Error('Football game not found');
+    }
+
+    const updateData = {
+      start_time: startTime,
+      updated_at: new Date().toISOString()
+    };
+
+    await this.db._dynamoUpdate('football_games', { id: gameId }, updateData);
+
+    // Return updated game
+    const updatedResult = await this.db._dynamoGet('football_games', { id: gameId });
+    return updatedResult.Item;
+  }
 }

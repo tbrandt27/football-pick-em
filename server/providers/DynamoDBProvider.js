@@ -340,13 +340,17 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     const expressionAttributeNames = {};
     const expressionAttributeValues = {};
     
-    Object.keys(updates).forEach((field, index) => {
+    // Filter out updated_at from updates to avoid duplication
+    const filteredUpdates = { ...updates };
+    delete filteredUpdates.updated_at;
+    
+    Object.keys(filteredUpdates).forEach((field, index) => {
       const fieldName = `#field${index}`;
       const fieldValue = `:value${index}`;
       
       updateExpression.push(`${fieldName} = ${fieldValue}`);
       expressionAttributeNames[fieldName] = field;
-      expressionAttributeValues[fieldValue] = updates[field];
+      expressionAttributeValues[fieldValue] = filteredUpdates[field];
     });
 
     // Always update the updated_at timestamp

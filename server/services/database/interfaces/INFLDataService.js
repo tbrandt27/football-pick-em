@@ -95,4 +95,42 @@ export default class INFLDataService {
   async getFootballGameById(gameId) {
     throw new Error('getFootballGameById must be implemented');
   }
+
+  /**
+   * Get team by ID
+   * @param {string} teamId - Team ID
+   * @returns {Promise<Object|null>} Team or null
+   */
+  async getTeamById(teamId) {
+    throw new Error('getTeamById must be implemented');
+  }
+
+  /**
+   * Update team
+   * @param {string} teamId - Team ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated team
+   */
+  async updateTeam(teamId, updates) {
+    throw new Error('updateTeam must be implemented');
+  }
+
+  /**
+   * Get game count by season
+   * @param {string} seasonId - Season ID
+   * @returns {Promise<Object>} Game count result
+   */
+  async getGameCountBySeason(seasonId) {
+    throw new Error('getGameCountBySeason must be implemented');
+  }
+
+  /**
+   * Update game time
+   * @param {string} gameId - Game ID
+   * @param {string} startTime - New start time
+   * @returns {Promise<Object>} Updated game
+   */
+  async updateGameTime(gameId, startTime) {
+    throw new Error('updateGameTime must be implemented');
+  }
 }

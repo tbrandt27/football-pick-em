@@ -825,41 +825,92 @@ router.delete(
       // Delete related records manually to handle foreign key constraints
       if (db.getType() === 'dynamodb') {
         // For DynamoDB, use scans to find and delete records
+        console.log(`[DynamoDB] Starting related records cleanup for user: ${userId}`);
         
-        // Delete picks
-        const picksResult = await db.provider._dynamoScan('picks', { user_id: userId });
-        if (picksResult.Items) {
-          for (const pick of picksResult.Items) {
-            await db.provider._dynamoDelete('picks', { id: pick.id });
+        try {
+          // Delete picks
+          console.log(`[DynamoDB] Deleting picks for user: ${userId}`);
+          const picksResult = await db.provider._dynamoScan('picks', { user_id: userId });
+          if (picksResult.Items) {
+            console.log(`[DynamoDB] Found ${picksResult.Items.length} picks to delete`);
+            for (const pick of picksResult.Items) {
+              // Ensure we have a valid pick ID before attempting deletion
+              if (pick.id) {
+                await db.provider._dynamoDelete('picks', { id: pick.id });
+              } else {
+                console.warn(`[DynamoDB] Skipping pick deletion - missing ID:`, pick);
+              }
+            }
+          } else {
+            console.log(`[DynamoDB] No picks found for user`);
           }
-        }
-        
-        // Delete weekly standings
-        const standingsResult = await db.provider._dynamoScan('weekly_standings', { user_id: userId });
-        if (standingsResult.Items) {
-          for (const standing of standingsResult.Items) {
-            await db.provider._dynamoDelete('weekly_standings', { id: standing.id });
+          
+          // Delete weekly standings
+          console.log(`[DynamoDB] Deleting weekly standings for user: ${userId}`);
+          const standingsResult = await db.provider._dynamoScan('weekly_standings', { user_id: userId });
+          if (standingsResult.Items) {
+            console.log(`[DynamoDB] Found ${standingsResult.Items.length} standings to delete`);
+            for (const standing of standingsResult.Items) {
+              // Ensure we have a valid standing ID before attempting deletion
+              if (standing.id) {
+                await db.provider._dynamoDelete('weekly_standings', { id: standing.id });
+              } else {
+                console.warn(`[DynamoDB] Skipping standing deletion - missing ID:`, standing);
+              }
+            }
+          } else {
+            console.log(`[DynamoDB] No standings found for user`);
           }
-        }
-        
-        // Delete game invitations
-        const invitationService = DatabaseServiceFactory.getInvitationService();
-        await invitationService.deleteInvitationsByUser(userId, user.email);
-        
-        // Remove from game participants
-        const participantsResult = await db.provider._dynamoScan('game_participants', { user_id: userId });
-        if (participantsResult.Items) {
-          for (const participant of participantsResult.Items) {
-            await db.provider._dynamoDelete('game_participants', { id: participant.id });
+          
+          // Delete game invitations
+          console.log(`[DynamoDB] Deleting invitations for user: ${userId}`);
+          const invitationService = DatabaseServiceFactory.getInvitationService();
+          await invitationService.deleteInvitationsByUser(userId, user.email);
+          
+          // Remove from game participants
+          console.log(`[DynamoDB] Removing game participants for user: ${userId}`);
+          const participantsResult = await db.provider._dynamoScan('game_participants', { user_id: userId });
+          if (participantsResult.Items) {
+            console.log(`[DynamoDB] Found ${participantsResult.Items.length} participant records to delete`);
+            for (const participant of participantsResult.Items) {
+              // Ensure we have a valid participant ID before attempting deletion
+              if (participant.id) {
+                console.log(`[DynamoDB] Deleting participant: ${participant.id}`);
+                await db.provider._dynamoDelete('game_participants', { id: participant.id });
+              } else {
+                console.warn(`[DynamoDB] Skipping participant deletion - missing ID:`, participant);
+              }
+            }
+          } else {
+            console.log(`[DynamoDB] No participant records found for user`);
           }
-        }
-        
-        // Update games where this user was commissioner (set to the requesting admin)
-        const gamesResult = await db.provider._dynamoScan('pickem_games', { commissioner_id: userId });
-        if (gamesResult.Items) {
-          for (const game of gamesResult.Items) {
-            await db.provider._dynamoUpdate('pickem_games', { id: game.id }, { commissioner_id: req.user.id });
+          
+          // Update games where this user was commissioner (set to the requesting admin)
+          console.log(`[DynamoDB] Updating commissioner for games owned by user: ${userId}`);
+          const gamesResult = await db.provider._dynamoScan('pickem_games', { commissioner_id: userId });
+          if (gamesResult.Items) {
+            console.log(`[DynamoDB] Found ${gamesResult.Items.length} games to update commissioner`);
+            for (const game of gamesResult.Items) {
+              // Ensure we have a valid game ID before attempting update
+              if (game.id) {
+                await db.provider._dynamoUpdate('pickem_games', { id: game.id }, { commissioner_id: req.user.id });
+              } else {
+                console.warn(`[DynamoDB] Skipping game commissioner update - missing ID:`, game);
+              }
+            }
+          } else {
+            console.log(`[DynamoDB] No games found where user was commissioner`);
           }
+          
+          console.log(`[DynamoDB] Successfully completed related records cleanup for user: ${userId}`);
+        } catch (error) {
+          console.error(`[DynamoDB] Error during related records cleanup for user ${userId}:`, error);
+          console.error(`[DynamoDB] Error details:`, {
+            message: error.message,
+            code: error.name,
+            stack: error.stack
+          });
+          throw error; // Re-throw to be caught by the main error handler
         }
       } else {
         // For SQLite, use service layer methods

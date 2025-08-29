@@ -221,10 +221,48 @@ router.post(
           },
         });
       } else {
-        // User doesn't exist - would need invitation system
-        // For now, return an error since invitation system needs to be implemented
-        res.status(400).json({
-          error: "User not found. Invitation system not yet implemented in refactored routes."
+        // User doesn't exist - send invitation
+
+        // Check if invitation already exists
+        const invitationService = DatabaseServiceFactory.getInvitationService();
+        const existingInvitation = await invitationService.checkExistingInvitation(gameId, normalizedEmail);
+
+        if (existingInvitation) {
+          return res
+            .status(409)
+            .json({ error: "Invitation already sent to this email" });
+        }
+
+        // Create invitation
+        const inviteToken = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
+        await invitationService.createInvitation({
+          gameId,
+          email: normalizedEmail,
+          invitedByUserId: req.user.id,
+          inviteToken,
+          expiresAt: expiresAt.toISOString()
+        });
+
+        // Send invitation email
+        const emailResult = await emailService.sendGameInvitation(
+          normalizedEmail,
+          `${inviter.first_name} ${inviter.last_name}`,
+          game.game_name,
+          inviteToken
+        );
+
+        if (!emailResult.success) {
+          console.error("Failed to send invitation email:", emailResult.error);
+          // Still return success since the invitation was saved to database
+        }
+
+        res.json({
+          message: "Invitation sent successfully",
+          type: "invitation_sent",
+          email: normalizedEmail,
         });
       }
     } catch (error) {
@@ -259,5 +297,59 @@ router.delete(
     }
   }
 );
+
+// Get invitations for a specific game (game owner only)
+router.get("/:gameId/invitations", authenticateToken, requireGameOwner, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+
+    // Get invitations for this game
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const gameInvitations = await invitationService.getGameInvitations(gameId);
+
+    const userService = DatabaseServiceFactory.getUserService();
+    const invitations = await Promise.all(gameInvitations.map(async (invitation) => {
+      let invited_by_name = 'Unknown';
+      if (invitation.invited_by_user_id) {
+        const inviter = await userService.getUserBasicInfo(invitation.invited_by_user_id);
+        if (inviter) {
+          invited_by_name = `${inviter.first_name} ${inviter.last_name}`;
+        }
+      }
+      return {
+        ...invitation,
+        invited_by_name
+      };
+    }));
+
+    res.json({ invitations });
+  } catch (error) {
+    console.error("Get game invitations error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Cancel invitation (game owner only)
+router.delete("/:gameId/invitations/:invitationId", authenticateToken, requireGameOwner, async (req, res) => {
+  try {
+    const { gameId, invitationId } = req.params;
+
+    // Verify invitation exists and belongs to this game
+    const invitationService = DatabaseServiceFactory.getInvitationService();
+    const invitation = await invitationService.getInvitationById(invitationId);
+
+    if (!invitation || invitation.game_id !== gameId) {
+      return res.status(404).json({ error: "Invitation not found" });
+    }
+
+    // Cancel the invitation
+    await invitationService.updateInvitationStatus(invitationId, 'cancelled');
+
+    res.json({ message: "Invitation cancelled successfully" });
+  } catch (error) {
+    console.error("Cancel invitation error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;
