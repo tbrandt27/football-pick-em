@@ -1,10 +1,10 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import Register from "../components/Register.tsx";
+import RegisterComponent from "../components/Register.tsx";
 
 // Get the invite token from the URL query parameters
 const url = new URL(Astro.request.url);
-const inviteToken = url.searchParams.get('token');
+const inviteToken = url.searchParams.get('token') || undefined;
 ---
 
 <Layout title="Register - NFL Pickem">
@@ -14,7 +14,7 @@ const inviteToken = url.searchParams.get('token');
         NFL Pickem Registration
       </h1>
       <div class="max-w-md mx-auto">
-        <Register client:load inviteToken={inviteToken} />
+        <RegisterComponent client:load inviteToken={inviteToken} />
       </div>
     </div>
   </main>

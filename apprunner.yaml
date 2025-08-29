@@ -26,9 +26,9 @@ run:
     - name: NODE_ENV
       value: production
     - name: CLIENT_URL
-      value: ${AWS_APPRUNNER_SERVICE_URL}
+      value: "https://w34g9vjcpz.us-east-1.awsapprunner.com"
     - name: FRONTEND_URL
-      value: ${AWS_APPRUNNER_SERVICE_URL}
+      value: "https://w34g9vjcpz.us-east-1.awsapprunner.com"
 
     # Static Files Configuration
     - name: LOGOS_PATH
