@@ -31,7 +31,7 @@ router.get("/version", authenticateToken, requireAdmin, async (req, res) => {
       name: packageJson.name
     });
   } catch (error) {
-    console.error("Get version error:", error);
+    logger.error("Get version error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -59,7 +59,7 @@ router.get("/stats", authenticateToken, requireAdmin, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get admin stats error:", error);
+    logger.error("Get admin stats error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -74,7 +74,7 @@ router.post(
       await seedTeams();
       res.json({ message: "NFL teams seeded successfully" });
     } catch (error) {
-      console.error("Seed teams error:", error);
+      logger.error("Seed teams error:", error);
       res.status(500).json({ error: "Failed to seed teams" });
     }
   }
@@ -90,7 +90,7 @@ router.post(
       await updateTeamLogos();
       res.json({ message: "Team logos updated successfully" });
     } catch (error) {
-      console.error("Update team logos error:", error);
+      logger.error("Update team logos error:", error);
       res.status(500).json({ error: "Failed to update team logos" });
     }
   }
@@ -132,13 +132,13 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
     for (const testPath of possibleLogoPaths) {
       if (fs.existsSync(testPath)) {
         logosPath = testPath;
-        console.log(`Admin API: Found logos directory at ${testPath}`);
+        logger.debug(`Admin API: Found logos directory at ${testPath}`);
         break;
       }
     }
 
     if (!logosPath) {
-      console.error("Admin API: Logos directory not found. Tried paths:", possibleLogoPaths);
+      logger.error("Admin API: Logos directory not found. Tried paths:", possibleLogoPaths);
       return res.status(404).json({
         error: "Logos directory not found",
         triedPaths: possibleLogoPaths,
@@ -158,10 +158,10 @@ router.get("/team-logos", authenticateToken, requireAdmin, async (req, res) => {
       .filter((file) => file.endsWith(".svg"))
       .sort();
 
-    console.log(`Admin API: Found ${logoFiles.length} logo files in ${logosPath}`);
+    logger.debug(`Admin API: Found ${logoFiles.length} logo files in ${logosPath}`);
     res.json({ logos: logoFiles });
   } catch (error) {
-    console.error("Admin API: Get team logos error:", error);
+    logger.error("Admin API: Get team logos error:", error);
     res
       .status(500)
       .json({ error: `Failed to get team logos: ${error.message}` });
@@ -253,7 +253,7 @@ router.get("/debug/paths", authenticateToken, requireAdmin, async (req, res) => 
       publicTests,
     });
   } catch (error) {
-    console.error("Debug paths error:", error);
+    logger.error("Debug paths error:", error);
     res.status(500).json({ error: `Debug error: ${error.message}` });
   }
 });
@@ -283,7 +283,7 @@ router.post("/sync-espn", authenticateToken, requireAdmin, async (req, res) => {
       ...result,
     });
   } catch (error) {
-    console.error("ESPN sync error:", error);
+    logger.error("ESPN sync error:", error);
     res
       .status(500)
       .json({ error: error.message || "Failed to sync with ESPN" });
@@ -304,7 +304,7 @@ router.post(
         results,
       });
     } catch (error) {
-      console.error("Update scores error:", error);
+      logger.error("Update scores error:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to update scores" });
@@ -333,7 +333,7 @@ router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
               game_count: gameParticipations.Items ? gameParticipations.Items.length : 0
             };
           } catch (error) {
-            console.warn(`Could not get game count for user ${user.id}:`, error);
+            logger.warn(`Could not get game count for user ${user.id}:`, error);
             return {
               ...user,
               game_count: 0
@@ -351,7 +351,7 @@ router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
       res.json({ users });
     }
   } catch (error) {
-    console.error("Get admin users error:", error);
+    logger.error("Get admin users error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -368,7 +368,7 @@ router.get(
       
       res.json({ invitations });
     } catch (error) {
-      console.error("Get admin invitations error:", error);
+      logger.error("Get admin invitations error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -390,7 +390,7 @@ router.delete(
         message: `Invitation for ${invitation.email} cancelled successfully`,
       });
     } catch (error) {
-      console.error("Cancel invitation error:", error);
+      logger.error("Cancel invitation error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -434,7 +434,7 @@ router.get(
         }
       });
     } catch (error) {
-      console.error("Get invitation by token error:", error);
+      logger.error("Get invitation by token error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -495,7 +495,7 @@ router.post(
             }
           }
         } catch (error) {
-          console.warn(`Could not get game name for invitation ${invitationId}:`, error);
+          logger.warn(`Could not get game name for invitation ${invitationId}:`, error);
           // Use default name for admin invitations or when game lookup fails
         }
       }
@@ -554,7 +554,7 @@ router.post(
       });
 
     } catch (error) {
-      console.error("Confirm invitation error:", error);
+      logger.error("Confirm invitation error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -571,7 +571,7 @@ router.get("/games", authenticateToken, requireAdmin, async (req, res) => {
     
     res.json({ games });
   } catch (error) {
-    console.error("Get admin games error:", error);
+    logger.error("Get admin games error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -646,7 +646,7 @@ async function migrateGameData() {
       }
     }
   } catch (error) {
-    console.error("Game data migration error:", error);
+    logger.error("Game data migration error:", error);
   }
 }
 
@@ -659,8 +659,8 @@ router.delete(
     try {
       const { gameId } = req.params;
 
-      console.log(`[Admin Game Deletion] Starting deletion for game: ${gameId}`);
-      console.log(`[Admin Game Deletion] Database type: ${db.getType ? db.getType() : 'unknown'}`);
+      logger.debug(`[Admin Game Deletion] Starting deletion for game: ${gameId}`);
+      logger.debug(`[Admin Game Deletion] Database type: ${db.getType ? db.getType() : 'unknown'}`);
 
       // Use the game service layer for proper deletion handling
       const gameService = DatabaseServiceFactory.getGameService();
@@ -668,14 +668,14 @@ router.delete(
       // Get game info before deletion for response message using admin method
       let game;
       try {
-        console.log(`[Admin Game Deletion] Attempting to get game info for ${gameId}`);
+        logger.debug(`[Admin Game Deletion] Attempting to get game info for ${gameId}`);
         game = await gameService.getGameByIdForAdmin(gameId);
-        console.log(`[Admin Game Deletion] Game found:`, game ? 'Yes' : 'No');
+        logger.debug(`[Admin Game Deletion] Game found:`, game ? 'Yes' : 'No');
         if (!game) {
-          console.log(`[Admin Game Deletion] Game ${gameId} not found using service layer`);
-          
+          logger.debug(`[Admin Game Deletion] Game ${gameId} not found using service layer`);
+
           // Fallback: try direct database access for debugging
-          console.log(`[Admin Game Deletion] Trying direct database access as fallback`);
+          logger.debug(`[Admin Game Deletion] Trying direct database access as fallback`);
           try {
             if (db.getType && db.getType() === 'dynamodb') {
               const directResult = await db.get({
@@ -683,53 +683,53 @@ router.delete(
                 table: 'pickem_games',
                 key: { id: gameId }
               });
-              console.log(`[Admin Game Deletion] Direct DynamoDB result:`, directResult ? 'Found' : 'Not found');
+              logger.debug(`[Admin Game Deletion] Direct DynamoDB result:`, directResult ? 'Found' : 'Not found');
               if (directResult && directResult.Item) {
                 game = directResult.Item;
-                console.log(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
+                logger.debug(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
               }
             } else {
               const directResult = await db.get("SELECT * FROM pickem_games WHERE id = ?", [gameId]);
-              console.log(`[Admin Game Deletion] Direct SQLite result:`, directResult ? 'Found' : 'Not found');
+              logger.debug(`[Admin Game Deletion] Direct SQLite result:`, directResult ? 'Found' : 'Not found');
               if (directResult) {
                 game = directResult;
-                console.log(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
+                logger.debug(`[Admin Game Deletion] Found game via direct access: ${game.game_name}`);
               }
             }
           } catch (directError) {
-            console.error(`[Admin Game Deletion] Direct database access also failed:`, directError);
+            logger.error(`[Admin Game Deletion] Direct database access also failed:`, directError);
           }
           
           if (!game) {
             // For debugging, let's also try to list all games to see what's available
             try {
               const allGames = await gameService.getAllGames();
-              console.log(`[Admin Game Deletion] Total games in database: ${allGames.length}`);
-              console.log(`[Admin Game Deletion] Available game IDs:`, allGames.map(g => g.id).slice(0, 5));
+              logger.debug(`[Admin Game Deletion] Total games in database: ${allGames.length}`);
+              logger.debug(`[Admin Game Deletion] Available game IDs:`, allGames.map(g => g.id).slice(0, 5));
             } catch (listError) {
-              console.error(`[Admin Game Deletion] Error listing games:`, listError);
+              logger.error(`[Admin Game Deletion] Error listing games:`, listError);
             }
             
             return res.status(404).json({ error: "Game not found" });
           }
         }
       } catch (error) {
-        console.error(`[Admin Game Deletion] Error getting game info:`, error);
-        console.error(`[Admin Game Deletion] Error stack:`, error.stack);
+        logger.error(`[Admin Game Deletion] Error getting game info:`, error);
+        logger.error(`[Admin Game Deletion] Error stack:`, error.stack);
         return res.status(404).json({ error: "Game not found" });
       }
 
       // Use the service layer deleteGame method which handles both SQLite and DynamoDB correctly
-      console.log(`[Admin Game Deletion] Proceeding with deletion of game: ${game.game_name || 'Unknown'}`);
+      logger.debug(`[Admin Game Deletion] Proceeding with deletion of game: ${game.game_name || 'Unknown'}`);
       await gameService.deleteGame(gameId);
 
-      console.log(`[Admin Game Deletion] Game ${gameId} deleted successfully`);
+      logger.info(`[Admin Game Deletion] Game ${gameId} deleted successfully`);
       res.json({
         message: `Game "${game.game_name || game.name || 'Unknown Game'}" deleted successfully`,
       });
     } catch (error) {
-      console.error("Admin delete game error:", error);
-      console.error("Admin delete game error stack:", error.stack);
+      logger.error("Admin delete game error:", error);
+      logger.error("Admin delete game error stack:", error.stack);
       
       if (error.message === 'Game not found') {
         return res.status(404).json({ error: error.message });
@@ -764,7 +764,7 @@ router.put(
 
       res.json({ message: "User admin status updated successfully" });
     } catch (error) {
-      console.error("Update user admin error:", error);
+      logger.error("Update user admin error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -793,7 +793,7 @@ router.put(
         message: `Email verified for ${user.first_name} ${user.last_name} (${user.email})`,
       });
     } catch (error) {
-      console.error("Verify user email error:", error);
+      logger.error("Verify user email error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -825,87 +825,87 @@ router.delete(
       // Delete related records manually to handle foreign key constraints
       if (db.getType() === 'dynamodb') {
         // For DynamoDB, use scans to find and delete records
-        console.log(`[DynamoDB] Starting related records cleanup for user: ${userId}`);
+        logger.debug(`[DynamoDB] Starting related records cleanup for user: ${userId}`);
         
         try {
           // Delete picks
-          console.log(`[DynamoDB] Deleting picks for user: ${userId}`);
+          logger.debug(`[DynamoDB] Deleting picks for user: ${userId}`);
           const picksResult = await db.provider._dynamoScan('picks', { user_id: userId });
           if (picksResult.Items) {
-            console.log(`[DynamoDB] Found ${picksResult.Items.length} picks to delete`);
+            logger.debug(`[DynamoDB] Found ${picksResult.Items.length} picks to delete`);
             for (const pick of picksResult.Items) {
               // Ensure we have a valid pick ID before attempting deletion
               if (pick.id) {
                 await db.provider._dynamoDelete('picks', { id: pick.id });
               } else {
-                console.warn(`[DynamoDB] Skipping pick deletion - missing ID:`, pick);
+                logger.warn(`[DynamoDB] Skipping pick deletion - missing ID:`, pick);
               }
             }
           } else {
-            console.log(`[DynamoDB] No picks found for user`);
+            logger.debug(`[DynamoDB] No picks found for user`);
           }
           
           // Delete weekly standings
-          console.log(`[DynamoDB] Deleting weekly standings for user: ${userId}`);
+          logger.debug(`[DynamoDB] Deleting weekly standings for user: ${userId}`);
           const standingsResult = await db.provider._dynamoScan('weekly_standings', { user_id: userId });
           if (standingsResult.Items) {
-            console.log(`[DynamoDB] Found ${standingsResult.Items.length} standings to delete`);
+            logger.debug(`[DynamoDB] Found ${standingsResult.Items.length} standings to delete`);
             for (const standing of standingsResult.Items) {
               // Ensure we have a valid standing ID before attempting deletion
               if (standing.id) {
                 await db.provider._dynamoDelete('weekly_standings', { id: standing.id });
               } else {
-                console.warn(`[DynamoDB] Skipping standing deletion - missing ID:`, standing);
+                logger.warn(`[DynamoDB] Skipping standing deletion - missing ID:`, standing);
               }
             }
           } else {
-            console.log(`[DynamoDB] No standings found for user`);
+            logger.debug(`[DynamoDB] No standings found for user`);
           }
           
           // Delete game invitations
-          console.log(`[DynamoDB] Deleting invitations for user: ${userId}`);
+          logger.debug(`[DynamoDB] Deleting invitations for user: ${userId}`);
           const invitationService = DatabaseServiceFactory.getInvitationService();
           await invitationService.deleteInvitationsByUser(userId, user.email);
           
           // Remove from game participants
-          console.log(`[DynamoDB] Removing game participants for user: ${userId}`);
+          logger.debug(`[DynamoDB] Removing game participants for user: ${userId}`);
           const participantsResult = await db.provider._dynamoScan('game_participants', { user_id: userId });
           if (participantsResult.Items) {
-            console.log(`[DynamoDB] Found ${participantsResult.Items.length} participant records to delete`);
+            logger.debug(`[DynamoDB] Found ${participantsResult.Items.length} participant records to delete`);
             for (const participant of participantsResult.Items) {
               // Ensure we have a valid participant ID before attempting deletion
               if (participant.id) {
-                console.log(`[DynamoDB] Deleting participant: ${participant.id}`);
+                logger.debug(`[DynamoDB] Deleting participant: ${participant.id}`);
                 await db.provider._dynamoDelete('game_participants', { id: participant.id });
               } else {
-                console.warn(`[DynamoDB] Skipping participant deletion - missing ID:`, participant);
+                logger.warn(`[DynamoDB] Skipping participant deletion - missing ID:`, participant);
               }
             }
           } else {
-            console.log(`[DynamoDB] No participant records found for user`);
+            logger.debug(`[DynamoDB] No participant records found for user`);
           }
           
           // Update games where this user was commissioner (set to the requesting admin)
-          console.log(`[DynamoDB] Updating commissioner for games owned by user: ${userId}`);
+          logger.debug(`[DynamoDB] Updating commissioner for games owned by user: ${userId}`);
           const gamesResult = await db.provider._dynamoScan('pickem_games', { commissioner_id: userId });
           if (gamesResult.Items) {
-            console.log(`[DynamoDB] Found ${gamesResult.Items.length} games to update commissioner`);
+            logger.debug(`[DynamoDB] Found ${gamesResult.Items.length} games to update commissioner`);
             for (const game of gamesResult.Items) {
               // Ensure we have a valid game ID before attempting update
               if (game.id) {
                 await db.provider._dynamoUpdate('pickem_games', { id: game.id }, { commissioner_id: req.user.id });
               } else {
-                console.warn(`[DynamoDB] Skipping game commissioner update - missing ID:`, game);
+                logger.warn(`[DynamoDB] Skipping game commissioner update - missing ID:`, game);
               }
             }
           } else {
-            console.log(`[DynamoDB] No games found where user was commissioner`);
+            logger.debug(`[DynamoDB] No games found where user was commissioner`);
           }
           
-          console.log(`[DynamoDB] Successfully completed related records cleanup for user: ${userId}`);
+          logger.debug(`[DynamoDB] Successfully completed related records cleanup for user: ${userId}`);
         } catch (error) {
-          console.error(`[DynamoDB] Error during related records cleanup for user ${userId}:`, error);
-          console.error(`[DynamoDB] Error details:`, {
+          logger.error(`[DynamoDB] Error during related records cleanup for user ${userId}:`, error);
+          logger.error(`[DynamoDB] Error details:`, {
             message: error.message,
             code: error.name,
             stack: error.stack
@@ -934,7 +934,7 @@ router.delete(
         message: `User "${user.first_name} ${user.last_name}" (${user.email}) deleted successfully`,
       });
     } catch (error) {
-      console.error("Delete user error:", error);
+      logger.error("Delete user error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -948,7 +948,7 @@ router.get("/seasons", authenticateToken, requireAdmin, async (req, res) => {
     
     res.json({ seasons });
   } catch (error) {
-    console.error("Get admin seasons error:", error);
+    logger.error("Get admin seasons error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -981,7 +981,7 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
       season: newSeason,
     });
   } catch (error) {
-    console.error("Create season error:", error);
+    logger.error("Create season error:", error);
     if (error.message === 'Season already exists') {
       return res.status(409).json({ error: error.message });
     }
@@ -998,46 +998,46 @@ router.delete(
     try {
       const { seasonId } = req.params;
 
-      console.log(`[Admin] Delete season request for ID: ${seasonId}`);
+      logger.debug(`[Admin] Delete season request for ID: ${seasonId}`);
 
       const seasonService = DatabaseServiceFactory.getSeasonService();
       const gameService = DatabaseServiceFactory.getGameService();
 
       // Get season info before deletion using the service
-      console.log(`[Admin] Looking up season with ID: ${seasonId}`);
+      logger.debug(`[Admin] Looking up season with ID: ${seasonId}`);
       const season = await seasonService.getSeasonById(seasonId);
       
-      console.log(`[Admin] Season lookup result:`, season);
+      logger.debug(`[Admin] Season lookup result:`, season);
       
       if (!season) {
-        console.log(`[Admin] Season not found for ID: ${seasonId}`);
+        logger.debug(`[Admin] Season not found for ID: ${seasonId}`);
         return res.status(404).json({ error: "Season not found" });
       }
 
       // Check if season has any active pickem games using the service
-      console.log(`[Admin] Checking for associated pickem games for season: ${seasonId}`);
+      logger.debug(`[Admin] Checking for associated pickem games for season: ${seasonId}`);
       const gameCount = await gameService.getGameCountBySeason(seasonId);
 
-      console.log(`[Admin] Game count result: ${gameCount}`);
+      logger.debug(`[Admin] Game count result: ${gameCount}`);
 
       if (gameCount > 0) {
-        console.log(`[Admin] Cannot delete season - has ${gameCount} associated games`);
+        logger.debug(`[Admin] Cannot delete season - has ${gameCount} associated games`);
         return res.status(400).json({
           error: `Cannot delete season ${season.season || season.year} - it has ${gameCount} associated pick'em games. Delete the games first.`
         });
       }
 
       // Use the service layer to delete the season (which handles football games too)
-      console.log(`[Admin] Deleting season using service layer`);
+      logger.debug(`[Admin] Deleting season using service layer`);
       await seasonService.deleteSeason(seasonId);
 
-      console.log(`[Admin] Season ${season.season || season.year} deleted successfully`);
+      logger.info(`[Admin] Season ${season.season || season.year} deleted successfully`);
       res.json({
         message: `Season ${season.season || season.year} deleted successfully`,
       });
     } catch (error) {
-      console.error("[Admin] Delete season error:", error);
-      console.error("[Admin] Error stack:", error.stack);
+      logger.error("[Admin] Delete season error:", error);
+      logger.error("[Admin] Error stack:", error.stack);
       
       // Handle specific service errors
       if (error.message === 'Season not found') {
@@ -1074,7 +1074,7 @@ router.put(
 
       res.json({ message: "Season status updated successfully" });
     } catch (error) {
-      console.error("Update season status error:", error);
+      logger.error("Update season status error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1106,7 +1106,7 @@ router.post(
         gamesCount: gameCount.count,
       });
     } catch (error) {
-      console.error("Sync NFL games error:", error);
+      logger.error("Sync NFL games error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1137,7 +1137,7 @@ router.post(
         updated: result.updated
       });
     } catch (error) {
-      console.error("Sync NFL games error:", error);
+      logger.error("Sync NFL games error:", error);
       res.status(500).json({ error: error.message || "Failed to sync NFL games" });
     }
   }
@@ -1163,7 +1163,7 @@ router.put(
 
       res.json({ message: "Game status updated successfully" });
     } catch (error) {
-      console.error("Update game status error:", error);
+      logger.error("Update game status error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1189,7 +1189,7 @@ router.put(
 
       res.json({ message: "Game time updated successfully" });
     } catch (error) {
-      console.error("Update game time error:", error);
+      logger.error("Update game time error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1215,7 +1215,7 @@ router.put(
 
       res.json({ message: "Current season updated successfully" });
     } catch (error) {
-      console.error("Set current season error:", error);
+      logger.error("Set current season error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1241,7 +1241,7 @@ router.put(
 
       res.json({ message: "Season unset as current successfully" });
     } catch (error) {
-      console.error("Unset current season error:", error);
+      logger.error("Unset current season error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1279,7 +1279,7 @@ router.put(
 
       res.json({ message: "Team updated successfully" });
     } catch (error) {
-      console.error("Update team error:", error);
+      logger.error("Update team error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1297,7 +1297,7 @@ router.get(
       const status = scheduler.getStatus();
       res.json({ status });
     } catch (error) {
-      console.error("Get scheduler status error:", error);
+      logger.error("Get scheduler status error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1317,7 +1317,7 @@ router.post(
         status,
       });
     } catch (error) {
-      console.error("Start scheduler error:", error);
+      logger.error("Start scheduler error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1337,7 +1337,7 @@ router.post(
         status,
       });
     } catch (error) {
-      console.error("Stop scheduler error:", error);
+      logger.error("Stop scheduler error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1353,7 +1353,7 @@ router.post(
       await scheduler.triggerUpdate();
       res.json({ message: "Manual update triggered successfully" });
     } catch (error) {
-      console.error("Trigger manual update error:", error);
+      logger.error("Trigger manual update error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1381,7 +1381,7 @@ router.post(
         week: result.week,
       });
     } catch (error) {
-      console.error("Calculate picks error:", error);
+      logger.error("Calculate picks error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1402,7 +1402,7 @@ router.post("/update-scores-on-demand", authenticateToken, async (req, res) => {
       res.json(result);
     }
   } catch (error) {
-    console.error("On-demand update error:", error);
+    logger.error("On-demand update error:", error);
     res.status(500).json({
       updated: false,
       reason: "Server error",
@@ -1442,7 +1442,7 @@ router.put(
 
       res.json({ message: "Game season updated successfully" });
     } catch (error) {
-      console.error("Update game season error:", error);
+      logger.error("Update game season error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1467,7 +1467,7 @@ router.get(
         isStale: await onDemandUpdates.areScoresStale(seasonId, week),
       });
     } catch (error) {
-      console.error("Get last update error:", error);
+      logger.error("Get last update error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1499,7 +1499,7 @@ function decrypt(encryptedText) {
   try {
     // Validate input
     if (!encryptedText || typeof encryptedText !== 'string') {
-      console.warn("Invalid encrypted text provided to decrypt function");
+      logger.warn("Invalid encrypted text provided to decrypt function");
       return "";
     }
 
@@ -1538,7 +1538,7 @@ function decrypt(encryptedText) {
       return decrypted;
     } else {
       // Legacy format: try multiple decryption methods
-      console.warn("Attempting to decrypt legacy encrypted value. Consider re-saving to use new encryption.");
+      logger.warn("Attempting to decrypt legacy encrypted value. Consider re-saving to use new encryption.");
       
       // Try method 1: Zero IV (most common legacy method)
       try {
@@ -1551,7 +1551,7 @@ function decrypt(encryptedText) {
         
         return decrypted;
       } catch (method1Error) {
-        console.warn("Legacy decryption method 1 failed:", method1Error.message);
+        logger.warn("Legacy decryption method 1 failed:", method1Error.message);
       }
       
       // Try method 2: Different key derivation (if the original used a different method)
@@ -1565,7 +1565,7 @@ function decrypt(encryptedText) {
         
         return decrypted;
       } catch (method2Error) {
-        console.warn("Legacy decryption method 2 failed:", method2Error.message);
+        logger.warn("Legacy decryption method 2 failed:", method2Error.message);
       }
       
       // Try method 3: MD5 hash of key (another common legacy method)
@@ -1580,7 +1580,7 @@ function decrypt(encryptedText) {
         
         return decrypted;
       } catch (method3Error) {
-        console.warn("Legacy decryption method 3 failed:", method3Error.message);
+        logger.warn("Legacy decryption method 3 failed:", method3Error.message);
       }
       
       // Try method 4: SHA256 hash of key
@@ -1594,7 +1594,7 @@ function decrypt(encryptedText) {
         
         return decrypted;
       } catch (method4Error) {
-        console.warn("Legacy decryption method 4 failed:", method4Error.message);
+        logger.warn("Legacy decryption method 4 failed:", method4Error.message);
       }
       
       // Try method 5: AES-128 instead of AES-256 (in case original was 128)
@@ -1608,17 +1608,17 @@ function decrypt(encryptedText) {
         
         return decrypted;
       } catch (method5Error) {
-        console.warn("Legacy decryption method 5 failed:", method5Error.message);
+        logger.warn("Legacy decryption method 5 failed:", method5Error.message);
       }
-      
-      console.error("All legacy decryption methods failed for value");
+
+      logger.error("All legacy decryption methods failed for value");
       return "";
     }
   } catch (error) {
-    console.error("Decryption error:", error);
-    console.log("Failed to decrypt value:", error.message);
-    console.log("Encrypted text length:", encryptedText?.length || 0);
-    console.log("Encryption key defined:", !!getEncryptionKey());
+    logger.error("Decryption error:", error);
+    logger.debug("Failed to decrypt value:", error.message);
+    logger.debug("Encrypted text length:", encryptedText?.length || 0);
+    logger.debug("Encryption key defined:", !!getEncryptionKey());
     
     // Return empty string so the UI doesn't break
     return "";
@@ -1663,7 +1663,7 @@ router.get(
             try {
               displayValue = decrypt(setting.value);
             } catch (error) {
-              console.warn(`Failed to decrypt setting ${setting.key}:`, error.message);
+              logger.warn(`Failed to decrypt setting ${setting.key}:`, error.message);
               displayValue = ""; // Show empty value for failed decryption
             }
           }
@@ -1677,7 +1677,7 @@ router.get(
 
       res.json({ settings: processedSettings });
     } catch (error) {
-      console.error("Get settings error:", error);
+      logger.error("Get settings error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1742,7 +1742,7 @@ router.put(
 
       res.json({ message: "Settings updated successfully" });
     } catch (error) {
-      console.error("Update settings error:", error);
+      logger.error("Update settings error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1790,7 +1790,7 @@ router.delete(
         });
       }
     } catch (error) {
-      console.error("Clear encrypted settings error:", error);
+      logger.error("Clear encrypted settings error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1834,7 +1834,7 @@ router.post(
                 }
               }
             } catch (error) {
-              console.error("Error retrieving password from DynamoDB:", error);
+              logger.error("Error retrieving password from DynamoDB:", error);
               throw error;
             }
           } else {
@@ -1845,7 +1845,7 @@ router.post(
                 []
               );
             } catch (error) {
-              console.error("Error retrieving password from SQLite:", error);
+              logger.error("Error retrieving password from SQLite:", error);
               throw error;
             }
           }
@@ -1857,12 +1857,12 @@ router.post(
               throw new Error("Decryption returned empty result");
             }
             pass = decryptedPass;
-            console.log("Successfully retrieved and decrypted stored SMTP password");
+            logger.debug("Successfully retrieved and decrypted stored SMTP password");
           } else {
             throw new Error("No stored encrypted password found");
           }
         } catch (error) {
-          console.warn("Failed to retrieve/decrypt stored SMTP password:", error.message);
+          logger.warn("Failed to retrieve/decrypt stored SMTP password:", error.message);
           return res.status(400).json({
             error: "Cannot use stored password due to encryption issues. Please enter your actual SMTP password in the password field instead of using the masked (••••••••) value. After testing successfully, you can save your settings again to fix the encryption.",
             suggestion: "Clear the password field and enter your real SMTP password to test."
@@ -1904,7 +1904,7 @@ router.post(
         message: "SMTP test successful! Check your email for the test message.",
       });
     } catch (error) {
-      console.error("SMTP test error:", error);
+      logger.error("SMTP test error:", error);
       res.status(400).json({
         success: false,
         error: `SMTP test failed: ${error.message}`,
@@ -2008,7 +2008,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       );
 
       if (!emailResult.success) {
-        console.error("Failed to send invitation email:", emailResult.error);
+        logger.error("Failed to send invitation email:", emailResult.error);
         // Still return success since the invitation was saved to database
       }
 
@@ -2019,7 +2019,7 @@ router.post("/invite-user", authenticateToken, requireAdmin, async (req, res) =>
       });
     }
   } catch (error) {
-    console.error("Admin invite user error:", error);
+    logger.error("Admin invite user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2071,25 +2071,25 @@ router.post("/invite-admin", authenticateToken, requireAdmin, async (req, res) =
     // Send invitation email
     let emailResult = { success: false, error: 'Email service not attempted' };
     try {
-      console.log(`[Admin] Attempting to send admin invitation email to: ${normalizedEmail}`);
+      logger.debug(`[Admin] Attempting to send admin invitation email to: ${normalizedEmail}`);
       emailResult = await emailService.sendAdminInvitation(
         normalizedEmail,
         `${inviter.first_name} ${inviter.last_name}`,
         inviteToken
       );
-      console.log(`[Admin] Email service result:`, emailResult);
+      logger.debug(`[Admin] Email service result:`, emailResult);
     } catch (emailError) {
-      console.error("Error calling email service for admin invitation:", emailError);
+      logger.error("Error calling email service for admin invitation:", emailError);
       emailResult = { success: false, error: emailError.message };
     }
 
     if (!emailResult.success) {
-      console.error("Failed to send admin invitation email:", emailResult.error);
+      logger.error("Failed to send admin invitation email:", emailResult.error);
       // Still return success since the invitation was saved to database
-      console.log("Proceeding with success response despite email failure");
+      logger.debug("Proceeding with success response despite email failure");
     }
 
-    console.log(`[Admin] Sending success response for admin invitation`);
+    logger.debug(`[Admin] Sending success response for admin invitation`);
     res.json({
       message: `Admin invitation sent to ${normalizedEmail}. They'll receive an email to create their admin account.`,
       type: "admin_invitation_sent",
@@ -2097,7 +2097,7 @@ router.post("/invite-admin", authenticateToken, requireAdmin, async (req, res) =
       emailSent: emailResult.success
     });
   } catch (error) {
-    console.error("Admin invite user error:", error);
+    logger.error("Admin invite user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2129,7 +2129,7 @@ router.post("/users/:userId/reset-password", authenticateToken, requireAdmin, as
     );
 
     if (!emailResult.success) {
-      console.error("Failed to send password reset email:", emailResult.error);
+      logger.error("Failed to send password reset email:", emailResult.error);
       return res.status(500).json({
         error: "Failed to send password reset email. Please check email configuration."
       });
@@ -2140,7 +2140,7 @@ router.post("/users/:userId/reset-password", authenticateToken, requireAdmin, as
       email: user.email,
     });
   } catch (error) {
-    console.error("Admin password reset error:", error);
+    logger.error("Admin password reset error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2201,7 +2201,7 @@ router.get("/default-colors", authenticateToken, requireAdmin, async (req, res) 
       defaultSecondaryColor: defaultTeam.team_secondary_color || '#d50a0a'
     });
   } catch (error) {
-    console.error("Get default colors error:", error);
+    logger.error("Get default colors error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2250,7 +2250,7 @@ router.put("/default-colors", authenticateToken, requireAdmin, async (req, res) 
       defaultSecondaryColor
     });
   } catch (error) {
-    console.error("Set default colors error:", error);
+    logger.error("Set default colors error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2307,7 +2307,7 @@ router.get("/default-team", authenticateToken, async (req, res) => {
     
     res.json({ defaultTeam });
   } catch (error) {
-    console.error("Get default team error:", error);
+    logger.error("Get default team error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

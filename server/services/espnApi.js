@@ -66,7 +66,7 @@ class ESPNService {
     }
     
     this.cacheHits++;
-    console.log(`[ESPN] Using cached response for ${cacheKey}`);
+    logger.debug(`[ESPN] Using cached response for ${cacheKey}`);
     return cached.data;
   }
 
@@ -93,7 +93,7 @@ class ESPNService {
     
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`[ESPN] Making request to ${endpoint} (attempt ${attempt}/${this.maxRetries})`);
+        logger.debug(`[ESPN] Making request to ${endpoint} (attempt ${attempt}/${this.maxRetries})`);
         
         const response = await axios.get(`${this.baseUrl}${endpoint}`, {
           params,
@@ -112,7 +112,7 @@ class ESPNService {
         this.consecutiveFailures = 0;
         this.lastSuccessfulRequest = new Date();
         
-        console.log(`[ESPN] Request successful for ${endpoint} on attempt ${attempt}`);
+        logger.debug(`[ESPN] Request successful for ${endpoint} on attempt ${attempt}`);
         
         // Cache the response
         this.setCachedResponse(cacheKey, response.data);
@@ -123,7 +123,7 @@ class ESPNService {
         lastError = error;
         this.consecutiveFailures++;
         
-        console.error(`[ESPN] Request failed for ${endpoint} (attempt ${attempt}/${this.maxRetries}):`, {
+        logger.error(`[ESPN] Request failed for ${endpoint} (attempt ${attempt}/${this.maxRetries}):`, {
           message: error.message,
           code: error.code,
           status: error.response?.status,
@@ -138,14 +138,14 @@ class ESPNService {
         
         // Calculate exponential backoff delay
         const delay = this.retryDelay * Math.pow(2, attempt - 1);
-        console.log(`[ESPN] Retrying in ${delay}ms...`);
+        logger.debug(`[ESPN] Retrying in ${delay}ms...`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
     // All retries failed
-    console.error(`[ESPN] All ${this.maxRetries} attempts failed for ${endpoint}`);
+    logger.error(`[ESPN] All ${this.maxRetries} attempts failed for ${endpoint}`);
     throw new Error(`ESPN API request failed after ${this.maxRetries} attempts: ${lastError.message}`);
   }
 
@@ -163,7 +163,7 @@ class ESPNService {
         type: 2
       };
     } catch (error) {
-      console.error('Failed to fetch current season:', error);
+      logger.error('Failed to fetch current season:', error);
       return {
         year: new Date().getFullYear().toString(),
         type: 2
@@ -182,7 +182,7 @@ class ESPNService {
       }, 'scoreboard');
 
       if (!data.events || !Array.isArray(data.events)) {
-        console.warn('No events found in ESPN response');
+        logger.warn('No events found in ESPN response');
         return [];
       }
 
@@ -228,7 +228,7 @@ class ESPNService {
         } : null
       }));
     } catch (error) {
-      console.error(`Failed to fetch week ${week} games:`, error);
+      logger.error(`Failed to fetch week ${week} games:`, error);
       throw error;
     }
   }
@@ -242,13 +242,13 @@ class ESPNService {
       if (includePreseason) {
         for (let week = 1; week <= 4; week++) {
           try {
-            console.log(`Fetching preseason week ${week} of ${seasonInfo.year}...`);
+            logger.debug(`Fetching preseason week ${week} of ${seasonInfo.year}...`);
             const weekGames = await this.fetchWeeklyGames(week, 1, seasonInfo.year);
             allGames.push(...weekGames);
             
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (error) {
-            console.error(`Failed to fetch preseason week ${week}:`, error);
+            logger.error(`Failed to fetch preseason week ${week}:`, error);
           }
         }
       }
@@ -256,21 +256,21 @@ class ESPNService {
       // Regular season is typically weeks 1-18
       for (let week = 1; week <= 18; week++) {
         try {
-          console.log(`Fetching week ${week} of ${seasonInfo.year}...`);
+          logger.debug(`Fetching week ${week} of ${seasonInfo.year}...`);
           const weekGames = await this.fetchWeeklyGames(week, 2, seasonInfo.year);
           allGames.push(...weekGames);
           
           // Add longer delay between requests to be respectful to ESPN API
           await new Promise(resolve => setTimeout(resolve, 250));
         } catch (error) {
-          console.error(`Failed to fetch week ${week}:`, error);
+          logger.error(`Failed to fetch week ${week}:`, error);
           // Continue with other weeks even if one fails
         }
       }
 
       return allGames;
     } catch (error) {
-      console.error('Failed to fetch full schedule:', error);
+      logger.error('Failed to fetch full schedule:', error);
       throw error;
     }
   }
@@ -323,7 +323,7 @@ class ESPNService {
           awayTeamRecord = await nflDataService.getTeamByCode(awayTeam.team.abbreviation);
           
           if (!homeTeamRecord || !awayTeamRecord) {
-            console.warn(`Teams not found for score update: ${homeTeam.team.abbreviation} vs ${awayTeam.team.abbreviation}. Skipping game.`);
+            logger.warn(`Teams not found for score update: ${homeTeam.team.abbreviation} vs ${awayTeam.team.abbreviation}. Skipping game.`);
             continue;
           }
         } else {
@@ -360,7 +360,7 @@ class ESPNService {
             updateData.season_type = gameData.seasonType;
           }
 
-          console.log(`[ESPN] Updating game ${existingGame.id} with scores_updated_at: ${now}`);
+          logger.debug(`[ESPN] Updating game ${existingGame.id} with scores_updated_at: ${now}`);
           await nflDataService.updateFootballGame(existingGame.id, updateData);
           updatedCount++;
         } else if (!scoresOnly) {
@@ -384,11 +384,11 @@ class ESPNService {
         }
       }
 
-      console.log(`ESPN sync complete: ${createdCount} created, ${updatedCount} updated`);
+      logger.info(`ESPN sync complete: ${createdCount} created, ${updatedCount} updated`);
       return { created: createdCount, updated: updatedCount };
 
     } catch (error) {
-      console.error('Failed to update NFL games:', error);
+      logger.error('Failed to update NFL games:', error);
       throw error;
     }
   }
@@ -415,11 +415,11 @@ class ESPNService {
         secondaryColor: teamData.alternateColor ? `#${teamData.alternateColor}` : null
       });
       
-      console.log(`Team processed: ${teamData.location} ${teamData.name}`);
+      logger.debug(`Team processed: ${teamData.location} ${teamData.name}`);
 
       return team;
     } catch (error) {
-      console.error('Failed to find or create team:', error);
+      logger.error('Failed to find or create team:', error);
       throw error;
     }
   }
@@ -461,7 +461,7 @@ class ESPNService {
         isPostseason: seasonType === 3
       };
     } catch (error) {
-      console.error('Failed to get current season status:', error);
+      logger.error('Failed to get current season status:', error);
       throw error;
     }
   }
@@ -507,7 +507,7 @@ class ESPNService {
     }
     
     if (cleared > 0) {
-      console.log(`[ESPN] Cleared ${cleared} expired cache entries`);
+      logger.debug(`[ESPN] Cleared ${cleared} expired cache entries`);
     }
     
     return cleared;
@@ -536,7 +536,7 @@ class ESPNService {
 
       return results;
     } catch (error) {
-      console.error('Failed to update game scores:', error);
+      logger.error('Failed to update game scores:', error);
       throw error;
     }
   }

@@ -46,7 +46,7 @@ class SchedulerService {
       const cached = this.gameCache.get(cacheKey);
       
       if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
-        console.log('[Scheduler] Using cached games check');
+        logger.debug('[Scheduler] Using cached games check');
         return cached.hasGames;
       }
 
@@ -54,7 +54,7 @@ class SchedulerService {
       const currentSeason = await nflDataService.getCurrentSeason();
       
       if (!currentSeason) {
-        console.log('[Scheduler] No current season set');
+        logger.debug('[Scheduler] No current season set');
         return false;
       }
 
@@ -68,11 +68,11 @@ class SchedulerService {
         timestamp: Date.now()
       });
       
-      console.log(`[Scheduler] Games today check: ${hasGames ? 'Yes' : 'No'}`);
+      logger.debug(`[Scheduler] Games today check: ${hasGames ? 'Yes' : 'No'}`);
       return hasGames;
       
     } catch (error) {
-      console.error('[Scheduler] Error checking for games today:', error);
+      logger.error('[Scheduler] Error checking for games today:', error);
       // Default to true to avoid missing game updates if there's an error
       return true;
     }
@@ -100,8 +100,8 @@ class SchedulerService {
       const season = await seasonService.getCurrentSeason();
       return season;
     } catch (error) {
-      console.error('[Scheduler] Failed to get current season:', error);
-      console.error('[Scheduler] Season error details:', {
+      logger.error('[Scheduler] Failed to get current season:', error);
+      logger.error('[Scheduler] Season error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name
@@ -115,20 +115,20 @@ class SchedulerService {
    */
   async updateScores() {
     try {
-      console.log('[Scheduler] Starting automatic score update...');
-      
+      logger.debug('[Scheduler] Starting automatic score update...');
+
       const currentSeason = await this.getCurrentSeason();
       if (!currentSeason) {
-        console.log('[Scheduler] No current season set, skipping score update');
+        logger.debug('[Scheduler] No current season set, skipping score update');
         return { success: false, reason: 'No current season' };
       }
 
       const result = await espnService.updateGameScores();
-      console.log('[Scheduler] Score update completed:', result);
+      logger.info('[Scheduler] Score update completed:', result);
       return { success: true, result };
     } catch (error) {
-      console.error('[Scheduler] Failed to update scores:', error);
-      console.error('[Scheduler] Score update error details:', {
+      logger.error('[Scheduler] Failed to update scores:', error);
+      logger.error('[Scheduler] Score update error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name
@@ -142,11 +142,11 @@ class SchedulerService {
    */
   async calculatePicks() {
     try {
-      console.log('[Scheduler] Starting automatic pick calculations...');
-      
+      logger.debug('[Scheduler] Starting automatic pick calculations...');
+
       const currentSeason = await this.getCurrentSeason();
       if (!currentSeason) {
-        console.log('[Scheduler] No current season set, skipping pick calculations');
+        logger.debug('[Scheduler] No current season set, skipping pick calculations');
         return { success: false, reason: 'No current season' };
       }
 
@@ -172,8 +172,8 @@ class SchedulerService {
 
       return { success: true, result, picksUpdated: result.totalUpdatedPicks > 0 };
     } catch (error) {
-      console.error('[Scheduler] Failed to calculate picks:', error);
-      console.error('[Scheduler] Pick calculation error details:', {
+      logger.error('[Scheduler] Failed to calculate picks:', error);
+      logger.error('[Scheduler] Pick calculation error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name
@@ -187,13 +187,13 @@ class SchedulerService {
    */
   async runScoreUpdate() {
     if (!this.isGameDay()) {
-      console.log('[Scheduler] Not a game day, skipping score updates');
+      logger.debug('[Scheduler] Not a game day, skipping score updates');
       return;
     }
 
     const hasGames = await this.hasGamesToday();
     if (!hasGames) {
-      console.log('[Scheduler] No games scheduled today, skipping score updates');
+      logger.debug('[Scheduler] No games scheduled today, skipping score updates');
       return;
     }
 
@@ -212,19 +212,19 @@ class SchedulerService {
       
       const staleCheck = await onDemandUpdates.updateScoresIfStale(currentSeason.id, currentWeek);
       if (!staleCheck.updated) {
-        console.log('[Scheduler] Scores are recent, skipping update');
+        logger.debug('[Scheduler] Scores are recent, skipping update');
         return;
       }
     }
 
-    console.log('[Scheduler] Running score update...');
-    
+    logger.debug('[Scheduler] Running score update...');
+
     try {
       const result = await this.updateScores();
-      console.log('[Scheduler] Score update completed successfully:', result);
+      logger.info('[Scheduler] Score update completed successfully:', result);
     } catch (error) {
-      console.error('[Scheduler] Score update failed:', error);
-      console.error('[Scheduler] Score update error stack:', error.stack);
+      logger.error('[Scheduler] Score update failed:', error);
+      logger.error('[Scheduler] Score update error stack:', error.stack);
       
       // Don't re-throw - let scheduler continue running
       return false;
@@ -238,24 +238,24 @@ class SchedulerService {
    */
   async runPickCalculations() {
     if (!this.isGameDay()) {
-      console.log('[Scheduler] Not a game day, skipping pick calculations');
+      logger.debug('[Scheduler] Not a game day, skipping pick calculations');
       return;
     }
 
     const hasGames = await this.hasGamesToday();
     if (!hasGames) {
-      console.log('[Scheduler] No games scheduled today, skipping pick calculations');
+      logger.debug('[Scheduler] No games scheduled today, skipping pick calculations');
       return;
     }
 
-    console.log('[Scheduler] Running pick calculations...');
-    
+    logger.debug('[Scheduler] Running pick calculations...');
+
     try {
       const result = await this.calculatePicks();
-      console.log('[Scheduler] Pick calculations completed successfully:', result);
+      logger.info('[Scheduler] Pick calculations completed successfully:', result);
     } catch (error) {
-      console.error('[Scheduler] Pick calculations failed:', error);
-      console.error('[Scheduler] Pick calculations error stack:', error.stack);
+      logger.error('[Scheduler] Pick calculations failed:', error);
+      logger.error('[Scheduler] Pick calculations error stack:', error.stack);
       
       // Don't re-throw - let scheduler continue running
       return false;
@@ -268,7 +268,7 @@ class SchedulerService {
    * Run the complete update cycle: scores + picks (for manual triggers)
    */
   async runUpdateCycle() {
-    console.log('[Scheduler] Running full update cycle...');
+    logger.debug('[Scheduler] Running full update cycle...');
     
     try {
       // Update scores first
@@ -276,12 +276,12 @@ class SchedulerService {
       
       // If scores were updated successfully, calculate picks
       if (scoresResult.success) {
-        console.log('[Scheduler] Scores updated successfully, proceeding with pick calculations...');
+        logger.debug('[Scheduler] Scores updated successfully, proceeding with pick calculations...');
         await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
-        
+
         const picksResult = await this.calculatePicks();
-        
-        console.log('[Scheduler] Full update cycle completed:', {
+
+        logger.info('[Scheduler] Full update cycle completed:', {
           scoresUpdated: scoresResult.success,
           picksCalculated: picksResult.success
         });
@@ -292,7 +292,7 @@ class SchedulerService {
           picksResult
         };
       } else {
-        console.log('[Scheduler] Score update failed, skipping pick calculations');
+        logger.debug('[Scheduler] Score update failed, skipping pick calculations');
         return {
           success: false,
           reason: 'Score update failed',
@@ -301,8 +301,8 @@ class SchedulerService {
       }
       
     } catch (error) {
-      console.error('[Scheduler] Update cycle failed:', error);
-      console.error('[Scheduler] Update cycle error details:', {
+      logger.error('[Scheduler] Update cycle failed:', error);
+      logger.error('[Scheduler] Update cycle error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name
@@ -320,16 +320,16 @@ class SchedulerService {
    */
   start() {
     if (this.isRunning) {
-      console.log('[Scheduler] Already running');
+      logger.debug('[Scheduler] Already running');
       return;
     }
 
-    console.log('[Scheduler] Starting automatic score and pick updates...');
+    logger.info('[Scheduler] Starting automatic score and pick updates...');
     
     // Update scores every 15 minutes during game hours
     const scoreUpdateTask = cron.schedule('*/15 * * * *', () => {
       this.runScoreUpdate().catch(error => {
-        console.error('[Scheduler] Score update task failed:', error);
+        logger.error('[Scheduler] Score update task failed:', error);
       });
     }, {
       scheduled: false, // Don't start immediately
@@ -339,7 +339,7 @@ class SchedulerService {
     // Calculate picks every hour during game days (less frequent)
     const pickCalculationTask = cron.schedule('0 * * * *', () => {
       this.runPickCalculations().catch(error => {
-        console.error('[Scheduler] Pick calculation task failed:', error);
+        logger.error('[Scheduler] Pick calculation task failed:', error);
       });
     }, {
       scheduled: false,
@@ -392,11 +392,11 @@ class SchedulerService {
     this.currentTasks.set('offHoursCheck', offHoursCheckTask);
     
     this.isRunning = true;
-    console.log('[Scheduler] Automatic updates started');
-    console.log('[Scheduler] - Score updates every 15 minutes during active game hours (1 PM - 11 PM ET) on game days with scheduled games');
-    console.log('[Scheduler] - Pick calculations every hour during game days with scheduled games');
-    console.log('[Scheduler] - Off-hours staleness checks every 6 hours on game days with scheduled games');
-    console.log('[Scheduler] - Zero activity on non-game days (Tue, Wed, Fri) and days without scheduled games');
+    logger.important('[Scheduler] Automatic updates started');
+    logger.info('[Scheduler] - Score updates every 15 minutes during active game hours (1 PM - 11 PM ET) on game days with scheduled games');
+    logger.info('[Scheduler] - Pick calculations every hour during game days with scheduled games');
+    logger.info('[Scheduler] - Off-hours staleness checks every 6 hours on game days with scheduled games');
+    logger.info('[Scheduler] - Zero activity on non-game days (Tue, Wed, Fri) and days without scheduled games');
   }
 
   /**
@@ -404,7 +404,7 @@ class SchedulerService {
    */
   stop() {
     if (!this.isRunning) {
-      console.log('[Scheduler] Not running');
+      logger.debug('[Scheduler] Not running');
       return;
     }
 
@@ -446,13 +446,13 @@ class SchedulerService {
    * Manual trigger for testing
    */
   async triggerUpdate() {
-    console.log('[Scheduler] Manual update triggered');
+    logger.info('[Scheduler] Manual update triggered');
     try {
       const result = await this.runUpdateCycle();
-      console.log('[Scheduler] Manual update completed:', result);
+      logger.info('[Scheduler] Manual update completed:', result);
       return result;
     } catch (error) {
-      console.error('[Scheduler] Manual update failed:', error);
+      logger.error('[Scheduler] Manual update failed:', error);
       return {
         success: false,
         error: error.message
