@@ -102,6 +102,9 @@ class EmailService {
             user: dbSettings.user,
             pass: dbSettings.pass,
           },
+          // Prevent quoted-printable encoding issues
+          disableFileAccess: true,
+          disableUrlAccess: true,
         };
         this.transporter = nodemailer.createTransport(smtpConfig);
         console.log("SMTP configured using database settings");
@@ -119,6 +122,9 @@ class EmailService {
         host: dbSettings.host,
         port: parseInt(dbSettings.port) || 587,
         secure: false,
+        // Prevent quoted-printable encoding issues
+        disableFileAccess: true,
+        disableUrlAccess: true,
       };
       
       // For localhost (LocalStack), disable authentication
@@ -141,6 +147,9 @@ class EmailService {
           host: process.env.SMTP_HOST,
           port: process.env.SMTP_PORT || 587,
           secure: false,
+          // Prevent quoted-printable encoding issues
+          disableFileAccess: true,
+          disableUrlAccess: true,
         };
         
         // For localhost (LocalStack), disable authentication
@@ -185,46 +194,11 @@ class EmailService {
       from: fromEmail,
       to: toEmail,
       subject: `You're invited to join "${gameName}" NFL Pick'em Game!`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e40af;">🏈 NFL Pick'em Game Invitation</h2>
-          
-          <p>Hi there!</p>
-          
-          <p><strong>${inviterName}</strong> has invited you to join the NFL Pick'em game: <strong>"${gameName}"</strong></p>
-          
-          <p>To accept this invitation and start making your picks:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${inviteUrl}" 
-               style="background-color: #1e40af; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
-              Accept Invitation & Register
-            </a>
-          </div>
-          
-          <p>This invitation link will expire in 7 days.</p>
-          
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-          
-          <p style="color: #6b7280; font-size: 14px;">
-            If you're not interested in joining this game, you can safely ignore this email.
-          </p>
-        </div>
-      `,
-      text: `
-        NFL Pick'em Game Invitation
-        
-        Hi there!
-        
-        ${inviterName} has invited you to join the NFL Pick'em game: "${gameName}"
-        
-        To accept this invitation and start making your picks, visit:
-        ${inviteUrl}
-        
-        This invitation link will expire in 7 days.
-        
-        If you're not interested in joining this game, you can safely ignore this email.
-      `,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1e40af;">🏈 NFL Pick'em Game Invitation</h2><p>Hi there!</p><p><strong>${inviterName}</strong> has invited you to join the NFL Pick'em game: <strong>"${gameName}"</strong></p><p>To accept this invitation and start making your picks:</p><div style="text-align: center; margin: 30px 0;"><a href="${inviteUrl}" style="background-color: #1e40af; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Accept Invitation & Register</a></div><p>This invitation link will expire in 7 days.</p><hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;"><p style="color: #6b7280; font-size: 14px;">If you're not interested in joining this game, you can safely ignore this email.</p></div>`,
+      text: `NFL Pick'em Game Invitation\n\nHi there!\n\n${inviterName} has invited you to join the NFL Pick'em game: "${gameName}"\n\nTo accept this invitation and start making your picks, visit:\n${inviteUrl}\n\nThis invitation link will expire in 7 days.\n\nIf you're not interested in joining this game, you can safely ignore this email.`,
+      encoding: 'utf8',
+      textEncoding: 'base64',
+      htmlEncoding: 'base64'
     };
 
     try {
@@ -277,56 +251,11 @@ class EmailService {
       from: fromEmail,
       to: toEmail,
       subject: `You're invited to be an Admin for NFL Pick'em!`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc2626;">🏈 NFL Pick'em Admin Invitation</h2>
-          
-          <p>Hi there!</p>
-          
-          <p><strong>${inviterName}</strong> has invited you to become an administrator for NFL Pick'em.</p>
-          
-          <p>As an admin, you'll have access to:</p>
-          <ul>
-            <li>Manage all users and games</li>
-            <li>Create and configure pick'em games</li>
-            <li>Invite other users and admins</li>
-            <li>View comprehensive statistics and reports</li>
-          </ul>
-          
-          <p>To accept this invitation and create your admin account:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${inviteUrl}"
-               style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
-              Accept Admin Invitation & Register
-            </a>
-          </div>
-          
-          <p>This invitation link will expire in 7 days.</p>
-          
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-          
-          <p style="color: #6b7280; font-size: 14px;">
-            If you're not interested in this admin role, you can safely ignore this email.
-          </p>
-        </div>
-      `,
-      text: `
-        NFL Pick'em Admin Invitation
-        
-        Hi there!
-        
-        ${inviterName} has invited you to become an administrator for NFL Pick'em.
-        
-        As an admin, you'll have access to manage users, games, and system settings.
-        
-        To accept this invitation and create your admin account, visit:
-        ${inviteUrl}
-        
-        This invitation link will expire in 7 days.
-        
-        If you're not interested in this admin role, you can safely ignore this email.
-      `,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #dc2626;">🏈 NFL Pick'em Admin Invitation</h2><p>Hi there!</p><p><strong>${inviterName}</strong> has invited you to become an administrator for NFL Pick'em.</p><p>As an admin, you'll have access to:</p><ul><li>Manage all users and games</li><li>Create and configure pick'em games</li><li>Invite other users and admins</li><li>View comprehensive statistics and reports</li></ul><p>To accept this invitation and create your admin account:</p><div style="text-align: center; margin: 30px 0;"><a href="${inviteUrl}" style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Accept Admin Invitation & Register</a></div><p>This invitation link will expire in 7 days.</p><hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;"><p style="color: #6b7280; font-size: 14px;">If you're not interested in this admin role, you can safely ignore this email.</p></div>`,
+      text: `NFL Pick'em Admin Invitation\n\nHi there!\n\n${inviterName} has invited you to become an administrator for NFL Pick'em.\n\nAs an admin, you'll have access to manage users, games, and system settings.\n\nTo accept this invitation and create your admin account, visit:\n${inviteUrl}\n\nThis invitation link will expire in 7 days.\n\nIf you're not interested in this admin role, you can safely ignore this email.`,
+      encoding: 'utf8',
+      textEncoding: 'base64',
+      htmlEncoding: 'base64'
     };
 
     try {
@@ -379,57 +308,11 @@ class EmailService {
       from: fromEmail,
       to: toEmail,
       subject: `Password Reset Request - NFL Pick'em`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e40af;">🔒 Password Reset Request</h2>
-          
-          <p>Hi ${userName},</p>
-          
-          <p>An administrator has initiated a password reset for your NFL Pick'em account.</p>
-          
-          <p>To set a new password for your account, click the button below:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}"
-               style="background-color: #1e40af; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
-              Reset Your Password
-            </a>
-          </div>
-          
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="background-color: #f3f4f6; padding: 10px; border-radius: 4px; word-break: break-all;">
-            ${resetUrl}
-          </p>
-          
-          <p><strong>This link will expire in 1 hour.</strong></p>
-          
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-          
-          <p style="color: #6b7280; font-size: 14px;">
-            If you didn't request this password reset, you can safely ignore this email. Your password will not be changed.
-          </p>
-          
-          <p style="color: #6b7280; font-size: 14px;">
-            For security reasons, this password reset was initiated by an administrator.
-          </p>
-        </div>
-      `,
-      text: `
-        Password Reset Request - NFL Pick'em
-        
-        Hi ${userName},
-        
-        An administrator has initiated a password reset for your NFL Pick'em account.
-        
-        To set a new password for your account, visit:
-        ${resetUrl}
-        
-        This link will expire in 1 hour.
-        
-        If you didn't request this password reset, you can safely ignore this email. Your password will not be changed.
-        
-        For security reasons, this password reset was initiated by an administrator.
-      `,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1e40af;">🔒 Password Reset Request</h2><p>Hi ${userName},</p><p>An administrator has initiated a password reset for your NFL Pick'em account.</p><p>To set a new password for your account, click the button below:</p><div style="text-align: center; margin: 30px 0;"><a href="${resetUrl}" style="background-color: #1e40af; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Reset Your Password</a></div><p>Or copy and paste this link into your browser:</p><p style="background-color: #f3f4f6; padding: 10px; border-radius: 4px; word-break: break-all;">${resetUrl}</p><p><strong>This link will expire in 1 hour.</strong></p><hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;"><p style="color: #6b7280; font-size: 14px;">If you didn't request this password reset, you can safely ignore this email. Your password will not be changed.</p><p style="color: #6b7280; font-size: 14px;">For security reasons, this password reset was initiated by an administrator.</p></div>`,
+      text: `Password Reset Request - NFL Pick'em\n\nHi ${userName},\n\nAn administrator has initiated a password reset for your NFL Pick'em account.\n\nTo set a new password for your account, visit:\n${resetUrl}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, you can safely ignore this email. Your password will not be changed.\n\nFor security reasons, this password reset was initiated by an administrator.`,
+      encoding: 'utf8',
+      textEncoding: 'base64',
+      htmlEncoding: 'base64'
     };
 
     try {

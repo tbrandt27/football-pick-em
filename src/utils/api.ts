@@ -107,6 +107,29 @@ class ApiClient {
     });
   }
 
+  async registerWithInvite(userData: RegisterData & { inviteToken: string }) {
+    return this.request<{
+      token: string;
+      user: User;
+      message: string;
+    }>('/auth/register-invite', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  }
+
+  async getInvitationByToken(token: string) {
+    return this.request<{
+      invitation: {
+        email: string;
+        game_name?: string;
+        is_admin_invitation: boolean;
+        expires_at: string;
+        status: string;
+      }
+    }>(`/admin/invitations/token/${encodeURIComponent(token)}`);
+  }
+
   async getCurrentUser() {
     return this.request<{ user: User }>('/auth/me');
   }

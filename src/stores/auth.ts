@@ -90,6 +90,33 @@ export async function register(userData: {
   }
 }
 
+export async function registerWithInvite(userData: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  favoriteTeamId?: string;
+  inviteToken: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await api.registerWithInvite(userData);
+    
+    if (response.success && response.data) {
+      api.setToken(response.data.token);
+      $user.set(response.data.user);
+      $isAuthenticated.set(true);
+      return { success: true };
+    } else {
+      return { success: false, error: response.error || 'Registration failed' };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Registration failed'
+    };
+  }
+}
+
 export function logout() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');

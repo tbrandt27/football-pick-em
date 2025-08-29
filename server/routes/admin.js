@@ -396,6 +396,50 @@ router.delete(
   }
 );
 
+// Get invitation by token (for registration validation)
+router.get(
+  "/invitations/token/:token",
+  async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      if (!token) {
+        return res.status(400).json({ error: "Token is required" });
+      }
+
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      const invitation = await invitationService.getInvitationByToken(token);
+
+      if (!invitation) {
+        return res.status(404).json({ error: "Invalid or expired invitation token" });
+      }
+
+      // Check if invitation is expired
+      if (invitation.expires_at <= new Date().toISOString()) {
+        return res.status(404).json({ error: "Invitation has expired" });
+      }
+
+      // Check if invitation is still pending
+      if (invitation.status !== 'pending') {
+        return res.status(404).json({ error: "Invitation is no longer valid" });
+      }
+
+      res.json({
+        invitation: {
+          email: invitation.email,
+          game_name: invitation.game_name || (invitation.is_admin_invitation ? 'Admin Invitation' : 'Unknown Game'),
+          is_admin_invitation: invitation.is_admin_invitation || false,
+          expires_at: invitation.expires_at,
+          status: invitation.status
+        }
+      });
+    } catch (error) {
+      console.error("Get invitation by token error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // Manually confirm invitation (admin creates account for user)
 router.post(
   "/invitations/:invitationId/confirm",
