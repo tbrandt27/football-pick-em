@@ -442,7 +442,6 @@ export default class DynamoDBSeasonService extends ISeasonService {
       if (secondaryColor && !existingTeam.team_secondary_color) updates.team_secondary_color = secondaryColor;
       
       if (Object.keys(updates).length > 0) {
-        updates.updated_at = new Date().toISOString();
         await this.db._dynamoUpdate('football_teams', { id: existingTeam.id }, updates);
         return { ...existingTeam, ...updates };
       }
@@ -527,8 +526,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     }
 
     const updateData = {
-      ...updates,
-      updated_at: new Date().toISOString()
+      ...updates
     };
 
     await this.db._dynamoUpdate('football_games', { id: gameId }, updateData);

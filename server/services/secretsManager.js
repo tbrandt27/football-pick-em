@@ -76,17 +76,24 @@ class SecretsManagerService {
       // If key is specified, parse as JSON and extract the key
       if (key) {
         try {
+          console.log(`🔍 Parsing secret JSON for key: ${key}`);
           const parsedSecret = JSON.parse(secretValue);
+          console.log(`🔍 Available keys in secret:`, Object.keys(parsedSecret));
           secretValue = parsedSecret[key];
           if (secretValue === undefined) {
+            console.error(`❌ Key '${key}' not found in secret. Available keys:`, Object.keys(parsedSecret));
             throw new Error(`Key '${key}' not found in secret`);
           }
+          console.log(`✅ Successfully extracted value for key '${key}'`);
         } catch (parseError) {
+          console.error(`❌ Failed to parse secret as JSON:`, parseError.message);
+          console.error(`❌ Raw secret value:`, secretValue);
           throw new Error(`Failed to parse secret as JSON: ${parseError.message}`);
         }
       }
       
       // Cache the result
+      console.log(`💾 Caching result for ${cacheKey}:`, typeof secretValue === 'string' ? `"${secretValue.substring(0, 50)}${secretValue.length > 50 ? '...' : ''}"` : secretValue);
       this.cache.set(cacheKey, {
         value: secretValue,
         timestamp: Date.now()

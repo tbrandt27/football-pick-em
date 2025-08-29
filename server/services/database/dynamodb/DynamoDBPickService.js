@@ -110,8 +110,7 @@ export default class DynamoDBPickService extends IPickService {
       // Update existing pick
       await this.db._dynamoUpdate('picks', { id: pickId }, {
         pick_team_id: pickTeamId,
-        tiebreaker: tiebreaker || null,
-        updated_at: new Date().toISOString()
+        tiebreaker: tiebreaker || null
       });
     } else {
       // Create new pick
@@ -287,8 +286,7 @@ export default class DynamoDBPickService extends IPickService {
    */
   async updatePickCorrectness(pickId, isCorrect) {
     await this.db._dynamoUpdate('picks', { id: pickId }, {
-      is_correct: isCorrect,
-      updated_at: new Date().toISOString()
+      is_correct: isCorrect
     });
   }
 
@@ -326,8 +324,7 @@ export default class DynamoDBPickService extends IPickService {
       try {
         const isCorrect = winningTeamId ? (pick.pick_team_id === winningTeamId ? 1 : 0) : 0;
         await this.db._dynamoUpdate('picks', { id: pick.id }, {
-          is_correct: isCorrect,
-          updated_at: new Date().toISOString()
+          is_correct: isCorrect
         });
         updatedCount++;
       } catch (error) {

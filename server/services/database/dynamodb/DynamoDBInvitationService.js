@@ -291,8 +291,7 @@ export default class DynamoDBInvitationService extends IInvitationService {
     }
     
     await this.db._dynamoUpdate('game_invitations', { id: invitationId }, {
-      status: status,
-      updated_at: new Date().toISOString()
+      status: status
     });
   }
 

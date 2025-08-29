@@ -536,8 +536,7 @@ export default class DynamoDBGameService extends IGameService {
    */
   async updateGameData(gameId, updates) {
     await this.db._dynamoUpdate('pickem_games', { id: gameId }, {
-      ...updates,
-      updated_at: new Date().toISOString()
+      ...updates
     });
   }
 

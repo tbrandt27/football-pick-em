@@ -50,9 +50,14 @@ class ConfigService {
           if ((process.env.NODE_ENV === 'production' || process.env.USE_LOCALSTACK === 'true') && typeof window === 'undefined') {
             try {
               console.log(`🔐 ${key}: Resolving from Secrets Manager...`);
+              console.log(`🔐 ${key}: Using ARN: ${envValue}`);
+              console.log(`🔐 ${key}: Extracting key: ${key}`);
               // For compound secrets, extract the specific key from the JSON
+              // The secret keys match the environment variable names exactly
               const secretValue = await secretsManager.getSecret(envValue, key, fallback);
               console.log(`✅ ${key}: Successfully resolved from Secrets Manager`);
+              console.log(`🔍 ${key}: Resolved value type: ${typeof secretValue}`);
+              console.log(`🔍 ${key}: Resolved value preview: ${typeof secretValue === 'string' ? `"${secretValue.substring(0, 100)}${secretValue.length > 100 ? '...' : ''}"` : secretValue}`);
               return secretValue;
             } catch (error) {
               console.error(`❌ ${key}: Failed to resolve from Secrets Manager: ${error.message}`);
