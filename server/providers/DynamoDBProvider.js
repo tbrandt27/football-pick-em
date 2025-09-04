@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
 import BaseDatabaseProvider from "./BaseDatabaseProvider.js";
 
 export default class DynamoDBProvider extends BaseDatabaseProvider {
@@ -11,6 +12,7 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     this.region = process.env.AWS_REGION || 'us-east-1';
     this.isLocalStack = process.env.USE_LOCALSTACK === 'true';
     this.localStackEndpoint = process.env.LOCALSTACK_ENDPOINT || 'http://localhost:4566';
+    this.connectionKeepAliveTimer = null;
     
     // Table name mappings
     this.tables = {
@@ -38,8 +40,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     
     // Initialize DynamoDB client
     try {
+      // Configure HTTP handler with keep-alive and connection pooling
+      const httpHandler = new NodeHttpHandler({
+        keepAlive: true,
+        keepAliveMsecs: 1000,
+        maxSockets: 50,
+        maxFreeSockets: 10,
+        timeout: 120000, // 2 minutes
+        connectionTimeout: 30000, // 30 seconds
+        socketTimeout: 120000 // 2 minutes
+      });
+
       const clientConfig = {
         region: this.region,
+        requestHandler: httpHandler,
+        maxAttempts: 3,
+        retryMode: 'adaptive',
         // Add credentials configuration if needed
         ...(process.env.AWS_ACCESS_KEY_ID && {
           credentials: {
@@ -66,6 +82,9 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       
       console.log("[DynamoDB] Connection verified successfully");
       
+      // Set up connection keep-alive mechanism
+      this._setupConnectionKeepAlive();
+      
     } catch (error) {
       console.error("[DynamoDB] Failed to initialize:", error);
       throw error;
@@ -80,6 +99,12 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
   }
 
   async close() {
+    // Clear keep-alive timer
+    if (this.connectionKeepAliveTimer) {
+      clearInterval(this.connectionKeepAliveTimer);
+      this.connectionKeepAliveTimer = null;
+    }
+    
     if (this.client) {
       this.client.destroy();
       console.log("DynamoDB connection closed");
@@ -714,5 +739,22 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       totalDuration: {},
       slowOperations: 0
     };
+  }
+
+  /**
+   * Set up connection keep-alive mechanism to prevent idle timeout
+   */
+  _setupConnectionKeepAlive() {
+    // Ping DynamoDB every 5 minutes to keep connection alive during low traffic
+    this.connectionKeepAliveTimer = setInterval(async () => {
+      try {
+        console.log('[DynamoDB] Keep-alive ping...');
+        await this._testConnection();
+        console.log('[DynamoDB] Keep-alive ping successful');
+      } catch (error) {
+        console.warn('[DynamoDB] Keep-alive ping failed:', error.message);
+        // Don't throw error - connection will be re-established on next actual request
+      }
+    }, 5 * 60 * 1000); // 5 minutes
   }
 }

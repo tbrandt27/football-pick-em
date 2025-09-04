@@ -49,8 +49,9 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Handle process signals gracefully
 let isShuttingDown = false;
+let server = null;
 
-const gracefulShutdown = (signal) => {
+const gracefulShutdown = async (signal) => {
   if (isShuttingDown) {
     console.log(`⚠️  Force shutdown on ${signal}`);
     process.exit(1);
@@ -59,14 +60,46 @@ const gracefulShutdown = (signal) => {
   isShuttingDown = true;
   console.log(`🛑 Received ${signal}. Starting graceful shutdown...`);
   
-  // Stop the scheduler first
-  scheduler.stop();
-  
-  // Give some time for cleanup
-  setTimeout(() => {
+  try {
+    // Stop accepting new connections
+    if (server) {
+      console.log('🔌 Closing server...');
+      await new Promise((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      console.log('✅ Server closed');
+    }
+    
+    // Stop the scheduler
+    console.log('⏱️  Stopping scheduler...');
+    scheduler.stop();
+    console.log('✅ Scheduler stopped');
+    
+    // Close database connections
+    console.log('🗄️  Closing database connections...');
+    const { default: db } = await import('./models/database.js');
+    if (db && typeof db.close === 'function') {
+      await db.close();
+      console.log('✅ Database connections closed');
+    }
+    
+    // Close ESPN service HTTP agents
+    console.log('🌐 Closing HTTP connections...');
+    const { default: espnService } = await import('./services/espnApi.js');
+    if (espnService.cleanup) {
+      espnService.cleanup();
+    }
+    console.log('✅ HTTP connections closed');
+    
     console.log('✅ Graceful shutdown complete');
     process.exit(0);
-  }, 5000);
+  } catch (error) {
+    console.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
+  }
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -289,7 +322,7 @@ const startServer = async () => {
       }
     }
 
-    const server = app.listen(finalPort, () => {
+    server = app.listen(finalPort, () => {
       console.log(`🚀 Server running on port ${finalPort}`);
       console.log(`🌐 Access your app at: http://localhost:${finalPort}`);
 
@@ -311,6 +344,12 @@ const startServer = async () => {
         process.exit(1);
       }
     });
+
+    // Configure server timeouts for better connection handling
+    server.keepAliveTimeout = 65000; // Slightly higher than load balancer timeout
+    server.headersTimeout = 66000; // Slightly higher than keepAliveTimeout
+    server.requestTimeout = 300000; // 5 minutes for long-running requests
+    server.timeout = 120000; // 2 minutes default timeout
 
     return server;
   } catch (error) {

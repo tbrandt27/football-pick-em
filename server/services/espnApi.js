@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { Agent } from 'http';
+import { Agent as HttpsAgent } from 'https';
 import { v4 as uuidv4 } from 'uuid';
 import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 import logger from '../utils/logger.js';
@@ -23,6 +25,38 @@ class ESPNService {
       season: 60 * 60 * 1000,    // 1 hour for season info
       schedule: 30 * 60 * 1000   // 30 minutes for schedule data
     };
+    
+    // Configure HTTP agents with keep-alive to prevent connection resets
+    this.httpAgent = new Agent({
+      keepAlive: true,
+      keepAliveMsecs: 1000,
+      maxSockets: 10,
+      maxFreeSockets: 5,
+      timeout: 120000 // 2 minutes
+    });
+    
+    this.httpsAgent = new HttpsAgent({
+      keepAlive: true,
+      keepAliveMsecs: 1000,
+      maxSockets: 10,
+      maxFreeSockets: 5,
+      timeout: 120000 // 2 minutes
+    });
+    
+    // Create axios instance with keep-alive agents
+    this.axiosInstance = axios.create({
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
+      timeout: this.timeout,
+      headers: {
+        'User-Agent': 'NFL-Pickem-App/1.0',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      },
+      maxRedirects: 5,
+      validateStatus: (status) => status >= 200 && status < 300
+    });
   }
 
   getNFLDataService() {
@@ -96,17 +130,8 @@ class ESPNService {
       try {
         logger.debug(`[ESPN] Making request to ${endpoint} (attempt ${attempt}/${this.maxRetries})`);
         
-        const response = await axios.get(`${this.baseUrl}${endpoint}`, {
-          params,
-          timeout: this.timeout,
-          headers: {
-            'User-Agent': 'NFL-Pickem-App/1.0',
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache'
-          },
-          // Add connection pooling options
-          maxRedirects: 5,
-          validateStatus: (status) => status >= 200 && status < 300
+        const response = await this.axiosInstance.get(`${this.baseUrl}${endpoint}`, {
+          params
         });
         
         // Request successful - reset failure counter
@@ -539,6 +564,20 @@ class ESPNService {
     } catch (error) {
       logger.error('Failed to update game scores:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Clean up HTTP agents and connections
+   */
+  cleanup() {
+    if (this.httpAgent) {
+      this.httpAgent.destroy();
+      console.log('[ESPN] HTTP agent destroyed');
+    }
+    if (this.httpsAgent) {
+      this.httpsAgent.destroy();
+      console.log('[ESPN] HTTPS agent destroyed');
     }
   }
 }

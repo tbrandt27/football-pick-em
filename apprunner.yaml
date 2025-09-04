@@ -21,6 +21,13 @@ run:
   network:
     port: 8080
     env: PORT
+  # Health check configuration for App Runner
+  health-check:
+    path: "/api/health/live"
+    interval: 30
+    timeout: 10
+    healthy-threshold: 2
+    unhealthy-threshold: 5
   env:
     # Runtime Environment Configuration
     - name: NODE_ENV
