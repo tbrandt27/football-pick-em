@@ -3,6 +3,7 @@ import espnService from './espnApi.js';
 import pickCalculator from './pickCalculator.js';
 import onDemandUpdates from './onDemandUpdates.js';
 import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
+import logger from '../utils/logger.js';
 
 class SchedulerService {
   constructor() {
