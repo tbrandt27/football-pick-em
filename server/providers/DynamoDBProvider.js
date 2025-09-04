@@ -1,6 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";``
 import BaseDatabaseProvider from "./BaseDatabaseProvider.js";
 
 export default class DynamoDBProvider extends BaseDatabaseProvider {
@@ -40,22 +39,12 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     
     // Initialize DynamoDB client
     try {
-      // Configure HTTP handler with keep-alive and connection pooling
-      const httpHandler = new NodeHttpHandler({
-        keepAlive: true,
-        keepAliveMsecs: 1000,
-        maxSockets: 50,
-        maxFreeSockets: 10,
-        timeout: 120000, // 2 minutes
-        connectionTimeout: 30000, // 30 seconds
-        socketTimeout: 120000 // 2 minutes
-      });
-
       const clientConfig = {
         region: this.region,
-        requestHandler: httpHandler,
         maxAttempts: 3,
         retryMode: 'adaptive',
+        // Configure connection timeouts and keep-alive
+        requestTimeout: 120000, // 2 minutes
         // Add credentials configuration if needed
         ...(process.env.AWS_ACCESS_KEY_ID && {
           credentials: {
@@ -73,7 +62,16 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       }
 
       this.client = new DynamoDBClient(clientConfig);
-      this.docClient = DynamoDBDocumentClient.from(this.client);
+      this.docClient = DynamoDBDocumentClient.from(this.client, {
+        marshallOptions: {
+          convertEmptyValues: false,
+          removeUndefinedValues: true,
+          convertClassInstanceToMap: false,
+        },
+        unmarshallOptions: {
+          wrapNumbers: false,
+        },
+      });
       
       console.log("[DynamoDB] Client initialized successfully");
       
