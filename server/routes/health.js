@@ -50,14 +50,45 @@ router.get('/', async (req, res) => {
     try {
       const dbCheckStart = Date.now();
       
-      // Use database-type-appropriate health check
-      if (db.getType() === 'dynamodb') {
-        // For DynamoDB, use the dedicated health check
-        const healthCheck = new DynamoDBHealthCheck();
-        const result = await healthCheck.testConnection();
-        healthCheck.close();
-        
-        if (result.success) {
+      // Ensure database is initialized before checking
+      if (!db.initialized) {
+        checks.push({
+          name: 'database',
+          status: 'initializing',
+          message: 'Database is still initializing',
+          type: db.getType ? db.getType() : 'unknown',
+          provider: DatabaseProviderFactory.getProviderType()
+        });
+        overallStatus = 'degraded';
+      } else {
+        // Use database-type-appropriate health check
+        if (db.getType() === 'dynamodb') {
+          // For DynamoDB, use the dedicated health check
+          const healthCheck = new DynamoDBHealthCheck();
+          const result = await healthCheck.testConnection();
+          healthCheck.close();
+          
+          if (result.success) {
+            checks.push({
+              name: 'database',
+              status: 'healthy',
+              responseTime: Date.now() - dbCheckStart,
+              type: db.getType(),
+              provider: DatabaseProviderFactory.getProviderType()
+            });
+          } else {
+            checks.push({
+              name: 'database',
+              status: 'unhealthy',
+              error: result.error?.message || result.message || 'DynamoDB connection failed',
+              type: db.getType(),
+              provider: DatabaseProviderFactory.getProviderType()
+            });
+            overallStatus = 'degraded';
+          }
+        } else {
+          // For SQLite, use the existing SQL query
+          await db.get('SELECT 1 as test');
           checks.push({
             name: 'database',
             status: 'healthy',
@@ -65,33 +96,14 @@ router.get('/', async (req, res) => {
             type: db.getType(),
             provider: DatabaseProviderFactory.getProviderType()
           });
-        } else {
-          checks.push({
-            name: 'database',
-            status: 'unhealthy',
-            error: result.error?.message || result.message || 'DynamoDB connection failed',
-            type: db.getType(),
-            provider: DatabaseProviderFactory.getProviderType()
-          });
-          overallStatus = 'degraded';
         }
-      } else {
-        // For SQLite, use the existing SQL query
-        await db.get('SELECT 1 as test');
-        checks.push({
-          name: 'database',
-          status: 'healthy',
-          responseTime: Date.now() - dbCheckStart,
-          type: db.getType(),
-          provider: DatabaseProviderFactory.getProviderType()
-        });
       }
     } catch (dbError) {
       checks.push({
         name: 'database',
         status: 'unhealthy',
         error: dbError.message,
-        type: db.getType(),
+        type: db.getType ? db.getType() : 'unknown',
         provider: DatabaseProviderFactory.getProviderType()
       });
       overallStatus = 'degraded';
@@ -164,6 +176,11 @@ router.get('/simple', (req, res) => {
  */
 router.get('/ready', async (req, res) => {
   try {
+    // Check if database is initialized first
+    if (!db.initialized) {
+      throw new Error('Database is still initializing');
+    }
+
     // Quick database connectivity check
     if (db.getType() === 'dynamodb') {
       // For DynamoDB, use the dedicated health check

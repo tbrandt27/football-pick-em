@@ -69,7 +69,8 @@ is_process_running() {
 
 # Function to check server health
 check_server_health() {
-    if curl -s -f "http://localhost:$PORT/api/health/live" > /dev/null 2>&1; then
+    # Use readiness endpoint which includes database checks
+    if curl -s -f "http://localhost:$PORT/api/health/ready" > /dev/null 2>&1; then
         return 0
     else
         return 1
@@ -100,14 +101,22 @@ start_server() {
     SERVER_PID=$!
     log_with_timestamp "📋 Server started with PID: $SERVER_PID"
     
-    # Wait longer for the server to fully initialize
-    sleep 5
+    # Wait for process to start
+    sleep 3
     
     if is_process_running $SERVER_PID; then
-        # Wait additional time for Express app to be ready
-        sleep 3
-        log_with_timestamp "✅ Server startup successful"
-        return 0
+        # Wait longer for database and scheduler initialization
+        log_with_timestamp "🔄 Waiting for database and scheduler initialization..."
+        sleep 8
+        
+        # Verify readiness with health check
+        if check_server_health; then
+            log_with_timestamp "✅ Server startup and health check successful"
+            return 0
+        else
+            log_with_timestamp "⚠️  Server started but health check failed - will retry in monitoring loop"
+            return 0  # Don't fail immediately, let monitoring handle health issues
+        fi
     else
         log_with_timestamp "❌ Server startup failed"
         return 1
@@ -205,13 +214,23 @@ while [ "$SHUTDOWN_REQUESTED" != "true" ]; do
             log_with_timestamp "⚠️  $RESTART_REASON"
         fi
         
-        # Check health endpoint (every 3 intervals to avoid too frequent checks in production)
+        # Check health endpoint more frequently initially, then less frequent after startup
         # Ensure variables are initialized for arithmetic operations
         CURRENT_TIME=${CURRENT_TIME:-$(date +%s)}
         LAST_HEALTH_CHECK=${LAST_HEALTH_CHECK:-0}
         HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60}
         
-        if [ $((CURRENT_TIME - LAST_HEALTH_CHECK)) -ge $((HEALTH_CHECK_INTERVAL * 3)) ]; then
+        # More frequent health checks during first 10 minutes after startup
+        SERVER_UPTIME=$(($CURRENT_TIME - $(date -d "$(ps -o lstart= -p $SERVER_PID 2>/dev/null | head -1)" +%s 2>/dev/null || echo $CURRENT_TIME)))
+        if [ $SERVER_UPTIME -lt 600 ]; then
+            # Check every interval during startup period
+            HEALTH_CHECK_FREQ=$HEALTH_CHECK_INTERVAL
+        else
+            # Check every 3 intervals after stabilization
+            HEALTH_CHECK_FREQ=$((HEALTH_CHECK_INTERVAL * 3))
+        fi
+        
+        if [ $((CURRENT_TIME - LAST_HEALTH_CHECK)) -ge $HEALTH_CHECK_FREQ ]; then
             if ! check_server_health; then
                 NEEDS_RESTART=true
                 RESTART_REASON="Health check failed"
