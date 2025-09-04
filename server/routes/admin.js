@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.js";
+import logger from "../utils/logger.js";
 
 const router = express.Router();
 
