@@ -28,7 +28,7 @@ export class DynamoDBHealthCheck {
    */
   async initializeClients() {
     try {
-      this.client = new DynamoDBClient({
+      const clientConfig = {
         region: this.region,
         ...(process.env.AWS_ACCESS_KEY_ID && {
           credentials: {
@@ -36,8 +36,14 @@ export class DynamoDBHealthCheck {
             secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
           }
         })
-      });
-      
+      };
+
+      // Add LocalStack endpoint if configured
+      if (process.env.USE_LOCALSTACK === 'true' && process.env.LOCALSTACK_ENDPOINT) {
+        clientConfig.endpoint = process.env.LOCALSTACK_ENDPOINT;
+      }
+
+      this.client = new DynamoDBClient(clientConfig);
       this.docClient = DynamoDBDocumentClient.from(this.client);
       return true;
     } catch (error) {

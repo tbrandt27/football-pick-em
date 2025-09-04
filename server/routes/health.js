@@ -49,14 +49,43 @@ router.get('/', async (req, res) => {
     // Database health check
     try {
       const dbCheckStart = Date.now();
-      await db.get('SELECT 1 as test');
-      checks.push({
-        name: 'database',
-        status: 'healthy',
-        responseTime: Date.now() - dbCheckStart,
-        type: db.getType(),
-        provider: DatabaseProviderFactory.getProviderType()
-      });
+      
+      // Use database-type-appropriate health check
+      if (db.getType() === 'dynamodb') {
+        // For DynamoDB, use the dedicated health check
+        const healthCheck = new DynamoDBHealthCheck();
+        const result = await healthCheck.testConnection();
+        healthCheck.close();
+        
+        if (result.success) {
+          checks.push({
+            name: 'database',
+            status: 'healthy',
+            responseTime: Date.now() - dbCheckStart,
+            type: db.getType(),
+            provider: DatabaseProviderFactory.getProviderType()
+          });
+        } else {
+          checks.push({
+            name: 'database',
+            status: 'unhealthy',
+            error: result.error?.message || result.message || 'DynamoDB connection failed',
+            type: db.getType(),
+            provider: DatabaseProviderFactory.getProviderType()
+          });
+          overallStatus = 'degraded';
+        }
+      } else {
+        // For SQLite, use the existing SQL query
+        await db.get('SELECT 1 as test');
+        checks.push({
+          name: 'database',
+          status: 'healthy',
+          responseTime: Date.now() - dbCheckStart,
+          type: db.getType(),
+          provider: DatabaseProviderFactory.getProviderType()
+        });
+      }
     } catch (dbError) {
       checks.push({
         name: 'database',
@@ -70,7 +99,7 @@ router.get('/', async (req, res) => {
 
     // Scheduler health check
     try {
-      const schedulerStatus = scheduler.getStatus();
+      const schedulerStatus = await scheduler.getStatus();
       checks.push({
         name: 'scheduler',
         status: schedulerStatus.isRunning ? 'healthy' : 'stopped',
@@ -136,7 +165,19 @@ router.get('/simple', (req, res) => {
 router.get('/ready', async (req, res) => {
   try {
     // Quick database connectivity check
-    await db.get('SELECT 1 as test');
+    if (db.getType() === 'dynamodb') {
+      // For DynamoDB, use the dedicated health check
+      const healthCheck = new DynamoDBHealthCheck();
+      const result = await healthCheck.testConnection();
+      healthCheck.close();
+      
+      if (!result.success) {
+        throw new Error(result.error?.message || result.message || 'DynamoDB connection failed');
+      }
+    } else {
+      // For SQLite, use the existing SQL query
+      await db.get('SELECT 1 as test');
+    }
     
     res.status(200).json({
       status: 'ready',
