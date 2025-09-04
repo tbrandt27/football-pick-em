@@ -47,6 +47,54 @@ router.post('/register', async (req, res) => {
       emailVerified: false
     });
 
+    // Check for pending invitations for this email and auto-process them
+    let isAdminUser = false;
+    let addedToGames = [];
+    
+    try {
+      const invitationService = DatabaseServiceFactory.getInvitationService();
+      
+      // Get all pending invitations for this email
+      const allInvitations = await invitationService.getPendingInvitations();
+      const pendingInvitationsForEmail = allInvitations.filter(
+        invitation => invitation.email === email.toLowerCase() &&
+        invitation.status === 'pending' &&
+        invitation.expires_at > new Date().toISOString()
+      );
+
+      if (pendingInvitationsForEmail.length > 0) {
+        console.log(`Found ${pendingInvitationsForEmail.length} pending invitation(s) for ${email}`);
+        
+        const gameService = DatabaseServiceFactory.getGameService();
+        
+        for (const invitation of pendingInvitationsForEmail) {
+          try {
+            // Process admin invitations
+            if (invitation.is_admin_invitation) {
+              isAdminUser = true;
+              // Update the user to be an admin
+              await userService.updateUserDynamic(userId, { isAdmin: true });
+              console.log(`User ${email} promoted to admin via pending invitation`);
+            } else if (invitation.game_id) {
+              // Process game invitations
+              await gameService.addParticipant(invitation.game_id, userId, 'player');
+              addedToGames.push(invitation.game_name || 'Unknown Game');
+              console.log(`User ${email} added to game ${invitation.game_id} via pending invitation`);
+            }
+            
+            // Mark invitation as accepted
+            await invitationService.updateInvitationStatus(invitation.id, 'accepted');
+          } catch (error) {
+            console.error(`Error processing invitation ${invitation.id} for ${email}:`, error);
+            // Continue processing other invitations even if one fails
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error checking pending invitations for ${email}:`, error);
+      // Don't fail registration if invitation processing fails
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { userId, email: email.toLowerCase() },
@@ -54,8 +102,18 @@ router.post('/register', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    // Create success message based on what happened
+    let successMessage = 'User registered successfully';
+    if (addedToGames.length > 0 && isAdminUser) {
+      successMessage += `! You've been automatically added to ${addedToGames.length} game(s) and granted admin privileges based on pending invitations.`;
+    } else if (addedToGames.length > 0) {
+      successMessage += `! You've been automatically added to ${addedToGames.length} game(s) based on pending invitations.`;
+    } else if (isAdminUser) {
+      successMessage += '! You\'ve been granted admin privileges based on a pending invitation.';
+    }
+
     res.status(201).json({
-      message: 'User registered successfully',
+      message: successMessage,
       token,
       user: {
         id: userId,
@@ -63,7 +121,7 @@ router.post('/register', async (req, res) => {
         firstName,
         lastName,
         favoriteTeamId,
-        isAdmin: false,
+        isAdmin: isAdminUser,
         emailVerified: false
       }
     });
