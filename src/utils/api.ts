@@ -353,7 +353,7 @@ export interface NFLTeam {
 export interface PickemGame {
   id: string;
   game_name: string;
-  type: 'week' | 'survivor';
+  type: 'week' | 'weekly' | 'survivor';
   created_at: string;
   updated_at: string;
   player_count: number;

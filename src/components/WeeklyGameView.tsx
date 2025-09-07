@@ -932,12 +932,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                   onUpdateComplete={(result) => {
                     if (result.updated) {
                       // Reload the week data to show updated scores and refresh all stats
-                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId).then(() => {
-                        // Force a refresh of weekly stats specifically
-                        if (game?.id && currentSeason?.id) {
-                          loadWeeklyStats(currentSeason.id, currentWeek, game.id);
-                        }
-                      });
+                      const currentGameId = game?.id || gameId;
+                      if (currentGameId && currentSeason?.id) {
+                        // Reload week data first
+                        loadWeekData(currentSeason.id, currentWeek, currentGameId).then(() => {
+                          // Then force a complete refresh of weekly stats
+                          loadWeeklyStats(currentSeason.id, currentWeek, currentGameId);
+                        });
+                      }
                     }
                   }}
                 />

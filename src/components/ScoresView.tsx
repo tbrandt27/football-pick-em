@@ -143,7 +143,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
         if (week) {
           await loadWeeklyPicks(gameId, seasonId, week, sortedSummary);
           // For weekly games, also load the NFL games for that week
-          if (game?.type === 'week') {
+          if (game?.type === 'week' || game?.type === 'weekly') {
             await loadWeekGames(seasonId, week);
           }
         } else {
@@ -528,7 +528,13 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
                 onUpdateComplete={(result) => {
                   if (result.updated) {
                     // Reload picks summary to show updated results
-                    loadPicksSummary(game.id, currentSeason.id, selectedWeek || undefined);
+                    loadPicksSummary(game.id, currentSeason.id, selectedWeek || undefined).then(() => {
+                      // If we're viewing a specific week, also refresh the weekly picks and games data
+                      if (selectedWeek && (game?.type === 'week' || game?.type === 'weekly')) {
+                        loadWeeklyPicks(game.id, currentSeason.id, selectedWeek, picksSummary);
+                        loadWeekGames(currentSeason.id, selectedWeek);
+                      }
+                    });
                   }
                 }}
               />
@@ -543,7 +549,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
               {selectedWeek ? `Week ${selectedWeek} Results` : 'Season Standings'}
             </h3>
             <p className="text-sm text-gray-600 mt-1">
-              {selectedWeek 
+              {selectedWeek
                 ? `Performance for week ${selectedWeek} only`
                 : `Overall performance across all weeks in ${currentSeason?.season || 'current'} season`
               }
@@ -565,7 +571,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
                       {game?.type === 'survivor' && selectedWeek && (
                         <th className="text-center py-3 px-4 font-semibold text-gray-700">Team Pick</th>
                       )}
-                      {game?.type === 'week' && selectedWeek && (
+                      {(game?.type === 'week' || game?.type === 'weekly') && selectedWeek && (
                         <th className="text-center py-3 px-4 font-semibold text-gray-700">View Picks</th>
                       )}
                       <th className="text-center py-3 px-4 font-semibold text-gray-700">Correct</th>
@@ -604,7 +610,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
                                 )}
                               </div>
                             </td>
-                            {game?.type === 'week' && selectedWeek && (
+                            {(game?.type === 'week' || game?.type === 'weekly') && selectedWeek && (
                               <td className="py-4 px-4 text-center">
                                 <button
                                   onClick={() => setExpandedPlayer(isExpanded ? null : player.user_id)}
@@ -690,7 +696,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
                           </tr>
                           
                           {/* Expanded row showing detailed picks for weekly games */}
-                          {game?.type === 'week' && selectedWeek && isExpanded && (
+                          {(game?.type === 'week' || game?.type === 'weekly') && selectedWeek && isExpanded && (
                             <tr className="bg-gray-50">
                               <td colSpan={6} className="px-4 py-6">
                                 <div className="bg-white rounded-lg p-4 shadow-sm">
