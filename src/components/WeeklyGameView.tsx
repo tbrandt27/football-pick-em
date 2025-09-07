@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth, logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, Season, NFLGame, Pick, NFLTeam } from '../utils/api';
-import api from '../utils/api';
-import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import api, { createGameSlug } from '../utils/api';
+import { UserCircleIcon, HomeIcon, DocumentDuplicateIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
 
 interface WeeklyGameViewProps {
@@ -931,8 +931,13 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                   week={currentWeek}
                   onUpdateComplete={(result) => {
                     if (result.updated) {
-                      // Reload the week data to show updated scores
-                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId);
+                      // Reload the week data to show updated scores and refresh all stats
+                      loadWeekData(currentSeason.id, currentWeek, game?.id || gameId).then(() => {
+                        // Force a refresh of weekly stats specifically
+                        if (game?.id && currentSeason?.id) {
+                          loadWeeklyStats(currentSeason.id, currentWeek, game.id);
+                        }
+                      });
                     }
                   }}
                 />
@@ -945,7 +950,16 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
         {weeklyStats && game && (
           <div className="bg-white rounded-lg shadow-md mb-8">
             <div className="p-6 border-b">
-              <h3 className="text-xl font-bold text-gray-800">Week {currentWeek} Stats</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-800">Week {currentWeek} Stats</h3>
+                <a
+                  href={`/game/${gameSlug || (game && createGameSlug(game.game_name))}/scores`}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                >
+                  <TrophyIcon className="h-4 w-4" />
+                  <span>View Scores</span>
+                </a>
+              </div>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

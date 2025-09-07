@@ -1,0 +1,14 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import ScoresView from '../../../components/ScoresView';
+
+const { gameSlug } = Astro.params;
+
+if (!gameSlug) {
+  return Astro.redirect('/dashboard');
+}
+---
+
+<Layout title={`Scores - ${gameSlug}`}>
+  <ScoresView gameSlug={gameSlug} client:load />
+</Layout>

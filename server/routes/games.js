@@ -40,7 +40,31 @@ router.get("/by-slug/:gameSlug", authenticateToken, async (req, res) => {
     const decodedSlug = decodeURIComponent(gameSlug);
 
     const gameService = DatabaseServiceFactory.getGameService();
-    const game = await gameService.getGameBySlug(decodedSlug, userId);
+    let game;
+
+    if (req.user.is_admin) {
+      // For admins, find the game by slug without access control
+      // Helper function to create URL-friendly slugs (matches the service implementation)
+      const createGameSlug = (gameName) => {
+        return gameName
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-")
+          .trim()
+          .replace(/^-+|-+$/g, "");
+      };
+
+      // Get all games and find the one that matches the slug
+      const allGames = await gameService.getAllGames();
+      const matchingGame = allGames.find((g) => createGameSlug(g.game_name) === decodedSlug);
+      
+      if (matchingGame) {
+        game = await gameService.getGameByIdForAdmin(matchingGame.id);
+      }
+    } else {
+      game = await gameService.getGameBySlug(decodedSlug, userId);
+    }
 
     if (!game) {
       return res.status(404).json({ error: "Game not found" });
@@ -65,7 +89,14 @@ router.get("/:gameId", authenticateToken, async (req, res) => {
     const { gameId } = req.params;
 
     const gameService = DatabaseServiceFactory.getGameService();
-    const game = await gameService.getGameById(gameId, req.user.id);
+    let game;
+
+    // If user is admin, use admin method to bypass access control
+    if (req.user.is_admin) {
+      game = await gameService.getGameByIdForAdmin(gameId);
+    } else {
+      game = await gameService.getGameById(gameId, req.user.id);
+    }
 
     if (!game) {
       return res.status(404).json({ error: "Game not found" });

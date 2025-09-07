@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { logout } from '../stores/auth';
 import type { PickemGame, GameParticipant, Season, NFLGame, Pick, NFLTeam, TeamSurvivorStats } from '../utils/api';
-import api from '../utils/api';
-import { UserCircleIcon, HomeIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, ClockIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import api, { createGameSlug } from '../utils/api';
+import { UserCircleIcon, HomeIcon, ArrowLeftStartOnRectangleIcon, Bars3Icon, XMarkIcon, ClockIcon, CheckCircleIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import ScoreUpdateBadge from './ScoreUpdateBadge';
 
 interface SurvivorGameViewProps {
@@ -542,18 +542,27 @@ const SurvivorGameView: React.FC<SurvivorGameViewProps> = ({ gameId, gameSlug, i
               <h2 className="text-2xl font-bold text-gray-800">Week {currentWeek}</h2>
               <div className="text-sm text-gray-500 mt-1">{currentSeason?.season || '2024'} Season</div>
             </div>
-            <div className="flex items-center space-x-2">
-              {picksLocked ? (
-                <div className="flex items-center text-red-600">
-                  <ClockIcon className="h-5 w-5 mr-1" />
-                  <span className="font-medium">Picks Locked</span>
-                </div>
-              ) : (
-                <div className="flex items-center text-green-600">
-                  <CheckCircleIcon className="h-5 w-5 mr-1" />
-                  <span className="font-medium">Picks Open</span>
-                </div>
-              )}
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                {picksLocked ? (
+                  <div className="flex items-center text-red-600">
+                    <ClockIcon className="h-5 w-5 mr-1" />
+                    <span className="font-medium">Picks Locked</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-green-600">
+                    <CheckCircleIcon className="h-5 w-5 mr-1" />
+                    <span className="font-medium">Picks Open</span>
+                  </div>
+                )}
+              </div>
+              <a
+                href={`/game/${gameSlug || (game && createGameSlug(game.game_name))}/scores`}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <TrophyIcon className="h-4 w-4" />
+                <span>View Scores</span>
+              </a>
             </div>
           </div>
 
