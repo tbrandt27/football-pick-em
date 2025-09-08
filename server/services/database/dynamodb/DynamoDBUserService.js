@@ -99,11 +99,18 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} User data
    */
   async getUserByEmail(email) {
-    // DynamoDB doesn't have a secondary index on email in this implementation
-    // We need to scan the table - in production, you'd want a GSI on email
-    const result = await this.db._dynamoScan('users', { email: email.toLowerCase() });
-
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    try {
+      // Try GSI email-index for efficient lookup
+      return await this.db._getByEmailGSI('users', email);
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB User] GSI not found, falling back to scan for email ${email}`);
+        const result = await this.db._dynamoScan('users', { email: email.toLowerCase() });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -203,9 +210,21 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Array>} Games with participation info
    */
   async getUserGames(userId) {
-    // Get user's game participations using Scan since user_id is not the partition key
-    const participationsResult = await this.db._dynamoScan('game_participants', { user_id: userId });
-    const participations = participationsResult.Items || [];
+    let participations;
+    
+    try {
+      // Try GSI user_id-index for efficient lookup
+      participations = await this.db._getByUserIdGSI('game_participants', userId);
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB User] GSI not found, falling back to scan for user games ${userId}`);
+        const participationsResult = await this.db._dynamoScan('game_participants', { user_id: userId });
+        participations = participationsResult.Items || [];
+      } else {
+        throw error;
+      }
+    }
 
     if (!participations || participations.length === 0) {
       return [];
@@ -222,9 +241,20 @@ export default class DynamoDBUserService extends IUserService {
             return null;
           }
 
-          // Get player count for this game using Scan since game_id is not the partition key
-          const allParticipantsResult = await this.db._dynamoScan('game_participants', { game_id: participation.game_id });
-          const allParticipants = allParticipantsResult.Items || [];
+          // Try GSI game_id-index for efficient lookup
+          let allParticipants;
+          try {
+            allParticipants = await this.db._getByGameIdGSI('game_participants', participation.game_id);
+          } catch (error) {
+            // Fallback to scan if GSI doesn't exist (backward compatibility)
+            if (error.name === 'ResourceNotFoundException') {
+              console.log(`[DynamoDB User] GSI not found, falling back to scan for game participants ${participation.game_id}`);
+              const allParticipantsResult = await this.db._dynamoScan('game_participants', { game_id: participation.game_id });
+              allParticipants = allParticipantsResult.Items || [];
+            } else {
+              throw error;
+            }
+          }
 
           const playerCount = allParticipants.filter(p => p.role === 'player').length;
 
@@ -290,7 +320,8 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} User if token valid
    */
   async getUserByResetToken(resetToken) {
-    // Scan for user with this reset token that hasn't expired
+    // Note: For reset tokens, we still need to scan since there's no GSI for password_reset_token
+    // This is acceptable since reset token lookups are infrequent
     const result = await this.db._dynamoScan('users', { password_reset_token: resetToken });
 
     if (!result.Items || result.Items.length === 0) {
@@ -338,9 +369,19 @@ export default class DynamoDBUserService extends IUserService {
    * @returns {Promise<Object|null>} First admin user
    */
   async getFirstAdminUser() {
-    const result = await this.db._dynamoScan('users', { is_admin: true });
-
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    try {
+      // Try GSI is_admin-index for efficient lookup
+      const result = await this.db._dynamoQueryGSI('users', 'is_admin-index', { is_admin: 'true' });
+      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB User] GSI not found, falling back to scan for admin user`);
+        const result = await this.db._dynamoScan('users', { is_admin: true });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      }
+      throw error;
+    }
   }
 
   /**

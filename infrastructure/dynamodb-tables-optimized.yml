@@ -1,0 +1,619 @@
+# CloudFormation template for DynamoDB tables with optimized GSIs
+# This template creates all the DynamoDB tables needed for the Football Pick'em application
+# with comprehensive Global Secondary Indexes to eliminate scan operations
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Optimized DynamoDB tables for Football Pick em application with comprehensive GSIs'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'prod'
+    Description: 'Environment name (dev, staging, prod)'
+  
+  TablePrefix:
+    Type: String
+    Default: 'football_pickem_'
+    Description: 'Prefix for all table names'
+
+Resources:
+  # Users table - OPTIMIZED
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}users'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: is_admin
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for email lookups - CRITICAL for getUserByEmail()
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for admin user queries - for getFirstAdminUser()
+        - IndexName: is_admin-index
+          KeySchema:
+            - AttributeName: is_admin
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Football Teams table - OPTIMIZED
+  FootballTeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}football_teams'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: team_code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for team code lookups - CRITICAL for getTeamByCode()
+        - IndexName: team_code-index
+          KeySchema:
+            - AttributeName: team_code
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Pick'em Games table - OPTIMIZED
+  PickemGamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}pickem_games'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: commissioner_id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for commissioner lookups
+        - IndexName: commissioner_id-index
+          KeySchema:
+            - AttributeName: commissioner_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-based queries
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Game Participants table - HEAVILY OPTIMIZED
+  GameParticipantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}game_participants'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id_user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for game-based queries - CRITICAL for getGameParticipants()
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for user-based queries - CRITICAL for getUserGames()
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for precise user-game lookups - CRITICAL for getParticipant()
+        - IndexName: game_id-user_id-index
+          KeySchema:
+            - AttributeName: game_id_user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Seasons table - OPTIMIZED
+  SeasonsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}seasons'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: season
+          AttributeType: S
+        - AttributeName: is_current
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for season year lookups
+        - IndexName: season-index
+          KeySchema:
+            - AttributeName: season
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for current season queries - CRITICAL for getCurrentSeason()
+        - IndexName: is_current-index
+          KeySchema:
+            - AttributeName: is_current
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Football Games table - HEAVILY OPTIMIZED
+  FootballGamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}football_games'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+        - AttributeName: week
+          AttributeType: N
+        - AttributeName: season_id_week
+          AttributeType: S
+        - AttributeName: home_team_id
+          AttributeType: S
+        - AttributeName: away_team_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for season-based queries - CRITICAL for getGamesBySeason()
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-week queries - CRITICAL for getGamesBySeasonAndWeek()
+        - IndexName: season_id-week-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+            - AttributeName: week
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for efficient season-week lookups
+        - IndexName: season_id_week-index
+          KeySchema:
+            - AttributeName: season_id_week
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for home team lookups
+        - IndexName: home_team_id-index
+          KeySchema:
+            - AttributeName: home_team_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for away team lookups
+        - IndexName: away_team_id-index
+          KeySchema:
+            - AttributeName: away_team_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # System Settings table - OPTIMIZED
+  SystemSettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}system_settings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: category_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for category-based queries
+        - IndexName: category_key-index
+          KeySchema:
+            - AttributeName: category_key
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Picks table - HEAVILY OPTIMIZED
+  PicksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}picks'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+        - AttributeName: week
+          AttributeType: N
+        - AttributeName: football_game_id
+          AttributeType: S
+        - AttributeName: pick_team_id
+          AttributeType: S
+        - AttributeName: season_id_week
+          AttributeType: S
+        - AttributeName: user_game_football
+          AttributeType: S
+        - AttributeName: user_id_game_id
+          AttributeType: S
+        - AttributeName: user_id_season_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for user-based queries - CRITICAL for getUserPicks()
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for game-based queries - CRITICAL for getGamePicksSummary()
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-based queries
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-week queries
+        - IndexName: season_id-week-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+            - AttributeName: week
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # GSI for football game queries - CRITICAL for updatePicksForGame()
+        - IndexName: football_game_id-index
+          KeySchema:
+            - AttributeName: football_game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for team-based queries
+        - IndexName: pick_team_id-index
+          KeySchema:
+            - AttributeName: pick_team_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for season-week lookups
+        - IndexName: season_id_week-index
+          KeySchema:
+            - AttributeName: season_id_week
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for user-game-football lookups - CRITICAL for getExistingPick()
+        - IndexName: user_game_football-index
+          KeySchema:
+            - AttributeName: user_game_football
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for user-game lookups
+        - IndexName: user_id_game_id-index
+          KeySchema:
+            - AttributeName: user_id_game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for user-season lookups
+        - IndexName: user_id_season_id-index
+          KeySchema:
+            - AttributeName: user_id_season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Weekly Standings table - OPTIMIZED
+  WeeklyStandingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}weekly_standings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: season_id
+          AttributeType: S
+        - AttributeName: week
+          AttributeType: N
+        - AttributeName: season_id_week
+          AttributeType: S
+        - AttributeName: game_season_week
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for user-based queries
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for game-based queries
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-based queries
+        - IndexName: season_id-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for season-week queries
+        - IndexName: season_id-week-index
+          KeySchema:
+            - AttributeName: season_id
+              KeyType: HASH
+            - AttributeName: week
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for season-week lookups
+        - IndexName: season_id_week-index
+          KeySchema:
+            - AttributeName: season_id_week
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for game-season-week lookups
+        - IndexName: game_season_week-index
+          KeySchema:
+            - AttributeName: game_season_week
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Game Invitations table - HEAVILY OPTIMIZED
+  GameInvitationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}game_invitations'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: invite_token
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: game_email
+          AttributeType: S
+        - AttributeName: invited_by_user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI for game-based queries - CRITICAL for getGameInvitations()
+        - IndexName: game_id-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for token-based queries - CRITICAL for getInvitationByToken()
+        - IndexName: invite_token-index
+          KeySchema:
+            - AttributeName: invite_token
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for email-based queries
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for status-based queries
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Composite GSI for game-email lookups - CRITICAL for checkExistingInvitation()
+        - IndexName: game_email-index
+          KeySchema:
+            - AttributeName: game_email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI for inviter-based queries
+        - IndexName: invited_by_user_id-index
+          KeySchema:
+            - AttributeName: invited_by_user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  UsersTableName:
+    Description: 'Name of the Users table'
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub '${AWS::StackName}-UsersTable'
+
+  FootballTeamsTableName:
+    Description: 'Name of the Football Teams table'
+    Value: !Ref FootballTeamsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-FootballTeamsTable'
+
+  PickemGamesTableName:
+    Description: 'Name of the Pickem Games table'
+    Value: !Ref PickemGamesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PickemGamesTable'
+
+  GameParticipantsTableName:
+    Description: 'Name of the Game Participants table'
+    Value: !Ref GameParticipantsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-GameParticipantsTable'
+
+  SeasonsTableName:
+    Description: 'Name of the Seasons table'
+    Value: !Ref SeasonsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SeasonsTable'
+
+  FootballGamesTableName:
+    Description: 'Name of the Football Games table'
+    Value: !Ref FootballGamesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-FootballGamesTable'
+
+  SystemSettingsTableName:
+    Description: 'Name of the System Settings table'
+    Value: !Ref SystemSettingsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SystemSettingsTable'
+
+  PicksTableName:
+    Description: 'Name of the Picks table'
+    Value: !Ref PicksTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PicksTable'
+
+  WeeklyStandingsTableName:
+    Description: 'Name of the Weekly Standings table'
+    Value: !Ref WeeklyStandingsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-WeeklyStandingsTable'
+
+  GameInvitationsTableName:
+    Description: 'Name of the Game Invitations table'
+    Value: !Ref GameInvitationsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-GameInvitationsTable'

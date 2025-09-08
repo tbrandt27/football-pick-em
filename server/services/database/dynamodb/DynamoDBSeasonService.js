@@ -33,54 +33,22 @@ export default class DynamoDBSeasonService extends ISeasonService {
    */
   async getCurrentSeason() {
     try {
-      // First try scan with filter
-      const result = await this.db._dynamoScan('seasons', {
-        is_current: true
-      });
-
-      if (result.Items && result.Items.length > 0) {
-        // Handle multiple current seasons by returning the most recent and fixing the inconsistency
-        if (result.Items.length > 1) {
-          console.warn(`[DynamoDB Season] Found ${result.Items.length} seasons marked as current! Fixing inconsistency...`);
-          await this.fixMultipleCurrentSeasons(result.Items);
-        }
-        return result.Items[0];
-      }
-
-      // Fallback: scan all seasons and filter in memory
-      console.log(`[DynamoDB Season] Scan filter failed for current season, using fallback`);
-      const allSeasonsResult = await this.db._dynamoScan('seasons');
-      if (allSeasonsResult.Items) {
-        const currentSeasons = allSeasonsResult.Items.filter(s => s.is_current === true);
-        if (currentSeasons.length > 0) {
-          if (currentSeasons.length > 1) {
-            console.warn(`[DynamoDB Season] Found ${currentSeasons.length} seasons marked as current! Fixing inconsistency...`);
-            await this.fixMultipleCurrentSeasons(currentSeasons);
-          }
-          console.log(`[DynamoDB Season] Found current season via fallback: ${currentSeasons[0].season}`);
-          return currentSeasons[0];
-        }
+      // Try GSI is_current-index for efficient lookup
+      const result = await this.db._getCurrentSeasonGSI('seasons');
+      
+      if (result) {
+        return result;
       }
       
       return null;
     } catch (error) {
-      console.error(`[DynamoDB Season] Error in getCurrentSeason:`, error);
-      
-      // Final fallback: scan all and filter
-      try {
-        const allSeasonsResult = await this.db._dynamoScan('seasons');
-        if (allSeasonsResult.Items) {
-          const currentSeasons = allSeasonsResult.Items.filter(s => s.is_current === true);
-          if (currentSeasons.length > 1) {
-            console.warn(`[DynamoDB Season] Found ${currentSeasons.length} seasons marked as current in fallback! Fixing...`);
-            await this.fixMultipleCurrentSeasons(currentSeasons);
-          }
-          return currentSeasons.length > 0 ? currentSeasons[0] : null;
-        }
-      } catch (fallbackError) {
-        console.error(`[DynamoDB Season] Fallback also failed:`, fallbackError);
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan`);
+        const result = await this.db._dynamoScan('seasons', { is_current: true });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
-      
+      console.error(`[DynamoDB Season] Error in getCurrentSeason:`, error);
       return null;
     }
   }
@@ -125,38 +93,16 @@ export default class DynamoDBSeasonService extends ISeasonService {
    */
   async getSeasonByYear(year) {
     try {
-      // First try scan with filter
-      const result = await this.db._dynamoScan('seasons', { season: year });
-      if (result.Items && result.Items.length > 0) {
-        return result.Items[0];
-      }
-
-      // Fallback: scan all seasons and filter in memory for reliability
-      console.log(`[DynamoDB Season] Scan filter failed for year ${year}, using fallback`);
-      const allSeasonsResult = await this.db._dynamoScan('seasons');
-      if (allSeasonsResult.Items) {
-        const matchingSeason = allSeasonsResult.Items.find(s => s.season === year);
-        if (matchingSeason) {
-          console.log(`[DynamoDB Season] Found existing season via fallback: ${year}`);
-          return matchingSeason;
-        }
-      }
-      
-      return null;
+      // Try GSI season-index for efficient lookup
+      return await this.db._getSeasonByYearGSI('seasons', year);
     } catch (error) {
-      console.error(`[DynamoDB Season] Error in getSeasonByYear for ${year}:`, error);
-      
-      // Final fallback: scan all and filter
-      try {
-        const allSeasonsResult = await this.db._dynamoScan('seasons');
-        if (allSeasonsResult.Items) {
-          return allSeasonsResult.Items.find(s => s.season === year) || null;
-        }
-      } catch (fallbackError) {
-        console.error(`[DynamoDB Season] Fallback also failed:`, fallbackError);
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan for year ${year}`);
+        const result = await this.db._dynamoScan('seasons', { season: year });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
-      
-      return null;
+      throw error;
     }
   }
 
@@ -301,28 +247,44 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Array>} Football games with team info
    */
   async getSeasonGames(seasonId, filters = {}) {
-    // Get football games for the season
-    const gamesResult = await this.db._dynamoScan('football_games', {
-      season_id: seasonId
-    });
+    let filteredGames;
+    
+    try {
+      // Try GSI season_id-index for efficient lookup
+      const games = await this.db._getBySeasonIdGSI('football_games', seasonId);
 
-    if (!gamesResult.Items) {
-      return [];
+      if (!games) {
+        return [];
+      }
+
+      filteredGames = games;
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan for season games ${seasonId}`);
+        const gamesResult = await this.db._dynamoScan('football_games', { season_id: seasonId });
+        
+        if (!gamesResult.Items) {
+          return [];
+        }
+
+        filteredGames = gamesResult.Items;
+      } else {
+        throw error;
+      }
     }
 
-    let games = gamesResult.Items;
-
     // Filter out preseason games (season_type = 1)
-    games = games.filter(game => game.season_type !== 1);
+    filteredGames = filteredGames.filter(game => game.season_type !== 1);
 
     // Filter by week if specified
     if (filters.week) {
-      games = games.filter(game => game.week === parseInt(filters.week));
+      filteredGames = filteredGames.filter(game => game.week === parseInt(filters.week));
     }
 
     // Get team information for each game
     const gamesWithTeams = [];
-    for (const game of games) {
+    for (const game of filteredGames) {
       const homeTeamResult = await this.db._dynamoGet('football_teams', { id: game.home_team_id });
       const awayTeamResult = await this.db._dynamoGet('football_teams', { id: game.away_team_id });
 
@@ -361,11 +323,19 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<number>} Number of associated games
    */
   async getSeasonGameCount(seasonId) {
-    const result = await this.db._dynamoScan('football_games', {
-      season_id: seasonId
-    });
-
-    return result.Items ? result.Items.length : 0;
+    try {
+      // Try GSI season_id-index for efficient lookup
+      const games = await this.db._getBySeasonIdGSI('football_games', seasonId);
+      return games ? games.length : 0;
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan for season game count ${seasonId}`);
+        const result = await this.db._dynamoScan('football_games', { season_id: seasonId });
+        return result.Items ? result.Items.length : 0;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -375,41 +345,16 @@ export default class DynamoDBSeasonService extends ISeasonService {
    */
   async getTeamByCode(teamCode) {
     try {
-      // First try scan with filter
-      const result = await this.db._dynamoScan('football_teams', {
-        team_code: teamCode
-      });
-      
-      if (result.Items && result.Items.length > 0) {
-        return result.Items[0];
-      }
-
-      // Fallback: scan all teams and filter in memory for reliability
-      console.log(`[DynamoDB Team] Scan filter failed for team code ${teamCode}, using fallback`);
-      const allTeamsResult = await this.db._dynamoScan('football_teams');
-      if (allTeamsResult.Items) {
-        const matchingTeam = allTeamsResult.Items.find(t => t.team_code === teamCode);
-        if (matchingTeam) {
-          console.log(`[DynamoDB Team] Found existing team via fallback: ${teamCode}`);
-          return matchingTeam;
-        }
-      }
-      
-      return null;
+      // Try GSI team_code-index for efficient lookup
+      return await this.db._getByTeamCodeGSI('football_teams', teamCode);
     } catch (error) {
-      console.error(`[DynamoDB Team] Error in getTeamByCode for ${teamCode}:`, error);
-      
-      // Final fallback: scan all and filter
-      try {
-        const allTeamsResult = await this.db._dynamoScan('football_teams');
-        if (allTeamsResult.Items) {
-          return allTeamsResult.Items.find(t => t.team_code === teamCode) || null;
-        }
-      } catch (fallbackError) {
-        console.error(`[DynamoDB Team] Fallback also failed:`, fallbackError);
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan for team ${teamCode}`);
+        const result = await this.db._dynamoScan('football_teams', { team_code: teamCode });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
-      
-      return null;
+      throw error;
     }
   }
 
@@ -483,14 +428,31 @@ export default class DynamoDBSeasonService extends ISeasonService {
   async findFootballGame(criteria) {
     const { seasonId, week, homeTeamId, awayTeamId } = criteria;
     
-    const result = await this.db._dynamoScan('football_games', {
-      season_id: seasonId,
-      week: week,
-      home_team_id: homeTeamId,
-      away_team_id: awayTeamId
-    });
-    
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    try {
+      // Try GSI season_id-index and filter in memory for complex conditions
+      const seasonGames = await this.db._getBySeasonIdGSI('football_games', seasonId);
+      
+      const matchingGame = seasonGames.find(game =>
+        game.week === week &&
+        game.home_team_id === homeTeamId &&
+        game.away_team_id === awayTeamId
+      );
+      
+      return matchingGame || null;
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist (backward compatibility)
+      if (error.name === 'ResourceNotFoundException') {
+        console.log(`[DynamoDB Season] GSI not found, falling back to scan for findFootballGame`);
+        const result = await this.db._dynamoScan('football_games', {
+          season_id: seasonId,
+          week: week,
+          home_team_id: homeTeamId,
+          away_team_id: awayTeamId
+        });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -564,13 +526,29 @@ export default class DynamoDBSeasonService extends ISeasonService {
     
     // For each season, get the game counts
     const seasonsWithCounts = await Promise.all(seasons.map(async (season) => {
-      // Get pickem game count
-      const pickemGamesResult = await this.db._dynamoScan('pickem_games', { season_id: season.id });
-      const game_count = pickemGamesResult.Items ? pickemGamesResult.Items.length : 0;
+      let game_count = 0;
+      let football_games_count = 0;
       
-      // Get football game count
-      const footballGamesResult = await this.db._dynamoScan('football_games', { season_id: season.id });
-      const football_games_count = footballGamesResult.Items ? footballGamesResult.Items.length : 0;
+      try {
+        // Try GSI season_id-index for efficient lookups
+        const pickemGames = await this.db._getBySeasonIdGSI('pickem_games', season.id);
+        game_count = pickemGames ? pickemGames.length : 0;
+        
+        const footballGames = await this.db._getBySeasonIdGSI('football_games', season.id);
+        football_games_count = footballGames ? footballGames.length : 0;
+      } catch (error) {
+        // Fallback to scan if GSI doesn't exist (backward compatibility)
+        if (error.name === 'ResourceNotFoundException') {
+          console.log(`[DynamoDB Season] GSI not found, falling back to scan for season counts ${season.id}`);
+          const pickemGamesResult = await this.db._dynamoScan('pickem_games', { season_id: season.id });
+          game_count = pickemGamesResult.Items ? pickemGamesResult.Items.length : 0;
+          
+          const footballGamesResult = await this.db._dynamoScan('football_games', { season_id: season.id });
+          football_games_count = footballGamesResult.Items ? footballGamesResult.Items.length : 0;
+        } else {
+          throw error;
+        }
+      }
       
       return {
         ...season,

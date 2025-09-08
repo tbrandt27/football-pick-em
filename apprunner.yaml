@@ -27,7 +27,7 @@ run:
     env: PORT
   # Health check configuration for App Runner
   health-check:
-    path: "/api/health/live"
+    path: "/health"
     interval: 30
     timeout: 10
     healthy-threshold: 2

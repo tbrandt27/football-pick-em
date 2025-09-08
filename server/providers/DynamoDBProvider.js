@@ -506,6 +506,9 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       throw error;
     }
 
+    const actualTableName = this.tables[tableName] || tableName;
+    const startTime = Date.now();
+
     const keyConditionExpression = [];
     const expressionAttributeNames = {};
     const expressionAttributeValues = {};
@@ -520,7 +523,7 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     });
 
     const queryParams = {
-      TableName: this.tables[tableName] || tableName,
+      TableName: actualTableName,
       KeyConditionExpression: keyConditionExpression.join(' AND '),
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues
@@ -531,7 +534,38 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
 
     const command = new QueryCommand(queryParams);
-    return await this.docClient.send(command);
+    
+    try {
+      const result = await this.docClient.send(command);
+      const duration = Date.now() - startTime;
+      
+      // Log performance metrics
+      const logData = {
+        tableName: actualTableName,
+        indexName: indexName || 'main-table',
+        itemCount: result.Items?.length || 0,
+        scannedCount: result.ScannedCount,
+        duration: `${duration}ms`,
+        conditions: Object.keys(conditions),
+        efficiency: result.ScannedCount > 0 ? ((result.Items?.length || 0) / result.ScannedCount * 100).toFixed(1) + '%' : '100%'
+      };
+
+      console.log(`[DynamoDB] QUERY completed:`, logData);
+      this._logPerformance('QUERY', duration, logData);
+      
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`[DynamoDB] QUERY failed:`, {
+        tableName: actualTableName,
+        indexName,
+        error: error.message,
+        code: error.name,
+        duration: `${duration}ms`,
+        conditions
+      });
+      throw error;
+    }
   }
 
   async _dynamoScan(tableName, filters = {}) {
@@ -754,5 +788,188 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         // Don't throw error - connection will be re-established on next actual request
       }
     }, 5 * 60 * 1000); // 5 minutes
+  }
+
+  // Helper methods for optimized GSI operations
+
+  /**
+   * Create composite key for GSI lookups
+   * @param {...string} parts - Key parts to combine
+   * @returns {string} Composite key
+   */
+  _createCompositeKey(...parts) {
+    return parts.filter(p => p != null).join(':');
+  }
+
+  /**
+   * Query using GSI with optimized patterns
+   * @param {string} tableName - Table name
+   * @param {string} gsiName - GSI name
+   * @param {Object} keyConditions - Key conditions for the GSI
+   * @param {Object} [filterConditions] - Additional filter conditions
+   * @returns {Promise<Object>} Query result
+   */
+  async _dynamoQueryGSI(tableName, gsiName, keyConditions, filterConditions = {}) {
+    const actualTableName = this.tables[tableName] || tableName;
+    const startTime = Date.now();
+
+    const keyConditionExpression = [];
+    const expressionAttributeNames = {};
+    const expressionAttributeValues = {};
+    
+    // Build key condition expression
+    Object.keys(keyConditions).forEach((field, index) => {
+      const fieldName = `#gsi_key${index}`;
+      const fieldValue = `:gsi_value${index}`;
+      
+      keyConditionExpression.push(`${fieldName} = ${fieldValue}`);
+      expressionAttributeNames[fieldName] = field;
+      expressionAttributeValues[fieldValue] = keyConditions[field];
+    });
+
+    const queryParams = {
+      TableName: actualTableName,
+      IndexName: gsiName,
+      KeyConditionExpression: keyConditionExpression.join(' AND '),
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues
+    };
+
+    // Add filter expression if provided
+    if (Object.keys(filterConditions).length > 0) {
+      const filterExpression = [];
+      Object.keys(filterConditions).forEach((field, index) => {
+        const fieldName = `#filter${index}`;
+        const fieldValue = `:filter_value${index}`;
+        
+        filterExpression.push(`${fieldName} = ${fieldValue}`);
+        expressionAttributeNames[fieldName] = field;
+        expressionAttributeValues[fieldValue] = filterConditions[field];
+      });
+      
+      queryParams.FilterExpression = filterExpression.join(' AND ');
+    }
+
+    const command = new QueryCommand(queryParams);
+    
+    try {
+      const result = await this.docClient.send(command);
+      const duration = Date.now() - startTime;
+      
+      const logData = {
+        tableName: actualTableName,
+        indexName: gsiName,
+        itemCount: result.Items?.length || 0,
+        scannedCount: result.ScannedCount,
+        duration: `${duration}ms`,
+        keyConditions: Object.keys(keyConditions),
+        hasFilters: Object.keys(filterConditions).length > 0,
+        efficiency: result.ScannedCount > 0 ? ((result.Items?.length || 0) / result.ScannedCount * 100).toFixed(1) + '%' : '100%'
+      };
+
+      console.log(`[DynamoDB] GSI QUERY completed:`, logData);
+      this._logPerformance('GSI_QUERY', duration, logData);
+      
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`[DynamoDB] GSI QUERY failed:`, {
+        tableName: actualTableName,
+        indexName: gsiName,
+        error: error.message,
+        code: error.name,
+        duration: `${duration}ms`,
+        keyConditions,
+        filterConditions
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to get items by email using GSI
+   * @param {string} tableName - Table name
+   * @param {string} email - Email to search for
+   * @returns {Promise<Object|null>} First matching item or null
+   */
+  async _getByEmailGSI(tableName, email) {
+    const result = await this._dynamoQueryGSI(tableName, 'email-index', { email: email.toLowerCase() });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+  }
+
+  /**
+   * Helper to get items by user_id using GSI
+   * @param {string} tableName - Table name
+   * @param {string} userId - User ID to search for
+   * @returns {Promise<Array>} Matching items
+   */
+  async _getByUserIdGSI(tableName, userId) {
+    const result = await this._dynamoQueryGSI(tableName, 'user_id-index', { user_id: userId });
+    return result.Items || [];
+  }
+
+  /**
+   * Helper to get items by game_id using GSI
+   * @param {string} tableName - Table name
+   * @param {string} gameId - Game ID to search for
+   * @returns {Promise<Array>} Matching items
+   */
+  async _getByGameIdGSI(tableName, gameId) {
+    const result = await this._dynamoQueryGSI(tableName, 'game_id-index', { game_id: gameId });
+    return result.Items || [];
+  }
+
+  /**
+   * Helper to get items by season_id using GSI
+   * @param {string} tableName - Table name
+   * @param {string} seasonId - Season ID to search for
+   * @returns {Promise<Array>} Matching items
+   */
+  async _getBySeasonIdGSI(tableName, seasonId) {
+    const result = await this._dynamoQueryGSI(tableName, 'season_id-index', { season_id: seasonId });
+    return result.Items || [];
+  }
+
+  /**
+   * Helper to get items by team_code using GSI
+   * @param {string} tableName - Table name
+   * @param {string} teamCode - Team code to search for
+   * @returns {Promise<Object|null>} First matching item or null
+   */
+  async _getByTeamCodeGSI(tableName, teamCode) {
+    const result = await this._dynamoQueryGSI(tableName, 'team_code-index', { team_code: teamCode });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+  }
+
+  /**
+   * Helper to get items by invite_token using GSI
+   * @param {string} tableName - Table name
+   * @param {string} inviteToken - Invite token to search for
+   * @returns {Promise<Object|null>} First matching item or null
+   */
+  async _getByInviteTokenGSI(tableName, inviteToken) {
+    const result = await this._dynamoQueryGSI(tableName, 'invite_token-index', { invite_token: inviteToken });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+  }
+
+  /**
+   * Helper to get current season using GSI
+   * @param {string} tableName - Table name
+   * @returns {Promise<Object|null>} Current season or null
+   */
+  async _getCurrentSeasonGSI(tableName) {
+    const result = await this._dynamoQueryGSI(tableName, 'is_current-index', { is_current: 'true' });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+  }
+
+  /**
+   * Helper to get season by year using GSI
+   * @param {string} tableName - Table name
+   * @param {string} seasonYear - Season year
+   * @returns {Promise<Object|null>} Season or null
+   */
+  async _getSeasonByYearGSI(tableName, seasonYear) {
+    const result = await this._dynamoQueryGSI(tableName, 'season-index', { season: seasonYear });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 }

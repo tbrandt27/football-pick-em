@@ -105,22 +105,14 @@ export default class DynamoDBInvitationService extends IInvitationService {
     }
 
     try {
-      // Scan for invitation with this token
-      console.log(`[DynamoDBInvitationService] Scanning for invitation with token: ${inviteToken}`);
-      const result = await this.db._dynamoScan('game_invitations', { invite_token: inviteToken });
+      // Use GSI invite_token-index for efficient lookup
+      console.log(`[DynamoDBInvitationService] Querying for invitation with token: ${inviteToken}`);
+      const invitation = await this.db._getByInviteTokenGSI('game_invitations', inviteToken);
       
-      console.log(`[DynamoDBInvitationService] Scan result:`, {
-        itemCount: result.Items?.length || 0,
-        scannedCount: result.ScannedCount,
-        hasItems: !!(result.Items && result.Items.length > 0)
-      });
-      
-      if (!result.Items || result.Items.length === 0) {
+      if (!invitation) {
         console.log(`[DynamoDBInvitationService] No invitation found for token: ${inviteToken}`);
         return null;
       }
-
-      const invitation = result.Items[0];
       console.log(`[DynamoDBInvitationService] Found invitation:`, {
         id: invitation.id,
         email: invitation.email,
@@ -161,21 +153,18 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Existing pending invitation
    */
   async checkExistingInvitation(gameId, email) {
-    // Scan for existing invitation
-    const result = await this.db._dynamoScan('game_invitations');
-    
-    if (!result.Items) {
-      return null;
-    }
+    // Use composite GSI game_email-index for efficient lookup
+    const compositeKey = this.db._createCompositeKey(gameId, email.toLowerCase());
+    const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
+      game_email: compositeKey
+    });
 
-    // Filter for this game, email, and pending status
-    const existingInvitation = result.Items.find(invitation => 
-      invitation.game_id === gameId && 
-      invitation.email === email.toLowerCase() && 
+    // Find pending invitation
+    const pendingInvitation = (result.Items || []).find(invitation =>
       invitation.status === 'pending'
     );
 
-    return existingInvitation || null;
+    return pendingInvitation || null;
   }
 
   /**
@@ -260,21 +249,19 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Existing pending admin invitation
    */
   async checkExistingAdminInvitation(email) {
-    // Scan for existing admin invitation
-    const result = await this.db._dynamoScan('game_invitations');
-    
-    if (!result.Items) {
-      return null;
-    }
+    // Use composite GSI game_email-index for admin invitations
+    const compositeKey = this.db._createCompositeKey('admin', email.toLowerCase());
+    const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
+      game_email: compositeKey
+    });
 
-    // Filter for this email, pending status, and admin invitation
-    const existingInvitation = result.Items.find(invitation =>
-      invitation.email === email.toLowerCase() &&
+    // Find pending admin invitation
+    const pendingInvitation = (result.Items || []).find(invitation =>
       invitation.status === 'pending' &&
       invitation.is_admin_invitation === true
     );
 
-    return existingInvitation || null;
+    return pendingInvitation || null;
   }
 
   /**
@@ -318,12 +305,12 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<void>}
    */
   async deleteInvitationsByGameId(gameId) {
-    // Scan for invitations for this game
-    const result = await this.db._dynamoScan('game_invitations', { game_id: gameId });
+    // Use GSI game_id-index for efficient lookup
+    const invitations = await this.db._getByGameIdGSI('game_invitations', gameId);
     
-    if (result.Items) {
+    if (invitations) {
       // Delete each invitation individually (DynamoDB requirement)
-      for (const invitation of result.Items) {
+      for (const invitation of invitations) {
         await this.db._dynamoDelete('game_invitations', { id: invitation.id });
       }
     }
@@ -358,20 +345,20 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Array>} Pending invitations for the game
    */
   async getGameInvitations(gameId) {
-    // Scan for invitations for this game
-    const result = await this.db._dynamoScan('game_invitations', { game_id: gameId });
+    // Use GSI game_id-index for efficient lookup
+    const invitations = await this.db._getByGameIdGSI('game_invitations', gameId);
     
-    if (!result.Items) {
+    if (!invitations) {
       return [];
     }
 
     // Filter for pending invitations
-    const pendingInvitations = result.Items.filter(invitation => 
+    const pendingInvitations = invitations.filter(invitation =>
       invitation.status === 'pending'
     );
 
     // Sort by created_at DESC
-    return pendingInvitations.sort((a, b) => 
+    return pendingInvitations.sort((a, b) =>
       new Date(b.created_at || 0) - new Date(a.created_at || 0)
     );
   }

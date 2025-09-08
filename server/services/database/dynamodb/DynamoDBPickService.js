@@ -30,12 +30,18 @@ export default class DynamoDBPickService extends IPickService {
     if (seasonId) pickConditions.season_id = seasonId;
     if (week) pickConditions.week = parseInt(week);
     
-    const picksResult = await this.db._dynamoScan('picks', pickConditions);
-    const rawPicks = picksResult.Items || [];
+    // Use GSI user_id-index for efficient lookup
+    const rawPicks = await this.db._getByUserIdGSI('picks', userId);
+    
+    // Apply additional filters in memory (more efficient than multiple scans)
+    let filteredPicks = rawPicks;
+    if (gameId) filteredPicks = filteredPicks.filter(p => p.game_id === gameId);
+    if (seasonId) filteredPicks = filteredPicks.filter(p => p.season_id === seasonId);
+    if (week) filteredPicks = filteredPicks.filter(p => p.week === parseInt(week));
     
     // Enrich picks with game and team data
     const enrichedPicks = [];
-    for (const pick of rawPicks) {
+    for (const pick of filteredPicks) {
       try {
         // Get football game
         const gameResult = await this.db._dynamoGet('football_games', { id: pick.football_game_id });
@@ -193,9 +199,8 @@ export default class DynamoDBPickService extends IPickService {
   async getGamePicksSummary(gameId, filters = {}) {
     const { seasonId, week } = filters;
     
-    // Get all participants for this game
-    const participantsResult = await this.db._dynamoScan('game_participants', { game_id: gameId });
-    const participants = participantsResult.Items || [];
+    // Use GSI game_id-index for efficient lookup
+    const participants = await this.db._getByGameIdGSI('game_participants', gameId);
     
     const summary = [];
     
@@ -209,8 +214,11 @@ export default class DynamoDBPickService extends IPickService {
         if (seasonId) pickConditions.season_id = seasonId;
         if (week) pickConditions.week = parseInt(week);
         
-        const picksResult = await this.db._dynamoScan('picks', pickConditions);
-        const picks = picksResult.Items || [];
+        // Use composite approach - get by user_id first, then filter
+        const userPicks = await this.db._getByUserIdGSI('picks', participant.user_id);
+        let picks = userPicks.filter(p => p.game_id === gameId);
+        if (seasonId) picks = picks.filter(p => p.season_id === seasonId);
+        if (week) picks = picks.filter(p => p.week === parseInt(week));
         
         const totalPicks = picks.length;
         const correctPicks = picks.filter(p => p.is_correct === true || p.is_correct === 1).length;
@@ -251,14 +259,15 @@ export default class DynamoDBPickService extends IPickService {
    * @returns {Promise<boolean>} True if team was already picked
    */
   async hasPickedTeamInSurvivor(userId, gameId, teamId, seasonId) {
-    const picksResult = await this.db._dynamoScan('picks', {
-      user_id: userId,
-      game_id: gameId,
-      pick_team_id: teamId,
-      season_id: seasonId
-    });
+    // Use GSI user_id-index and filter in memory for complex conditions
+    const userPicks = await this.db._getByUserIdGSI('picks', userId);
+    const matchingPicks = userPicks.filter(p =>
+      p.game_id === gameId &&
+      p.pick_team_id === teamId &&
+      p.season_id === seasonId
+    );
     
-    return picksResult.Items && picksResult.Items.length > 0;
+    return matchingPicks.length > 0;
   }
 
   /**
@@ -269,13 +278,13 @@ export default class DynamoDBPickService extends IPickService {
    * @returns {Promise<Object|null>} Existing pick or null
    */
   async getExistingPick(userId, gameId, footballGameId) {
-    const picksResult = await this.db._dynamoScan('picks', {
-      user_id: userId,
-      game_id: gameId,
-      football_game_id: footballGameId
+    // Use composite GSI for precise lookup
+    const compositeKey = this.db._createCompositeKey(userId, gameId, footballGameId);
+    const result = await this.db._dynamoQueryGSI('picks', 'user_game_football-index', {
+      user_game_football: compositeKey
     });
     
-    return picksResult.Items && picksResult.Items.length > 0 ? picksResult.Items[0] : null;
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
   /**
@@ -314,9 +323,8 @@ export default class DynamoDBPickService extends IPickService {
    * @returns {Promise<{updatedCount: number}>} Number of picks updated
    */
   async updatePicksForGame(footballGameId, winningTeamId) {
-    // Get all picks for this football game
-    const picksResult = await this.db._dynamoScan('picks', { football_game_id: footballGameId });
-    const picks = picksResult.Items || [];
+    // Use GSI football_game_id-index for efficient lookup
+    const picks = await this.db._getByGameIdGSI('picks', footballGameId);
     
     let updatedCount = 0;
     
@@ -346,13 +354,16 @@ export default class DynamoDBPickService extends IPickService {
     let pickConditions = { season_id: seasonId };
     if (week) pickConditions.week = parseInt(week);
     
-    const picksResult = await this.db._dynamoScan('picks', pickConditions);
-    const picks = picksResult.Items || [];
+    // Use GSI season_id-index for efficient lookup
+    const picks = await this.db._getBySeasonIdGSI('picks', seasonId);
     
-    const totalPicks = picks.length;
-    const correctPicks = picks.filter(p => p.is_correct === 1 || p.is_correct === true).length;
-    const incorrectPicks = picks.filter(p => p.is_correct === 0 || p.is_correct === false).length;
-    const pendingPicks = picks.filter(p => p.is_correct === null || p.is_correct === undefined).length;
+    // Apply week filter in memory if specified
+    const filteredPicks = week ? picks.filter(p => p.week === parseInt(week)) : picks;
+    
+    const totalPicks = filteredPicks.length;
+    const correctPicks = filteredPicks.filter(p => p.is_correct === 1 || p.is_correct === true).length;
+    const incorrectPicks = filteredPicks.filter(p => p.is_correct === 0 || p.is_correct === false).length;
+    const pendingPicks = filteredPicks.filter(p => p.is_correct === null || p.is_correct === undefined).length;
     const completedPicks = correctPicks + incorrectPicks;
     const accuracyPercentage = completedPicks > 0 ? Math.round((correctPicks / completedPicks) * 100 * 100) / 100 : 0;
     

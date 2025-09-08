@@ -18,11 +18,8 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    * @returns {Promise<Object|null>} Team or null
    */
   async getTeamByCode(teamCode) {
-    const result = await this.db._dynamoScan('football_teams', {
-      team_code: teamCode
-    });
-    
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    // Use GSI team_code-index for efficient lookup
+    return await this.db._getByTeamCodeGSI('football_teams', teamCode);
   }
 
   /**
@@ -95,14 +92,16 @@ export default class DynamoDBNFLDataService extends INFLDataService {
   async findFootballGame(criteria) {
     const { seasonId, week, homeTeamId, awayTeamId } = criteria;
     
-    const result = await this.db._dynamoScan('football_games', {
-      season_id: seasonId,
-      week: week,
-      home_team_id: homeTeamId,
-      away_team_id: awayTeamId
-    });
+    // Use GSI season_id-index and filter in memory for complex conditions
+    const seasonGames = await this.db._getBySeasonIdGSI('football_games', seasonId);
     
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    const matchingGame = seasonGames.find(game =>
+      game.week === week &&
+      game.home_team_id === homeTeamId &&
+      game.away_team_id === awayTeamId
+    );
+    
+    return matchingGame || null;
   }
 
   /**
@@ -153,11 +152,8 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    * @returns {Promise<Object|null>} Current season or null
    */
   async getCurrentSeason() {
-    const result = await this.db._dynamoScan('seasons', {
-      is_current: true
-    });
-
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    // Use GSI is_current-index for efficient lookup
+    return await this.db._getCurrentSeasonGSI('seasons');
   }
 
   /**
@@ -167,11 +163,9 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    * @returns {Promise<Array>} Football games
    */
   async getGamesBySeasonAndWeek(seasonId, week) {
-    const gamesResult = await this.db._dynamoScan('football_games', {
-      season_id: seasonId,
-      week: parseInt(week)
-    });
-    return gamesResult.Items || [];
+    // Use GSI season_id-index and filter in memory for week
+    const seasonGames = await this.db._getBySeasonIdGSI('football_games', seasonId);
+    return seasonGames.filter(game => game.week === parseInt(week));
   }
 
   /**
@@ -180,10 +174,8 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    * @returns {Promise<Array>} Football games
    */
   async getGamesBySeason(seasonId) {
-    const gamesResult = await this.db._dynamoScan('football_games', {
-      season_id: seasonId
-    });
-    return gamesResult.Items || [];
+    // Use GSI season_id-index for efficient lookup
+    return await this.db._getBySeasonIdGSI('football_games', seasonId);
   }
 
   /**
@@ -284,10 +276,9 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    * @returns {Promise<Object>} Game count result
    */
   async getGameCountBySeason(seasonId) {
-    const gamesResult = await this.db._dynamoScan('football_games', {
-      season_id: seasonId
-    });
-    return { count: gamesResult.Items ? gamesResult.Items.length : 0 };
+    // Use GSI season_id-index for efficient lookup
+    const games = await this.db._getBySeasonIdGSI('football_games', seasonId);
+    return { count: games ? games.length : 0 };
   }
 
   /**

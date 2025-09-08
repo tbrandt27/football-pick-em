@@ -18,30 +18,26 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Array>} Games with participant info
    */
   async getUserGames(userId) {
-    // Get user's game participations using Scan since user_id is not the partition key
-    const participations = await this.db._dynamoScan('game_participants', {
-      user_id: userId
-    });
+    // Use GSI user_id-index for efficient lookup
+    const participations = await this.db._getByUserIdGSI('game_participants', userId);
 
-    if (!participations.Items || participations.Items.length === 0) {
+    if (!participations || participations.length === 0) {
       return [];
     }
 
     // Get game details for each participation
     const games = [];
-    for (const participation of participations.Items) {
+    for (const participation of participations) {
       const game = await this.db._dynamoGet('pickem_games', {
         id: participation.game_id
       });
 
       if (game.Item) {
-        // Get participant count for this game using Scan
-        const allParticipants = await this.db._dynamoScan('game_participants', {
-          game_id: participation.game_id
-        });
+        // Get participant count for this game using GSI game_id-index
+        const allParticipants = await this.db._getByGameIdGSI('game_participants', participation.game_id);
 
-        const playerCount = allParticipants.Items?.length || 0;
-        const ownerCount = allParticipants.Items?.filter(p => p.role === 'owner').length || 0;
+        const playerCount = allParticipants?.length || 0;
+        const ownerCount = allParticipants?.filter(p => p.role === 'owner').length || 0;
 
         games.push({
           ...game.Item,
@@ -75,17 +71,15 @@ export default class DynamoDBGameService extends IGameService {
         .replace(/^-+|-+$/g, "");
     };
 
-    // First check if user is a participant in any games to avoid unnecessary full scan
-    const userParticipations = await this.db._dynamoScan('game_participants', {
-      user_id: userId
-    });
+    // Use GSI user_id-index to check if user is a participant in any games
+    const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
 
-    if (!userParticipations.Items || userParticipations.Items.length === 0) {
+    if (!userParticipations || userParticipations.length === 0) {
       throw new Error('Access denied');
     }
 
-    // Only scan games that the user participates in
-    const userGameIds = userParticipations.Items.map(p => p.game_id);
+    // Only check games that the user participates in
+    const userGameIds = userParticipations.map(p => p.game_id);
     let game = null;
 
     // Batch get games the user participates in instead of scanning all games
@@ -375,19 +369,13 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Object|null>} Participant info or null
    */
   async getParticipant(gameId, userId) {
-    // Use Scan with filters since we're searching by non-partition key fields
-    // DynamoDB tables use 'id' as partition key, so we can't query by user_id directly
-    const participations = await this.db._dynamoScan('game_participants', {
-      user_id: userId,
-      game_id: gameId
+    // Use composite GSI for precise user-game lookup
+    const compositeKey = this.db._createCompositeKey(gameId, userId);
+    const result = await this.db._dynamoQueryGSI('game_participants', 'game_id-user_id-index', {
+      game_id_user_id: compositeKey
     });
 
-    if (!participations.Items || participations.Items.length === 0) {
-      return null;
-    }
-
-    // Return the first match (should be unique per user per game)
-    return participations.Items[0];
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
   /**
@@ -396,21 +384,20 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Array>} Participants with user info
    */
   async getGameParticipants(gameId) {
-    const participantsResult = await this.db._dynamoScan('game_participants', {
-      game_id: gameId
-    });
+    // Use GSI game_id-index for efficient lookup
+    const participants = await this.db._getByGameIdGSI('game_participants', gameId);
 
-    if (!participantsResult.Items) {
+    if (!participants) {
       return [];
     }
 
     // Get user info for each participant
-    const participants = [];
-    for (const participant of participantsResult.Items) {
+    const participantsWithUserInfo = [];
+    for (const participant of participants) {
       const userResult = await this.db._dynamoGet('users', { id: participant.user_id });
       const user = userResult.Item;
 
-      participants.push({
+      participantsWithUserInfo.push({
         ...participant,
         user_id: participant.user_id,
         first_name: user?.first_name,
@@ -421,7 +408,7 @@ export default class DynamoDBGameService extends IGameService {
     }
 
     // Sort by role, then by name
-    return participants.sort((a, b) => {
+    return participantsWithUserInfo.sort((a, b) => {
       if (a.role !== b.role) {
         return a.role === 'owner' ? -1 : 1;
       }
@@ -481,8 +468,8 @@ export default class DynamoDBGameService extends IGameService {
       // Get participant count
       let participant_count = 0;
       try {
-        const participantsResult = await this.db._dynamoScan('game_participants', { game_id: game.id });
-        participant_count = participantsResult.Items ? participantsResult.Items.length : 0;
+        const gameParticipants = await this.db._getByGameIdGSI('game_participants', game.id);
+        participant_count = gameParticipants ? gameParticipants.length : 0;
       } catch (error) {
         console.warn(`Failed to get participant count for game ${game.id}:`, error);
       }
