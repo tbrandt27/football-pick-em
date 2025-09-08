@@ -69,8 +69,8 @@ is_process_running() {
 
 # Function to check server health
 check_server_health() {
-    # Use readiness endpoint which includes database checks
-    if curl -s -f "http://localhost:$PORT/api/health/ready" > /dev/null 2>&1; then
+    # Use fast health endpoint optimized for AppRunner monitoring (no database connectivity tests)
+    if curl -s -f "http://localhost:$PORT/health" > /dev/null 2>&1; then
         return 0
     else
         return 1
