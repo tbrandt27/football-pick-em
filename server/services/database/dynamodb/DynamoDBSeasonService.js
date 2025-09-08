@@ -35,7 +35,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     // Since there's only one current season, use scan directly - no GSI needed
     // This is efficient enough for a single-record lookup that happens infrequently
     console.log(`[DynamoDB Season] Getting current season via scan (single record expected)`);
-    const result = await this.db._dynamoScan('seasons', { is_current: 'true' }); // Use string instead of boolean
+    const result = await this.db._dynamoScan('seasons', { is_current: true }); // Use boolean instead of string
     return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
@@ -55,7 +55,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
       for (let i = 1; i < sortedSeasons.length; i++) {
         const season = sortedSeasons[i];
         console.log(`[DynamoDB Season] Unsetting ${season.season} as current`);
-        await this.db._dynamoUpdate('seasons', { id: season.id }, { is_current: 'false' });
+        await this.db._dynamoUpdate('seasons', { id: season.id }, { is_current: false });
       }
     } catch (error) {
       console.error(`[DynamoDB Season] Error fixing multiple current seasons:`, error);
@@ -121,7 +121,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
       if (currentSeason) {
         await this.db._dynamoUpdate('seasons',
           { id: currentSeason.id },
-          { is_current: 'false' }
+          { is_current: false }
         );
       }
     }
@@ -130,7 +130,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     const seasonItem = {
       id: seasonId,
       season: season.toString(), // Ensure string type
-      is_current: isCurrent ? 'true' : 'false', // Convert boolean to string for GSI
+      is_current: Boolean(isCurrent), // Use boolean for is_current
       game_count: 0,
       football_games_count: 0,
       year: parseInt(season),
@@ -169,14 +169,14 @@ export default class DynamoDBSeasonService extends ISeasonService {
       if (currentSeason && currentSeason.id !== seasonId) {
         await this.db._dynamoUpdate('seasons',
           { id: currentSeason.id },
-          { is_current: 'false' }
+          { is_current: false }
         );
       }
     }
 
     const updateData = {
       season: updates.season || existingSeason.season,
-      is_current: updates.isCurrent !== undefined ? (updates.isCurrent ? 'true' : 'false') : existingSeason.is_current
+      is_current: updates.isCurrent !== undefined ? Boolean(updates.isCurrent) : existingSeason.is_current
     };
 
     await this.db._dynamoUpdate('seasons', { id: seasonId }, updateData);
@@ -202,14 +202,14 @@ export default class DynamoDBSeasonService extends ISeasonService {
     if (currentSeason && currentSeason.id !== seasonId) {
       await this.db._dynamoUpdate('seasons',
         { id: currentSeason.id },
-        { is_current: 'false' }
+        { is_current: false }
       );
     }
     
     // Set this season as current
     await this.db._dynamoUpdate('seasons',
       { id: seasonId },
-      { is_current: 'true' }
+      { is_current: true }
     );
   }
 

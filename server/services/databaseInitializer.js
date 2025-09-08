@@ -310,7 +310,7 @@ export default class DatabaseInitializer {
       const currentYear = new Date().getFullYear().toString();
       
       if (this.db.getType && this.db.getType() === 'dynamodb') {
-        const seasonsResult = await this.db._dynamoScan('seasons', { is_current: 'true' });
+        const seasonsResult = await this.db._dynamoScan('seasons', { is_current: true });
         const seasons = seasonsResult?.Items || [];
         currentSeason = seasons.length > 0 ? seasons[0] : null;
       } else {

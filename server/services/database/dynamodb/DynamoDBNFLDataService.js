@@ -154,13 +154,13 @@ export default class DynamoDBNFLDataService extends INFLDataService {
   async getCurrentSeason() {
     try {
       // Try GSI is_current-index for efficient lookup
-      const result = await this.db._dynamoQueryGSI('seasons', 'is_current-index', { is_current: 'true' });
+      const result = await this.db._dynamoQueryGSI('seasons', 'is_current-index', { is_current: true });
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
       if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
         console.log(`[DynamoDB NFL] GSI not found (${error.name}), falling back to scan for current season`);
-        const result = await this.db._dynamoScan('seasons', { is_current: 'true' });
+        const result = await this.db._dynamoScan('seasons', { is_current: true });
         return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
       throw error;
