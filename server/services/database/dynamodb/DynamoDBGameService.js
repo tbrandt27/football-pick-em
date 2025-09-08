@@ -369,13 +369,34 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Object|null>} Participant info or null
    */
   async getParticipant(gameId, userId) {
-    // Use composite GSI for precise user-game lookup
-    const compositeKey = this.db._createCompositeKey(gameId, userId);
-    const result = await this.db._dynamoQueryGSI('game_participants', 'game_id-user_id-index', {
-      game_id_user_id: compositeKey
-    });
+    try {
+      // Try to use composite GSI for precise user-game lookup
+      const compositeKey = this.db._createCompositeKey(gameId, userId);
+      const result = await this.db._dynamoQueryGSI('game_participants', 'game_id-user_id-index', {
+        game_id_user_id: compositeKey
+      });
 
-    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+    } catch (error) {
+      // Handle missing GSI error - fallback to user_id-index GSI and filter
+      if (error.code === 'ValidationException' && error.message.includes('game_id-user_id-index')) {
+        console.warn(`[DynamoDBGameService] GSI 'game_id-user_id-index' not found, falling back to user_id-index for user ${userId}`);
+        
+        // Fallback: Use user_id-index GSI and filter for gameId
+        const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
+        
+        if (!userParticipations || userParticipations.length === 0) {
+          return null;
+        }
+        
+        // Find the participation for this specific game
+        const participation = userParticipations.find(p => p.game_id === gameId);
+        return participation || null;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**

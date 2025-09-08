@@ -337,13 +337,36 @@ export default class DynamoDBPickService extends IPickService {
    * @returns {Promise<Object|null>} Existing pick or null
    */
   async getExistingPick(userId, gameId, footballGameId) {
-    // Use composite GSI for precise lookup
-    const compositeKey = this.db._createCompositeKey(userId, gameId, footballGameId);
-    const result = await this.db._dynamoQueryGSI('picks', 'user_game_football-index', {
-      user_game_football: compositeKey
-    });
-    
-    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+    try {
+      // Use composite GSI for precise lookup
+      const compositeKey = this.db._createCompositeKey(userId, gameId, footballGameId);
+      const result = await this.db._dynamoQueryGSI('picks', 'user_game_football-index', {
+        user_game_football: compositeKey
+      });
+      
+      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+    } catch (error) {
+      // Handle missing GSI error - fallback to user_id-index GSI and filter
+      if (error.code === 'ValidationException' && error.message.includes('user_game_football-index')) {
+        console.warn(`[DynamoDBPickService] GSI 'user_game_football-index' not found, falling back to user_id-index for user ${userId}`);
+        
+        // Fallback: Use user_id-index GSI and filter for gameId and footballGameId
+        const userPicks = await this.db._getByUserIdGSI('picks', userId);
+        
+        if (!userPicks || userPicks.length === 0) {
+          return null;
+        }
+        
+        // Find the pick for this specific game and football game
+        const existingPick = userPicks.find(p =>
+          p.game_id === gameId && p.football_game_id === footballGameId
+        );
+        return existingPick || null;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**

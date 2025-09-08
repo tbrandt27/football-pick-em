@@ -153,18 +153,41 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Existing pending invitation
    */
   async checkExistingInvitation(gameId, email) {
-    // Use composite GSI game_email-index for efficient lookup
-    const compositeKey = this.db._createCompositeKey(gameId, email.toLowerCase());
-    const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
-      game_email: compositeKey
-    });
+    try {
+      // Use composite GSI game_email-index for efficient lookup
+      const compositeKey = this.db._createCompositeKey(gameId, email.toLowerCase());
+      const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
+        game_email: compositeKey
+      });
 
-    // Find pending invitation
-    const pendingInvitation = (result.Items || []).find(invitation =>
-      invitation.status === 'pending'
-    );
+      // Find pending invitation
+      const pendingInvitation = (result.Items || []).find(invitation =>
+        invitation.status === 'pending'
+      );
 
-    return pendingInvitation || null;
+      return pendingInvitation || null;
+    } catch (error) {
+      // Handle missing GSI error - fallback to game_id-index GSI and filter
+      if (error.code === 'ValidationException' && error.message.includes('game_email-index')) {
+        console.warn(`[DynamoDBInvitationService] GSI 'game_email-index' not found, falling back to game_id-index for game ${gameId}`);
+        
+        // Fallback: Use game_id-index GSI and filter for email
+        const gameInvitations = await this.db._getByGameIdGSI('game_invitations', gameId);
+        
+        if (!gameInvitations || gameInvitations.length === 0) {
+          return null;
+        }
+        
+        // Find the pending invitation for this specific email
+        const pendingInvitation = gameInvitations.find(invitation =>
+          invitation.email === email.toLowerCase() && invitation.status === 'pending'
+        );
+        return pendingInvitation || null;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**
@@ -249,19 +272,44 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Existing pending admin invitation
    */
   async checkExistingAdminInvitation(email) {
-    // Use composite GSI game_email-index for admin invitations
-    const compositeKey = this.db._createCompositeKey('admin', email.toLowerCase());
-    const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
-      game_email: compositeKey
-    });
+    try {
+      // Use composite GSI game_email-index for admin invitations
+      const compositeKey = this.db._createCompositeKey('admin', email.toLowerCase());
+      const result = await this.db._dynamoQueryGSI('game_invitations', 'game_email-index', {
+        game_email: compositeKey
+      });
 
-    // Find pending admin invitation
-    const pendingInvitation = (result.Items || []).find(invitation =>
-      invitation.status === 'pending' &&
-      invitation.is_admin_invitation === true
-    );
+      // Find pending admin invitation
+      const pendingInvitation = (result.Items || []).find(invitation =>
+        invitation.status === 'pending' &&
+        invitation.is_admin_invitation === true
+      );
 
-    return pendingInvitation || null;
+      return pendingInvitation || null;
+    } catch (error) {
+      // Handle missing GSI error - fallback to scan with email filter
+      if (error.code === 'ValidationException' && error.message.includes('game_email-index')) {
+        console.warn(`[DynamoDBInvitationService] GSI 'game_email-index' not found, falling back to scan for admin invitation ${email}`);
+        
+        // Fallback: Scan all invitations and filter for admin invitations with this email
+        const scanResult = await this.db._dynamoScan('game_invitations');
+        
+        if (!scanResult.Items || scanResult.Items.length === 0) {
+          return null;
+        }
+        
+        // Find pending admin invitation for this email
+        const pendingInvitation = scanResult.Items.find(invitation =>
+          invitation.email === email.toLowerCase() &&
+          invitation.status === 'pending' &&
+          invitation.is_admin_invitation === true
+        );
+        return pendingInvitation || null;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**
