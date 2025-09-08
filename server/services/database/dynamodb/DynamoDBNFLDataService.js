@@ -147,14 +147,7 @@ export default class DynamoDBNFLDataService extends INFLDataService {
     return updatedResult.Item;
   }
 
-  /**
-   * Get current season (from seasons table)
-   * @returns {Promise<Object|null>} Current season or null
-   */
-  async getCurrentSeason() {
-    // Use GSI is_current-index for efficient lookup
-    return await this.db._getCurrentSeasonGSI('seasons');
-  }
+  // getCurrentSeason() removed - use DatabaseServiceFactory.getSeasonService() instead
 
   /**
    * Get football games by season and week
