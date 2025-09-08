@@ -970,9 +970,13 @@ router.post("/seasons", authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Create season with proper object structure
+    // First season should be current, subsequent ones default to false
+    const existingSeasons = await seasonService.getAllSeasons();
+    const shouldBeCurrent = existingSeasons.length === 0;
+    
     const newSeason = await seasonService.createSeason({
       season: year.toString(),
-      isCurrent: false
+      isCurrent: shouldBeCurrent
     });
 
     res.status(201).json({

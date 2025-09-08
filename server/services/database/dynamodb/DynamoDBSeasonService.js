@@ -35,7 +35,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     // Since there's only one current season, use scan directly - no GSI needed
     // This is efficient enough for a single-record lookup that happens infrequently
     console.log(`[DynamoDB Season] Getting current season via scan (single record expected)`);
-    const result = await this.db._dynamoScan('seasons', { is_current: true }); // Use boolean instead of string
+    const result = await this.db._dynamoScan('seasons', { is_current: true });
     return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
@@ -62,6 +62,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     }
   }
 
+
   /**
    * Get season by ID
    * @param {string} seasonId - Season ID
@@ -78,18 +79,10 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Season or null
    */
   async getSeasonByYear(year) {
-    try {
-      // Try GSI season-index for efficient lookup
-      return await this.db._getSeasonByYearGSI('seasons', year);
-    } catch (error) {
-      // Fallback to scan if GSI doesn't exist (backward compatibility)
-      if (error.name === 'ResourceNotFoundException') {
-        console.log(`[DynamoDB Season] GSI not found, falling back to scan for year ${year}`);
-        const result = await this.db._dynamoScan('seasons', { season: year });
-        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
-      }
-      throw error;
-    }
+    // Use scan operation only - seasons table is small, no GSI needed
+    console.log(`[DynamoDB Season] Getting season ${year} via scan`);
+    const result = await this.db._dynamoScan('seasons', { season: year });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
   /**
@@ -130,11 +123,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
     const seasonItem = {
       id: seasonId,
       season: season.toString(), // Ensure string type
-      is_current: Boolean(isCurrent), // Use boolean for is_current
-      game_count: 0,
-      football_games_count: 0,
-      year: parseInt(season),
-      is_active: Boolean(isCurrent)
+      is_current: Boolean(isCurrent)
     };
     
     console.log(`[DynamoDBSeasonService] Creating season with attributes:`, {
@@ -530,6 +519,8 @@ export default class DynamoDBSeasonService extends ISeasonService {
         
         const footballGames = await this.db._getBySeasonIdGSI('football_games', season.id);
         football_games_count = footballGames ? footballGames.length : 0;
+        
+        console.log(`[DynamoDB Season] Season ${season.season} counts: pickem=${game_count}, football=${football_games_count}`);
       } catch (error) {
         // Fallback to scan if GSI doesn't exist (backward compatibility)
         if (error.name === 'ResourceNotFoundException') {
@@ -540,7 +531,10 @@ export default class DynamoDBSeasonService extends ISeasonService {
           const footballGamesResult = await this.db._dynamoScan('football_games', { season_id: season.id });
           football_games_count = footballGamesResult.Items ? footballGamesResult.Items.length : 0;
         } else {
-          throw error;
+          console.error(`[DynamoDB Season] Error getting counts for season ${season.id}:`, error);
+          // Set defaults on error to prevent frontend issues
+          game_count = 0;
+          football_games_count = 0;
         }
       }
       
@@ -548,7 +542,7 @@ export default class DynamoDBSeasonService extends ISeasonService {
         ...season,
         game_count,
         football_games_count,
-        year: parseInt(season.season), // Convert to integer
+        year: parseInt(season.season), // Convert to integer for frontend
         is_active: Boolean(season.is_current)
       };
     }));

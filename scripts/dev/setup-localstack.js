@@ -171,22 +171,13 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'season', AttributeType: 'S' },
-      { AttributeName: 'is_current', AttributeType: 'S' }
+      { AttributeName: 'season', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
         IndexName: 'season-index',
         KeySchema: [
           { AttributeName: 'season', KeyType: 'HASH' }
-        ],
-        Projection: { ProjectionType: 'ALL' },
-        BillingMode: 'PAY_PER_REQUEST'
-      },
-      {
-        IndexName: 'is_current-index',
-        KeySchema: [
-          { AttributeName: 'is_current', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'

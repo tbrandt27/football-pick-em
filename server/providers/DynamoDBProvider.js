@@ -958,7 +958,8 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
    * @returns {Promise<Object|null>} Current season or null
    */
   async _getCurrentSeasonGSI(tableName) {
-    const result = await this._dynamoQueryGSI(tableName, 'is_current-index', { is_current: true });
+    // No GSI needed for seasons - use scan directly (efficient for small table)
+    const result = await this._dynamoScan(tableName, { is_current: true });
     return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 

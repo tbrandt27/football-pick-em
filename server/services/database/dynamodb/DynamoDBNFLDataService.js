@@ -92,16 +92,31 @@ export default class DynamoDBNFLDataService extends INFLDataService {
   async findFootballGame(criteria) {
     const { seasonId, week, homeTeamId, awayTeamId } = criteria;
     
-    // Use GSI season_id-index and filter in memory for complex conditions
-    const seasonGames = await this.db._getBySeasonIdGSI('football_games', seasonId);
-    
-    const matchingGame = seasonGames.find(game =>
-      game.week === week &&
-      game.home_team_id === homeTeamId &&
-      game.away_team_id === awayTeamId
-    );
-    
-    return matchingGame || null;
+    try {
+      // Use GSI season_id-index and filter in memory for complex conditions
+      const seasonGames = await this.db._getBySeasonIdGSI('football_games', seasonId);
+      
+      const matchingGame = seasonGames.find(game =>
+        game.week === week &&
+        game.home_team_id === homeTeamId &&
+        game.away_team_id === awayTeamId
+      );
+      
+      return matchingGame || null;
+    } catch (error) {
+      // Fallback to scan if GSI doesn't exist or no games yet (backward compatibility)
+      if (error.name === 'ResourceNotFoundException' || error.message.includes('No items found')) {
+        console.log(`[DynamoDB NFL] GSI query failed, falling back to scan for findFootballGame`);
+        const result = await this.db._dynamoScan('football_games', {
+          season_id: seasonId,
+          week: week,
+          home_team_id: homeTeamId,
+          away_team_id: awayTeamId
+        });
+        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -153,13 +168,13 @@ export default class DynamoDBNFLDataService extends INFLDataService {
    */
   async getCurrentSeason() {
     try {
-      // Try GSI is_current-index for efficient lookup
-      const result = await this.db._dynamoQueryGSI('seasons', 'is_current-index', { is_current: true });
+      // Use scan directly - no GSI needed for small seasons table
+      const result = await this.db._dynamoScan('seasons', { is_current: true });
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
       if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
-        console.log(`[DynamoDB NFL] GSI not found (${error.name}), falling back to scan for current season`);
+        console.log(`[DynamoDB NFL] Error with season lookup, falling back to scan for current season`);
         const result = await this.db._dynamoScan('seasons', { is_current: true });
         return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }

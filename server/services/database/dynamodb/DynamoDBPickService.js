@@ -214,13 +214,24 @@ export default class DynamoDBPickService extends IPickService {
   async getGamePicksSummary(gameId, filters = {}) {
     const { seasonId, week } = filters;
     
-    console.log(`[DynamoDBPickService] getGamePicksSummary called:`, { gameId, seasonId, week });
-    
-    // Use GSI game_id-index for efficient lookup of participants
-    const participants = await this.db._getByGameIdGSI('game_participants', gameId);
-    console.log(`[DynamoDBPickService] Found ${participants.length} participants for game ${gameId}`);
-    
-    const summary = [];
+    try {
+      console.log(`[DynamoDBPickService] getGamePicksSummary called:`, { gameId, seasonId, week });
+      
+      // Use GSI game_id-index for efficient lookup of participants
+      let participants;
+      try {
+        participants = await this.db._getByGameIdGSI('game_participants', gameId);
+        console.log(`[DynamoDBPickService] Found ${participants.length} participants for game ${gameId}`);
+      } catch (participantError) {
+        console.error(`[DynamoDBPickService] Error fetching participants for game ${gameId}:`, participantError);
+        // Fallback to scan if GSI fails
+        console.log(`[DynamoDBPickService] Falling back to scan for participants...`);
+        const scanResult = await this.db._dynamoScan('game_participants', { game_id: gameId });
+        participants = scanResult.Items || [];
+        console.log(`[DynamoDBPickService] Fallback scan found ${participants.length} participants for game ${gameId}`);
+      }
+      
+      const summary = [];
     
     for (const participant of participants) {
       try {
@@ -290,6 +301,12 @@ export default class DynamoDBPickService extends IPickService {
       }
       return b.pick_percentage - a.pick_percentage;
     });
+    
+    } catch (error) {
+      console.error(`[DynamoDBPickService] Error in getGamePicksSummary:`, error);
+      // Return empty summary on error to prevent UI from breaking
+      return [];
+    }
   }
 
   /**
