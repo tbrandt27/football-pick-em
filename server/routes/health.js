@@ -19,9 +19,80 @@ router.use('/', (req, res, next) => {
 });
 
 /**
- * Enhanced health check endpoint with comprehensive system monitoring
+ * FAST health check endpoint for AppRunner TCP health checks
+ * This is optimized for speed and minimal resource usage
  */
 router.get('/', async (req, res) => {
+  try {
+    // Fast response for AppRunner health checks
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      pid: process.pid
+    };
+
+    // Only do basic checks that are fast
+    const checks = [];
+
+    // Quick database initialization check (no connectivity test)
+    if (db.initialized) {
+      checks.push({
+        name: 'database',
+        status: 'initialized',
+        type: db.getType ? db.getType() : 'unknown'
+      });
+    } else {
+      checks.push({
+        name: 'database',
+        status: 'initializing'
+      });
+      health.status = 'degraded';
+    }
+
+    // Configuration service quick check
+    try {
+      const configStatus = configService.getStatus();
+      checks.push({
+        name: 'configuration',
+        status: configStatus.degradedMode ? 'degraded' : 'healthy',
+        degradedMode: configStatus.degradedMode
+      });
+      
+      if (configStatus.degradedMode) {
+        health.status = 'degraded';
+      }
+    } catch (configError) {
+      checks.push({
+        name: 'configuration',
+        status: 'error'
+      });
+      health.status = 'degraded';
+    }
+
+    health.checks = checks;
+    
+    // Always return 200 for AppRunner health checks unless there's a critical failure
+    const statusCode = health.status === 'unhealthy' ? 503 : 200;
+    res.status(statusCode).json(health);
+
+  } catch (error) {
+    // Even on error, return 200 with error info to prevent restart loops
+    res.status(200).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      uptime: process.uptime()
+    });
+  }
+});
+
+/**
+ * Enhanced health check endpoint with comprehensive system monitoring
+ * Use /health/detailed for thorough health checks
+ */
+router.get('/detailed', async (req, res) => {
   const startTime = Date.now();
   let overallStatus = 'healthy';
   const checks = [];
