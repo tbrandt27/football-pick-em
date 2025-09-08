@@ -551,7 +551,8 @@ class ESPNService {
     
     try {
       const nflDataService = this.getNFLDataService();
-      const currentSeason = await nflDataService.getCurrentSeason();
+      const seasonService = this.getSeasonService();
+      const currentSeason = await seasonService.getCurrentSeason();
 
       if (!currentSeason) {
         throw new Error('No current season set');
