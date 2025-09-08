@@ -1,6 +1,10 @@
 version: 1.0
 runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
 
+# Minimum resource configuration for AppRunner
+cpu: 0.5 # 0.5 vCPU minimum for background tasks and SSR
+memory: 1 # 1 GB minimum for caching, database connections, and concurrent operations
+
 build:
   commands:
     build:
@@ -53,17 +57,18 @@ run:
     - name: AWS_REGION
       value: "us-east-1"
 
-    # Security Configuration - will be retrieved from Secrets Manager at runtime
+    # Security Configuration - Use actual secrets or ARNs
+    # Replace these with actual values or AWS Secrets Manager ARNs
     - name: JWT_SECRET
-      value: "runtime-secret-retrieval"
+      value: "your-super-secret-jwt-key-change-this-in-production"
     - name: SETTINGS_ENCRYPTION_KEY
-      value: "runtime-secret-retrieval"
+      value: "football-pickem-default-key-32-chars!"
 
-    # Admin Configuration - will be retrieved from Secrets Manager at runtime
+    # Admin Configuration
     - name: ADMIN_EMAIL
       value: "admin@nflpickem.com"
     - name: ADMIN_PASSWORD
-      value: "runtime-secret-retrieval"
+      value: "admin123"
 
 
     # SMTP Configuration (optional - can be configured via admin panel):

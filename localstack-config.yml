@@ -20,8 +20,8 @@ disable_cors_checks: true
 disable_custom_cors_s3: true
 skip_infra_downloads: true
 
-# Persistence configuration (optional)
-# persistence: true
+# Persistence configuration
+persistence: true
 
 # Debug settings
 debug: false

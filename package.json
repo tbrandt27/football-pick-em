@@ -1,7 +1,7 @@
 {
   "name": "football-pickem",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -18,16 +18,17 @@
     "start": "./scripts/start.sh",
     "start:production": "NODE_ENV=production ./scripts/start.sh",
     "init-db": "node scripts/init-db.js",
-    "check-backend": "node scripts/check-backend.js",
+    "check-backend": "node scripts/dev/check-backend.js",
     "docker:build": "docker build -t football-pickem -f Dockerfile.backup .",
     "docker:run": "docker run -p 8080:8080 football-pickem",
-    "localstack:start": "localstack start",
-    "localstack:stop": "localstack stop",
-    "localstack:status": "localstack status",
-    "localstack:setup": "node scripts/setup-localstack.js",
-    "localstack:test": "node scripts/test-localstack.js",
-    "localstack:reset": "localstack stop && localstack start --detached && sleep 10 && npm run localstack:setup",
-    "localstack:logs": "localstack logs"
+    "localstack:start": "docker-compose -f docker-compose.localstack.yml up -d && sleep 15 && node scripts/dev/update-localstack-secrets.js",
+    "localstack:stop": "docker-compose -f docker-compose.localstack.yml down",
+    "localstack:status": "docker-compose -f docker-compose.localstack.yml ps",
+    "localstack:setup": "node scripts/dev/setup-localstack.js",
+    "localstack:test": "node scripts/dev/test-localstack.js",
+    "localstack:reset": "docker-compose -f docker-compose.localstack.yml down && docker-compose -f docker-compose.localstack.yml up -d && sleep 15 && npm run localstack:setup && node scripts/dev/update-localstack-secrets.js",
+    "localstack:logs": "docker-compose -f docker-compose.localstack.yml logs -f",
+    "localstack:clean": "docker-compose -f docker-compose.localstack.yml down -v && rm -rf ./localstack-data"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",

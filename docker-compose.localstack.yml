@@ -1,0 +1,48 @@
+services:
+  localstack:
+    container_name: localstack-football-pickem
+    image: localstack/localstack:latest
+    ports:
+      - "127.0.0.1:4566:4566"            # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559"  # External services port range
+    environment:
+      # Core LocalStack configuration
+      - DEBUG=${DEBUG:-0}
+      - PERSISTENCE=1
+      - LAMBDA_EXECUTOR=local
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      
+      # Services to enable
+      - SERVICES=dynamodb,secretsmanager,s3,cloudformation
+      
+      # Data directory for persistence
+      - DATA_DIR=/var/lib/localstack
+      
+      # Security settings for local development
+      - ENFORCE_IAM=0
+      - DISABLE_CORS_CHECKS=1
+      - DISABLE_CUSTOM_CORS_S3=1
+      - SKIP_INFRA_DOWNLOADS=1
+      
+      # DynamoDB specific settings
+      - DYNAMODB_ERROR_PROBABILITY=0.0
+      - DYNAMODB_HEAP_SIZE=256m
+      
+    volumes:
+      # Persist LocalStack data
+      - "./localstack-data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    
+    networks:
+      - localstack-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+networks:
+  localstack-network:
+    driver: bridge
