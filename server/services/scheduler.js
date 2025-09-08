@@ -187,51 +187,63 @@ class SchedulerService {
    * Run score updates only
    */
   async runScoreUpdate() {
-    if (!this.isGameDay()) {
-      logger.debug('[Scheduler] Not a game day, skipping score updates');
-      return;
-    }
-
-    const hasGames = await this.hasGamesToday();
-    if (!hasGames) {
-      logger.debug('[Scheduler] No games scheduled today, skipping score updates');
-      return;
-    }
-
-    if (!this.isActiveGameTime()) {
-      console.log('[Scheduler] Outside active game hours, checking if scores are stale...');
-      
-      // Use on-demand service to check if scores are stale
-      const currentSeason = await this.getCurrentSeason();
-      if (!currentSeason) {
-        console.log('[Scheduler] No current season, skipping update');
-        return;
-      }
-      
-      const seasonStatus = await espnService.getCurrentSeasonStatus();
-      const currentWeek = seasonStatus.week;
-      
-      const staleCheck = await onDemandUpdates.updateScoresIfStale(currentSeason.id, currentWeek);
-      if (!staleCheck.updated) {
-        logger.debug('[Scheduler] Scores are recent, skipping update');
-        return;
-      }
-    }
-
-    logger.debug('[Scheduler] Running score update...');
-
+    console.log('[Scheduler] Starting runScoreUpdate method');
+    
     try {
+      if (!this.isGameDay()) {
+        logger.debug('[Scheduler] Not a game day, skipping score updates');
+        return;
+      }
+
+      const hasGames = await this.hasGamesToday();
+      if (!hasGames) {
+        logger.debug('[Scheduler] No games scheduled today, skipping score updates');
+        return;
+      }
+
+      if (!this.isActiveGameTime()) {
+        console.log('[Scheduler] Outside active game hours, checking if scores are stale...');
+        
+        // Use on-demand service to check if scores are stale
+        const currentSeason = await this.getCurrentSeason();
+        if (!currentSeason) {
+          console.log('[Scheduler] No current season, skipping update');
+          return;
+        }
+        
+        const seasonStatus = await espnService.getCurrentSeasonStatus();
+        const currentWeek = seasonStatus.week;
+        
+        const staleCheck = await onDemandUpdates.updateScoresIfStale(currentSeason.id, currentWeek);
+        if (!staleCheck.updated) {
+          logger.debug('[Scheduler] Scores are recent, skipping update');
+          return;
+        }
+      }
+
+      logger.debug('[Scheduler] Running score update...');
+
       const result = await this.updateScores();
       logger.info('[Scheduler] Score update completed successfully:', result);
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        console.log('[Scheduler] Forced garbage collection after score update');
+      }
+      
+      console.log('[Scheduler] Memory usage after score update:', process.memoryUsage());
+      console.log('[Scheduler] runScoreUpdate method completed successfully');
+      return true;
+      
     } catch (error) {
-      logger.error('[Scheduler] Score update failed:', error);
-      logger.error('[Scheduler] Score update error stack:', error.stack);
+      console.error('[Scheduler] CRITICAL ERROR in runScoreUpdate:', error);
+      console.error('[Scheduler] Error stack:', error.stack);
+      console.error('[Scheduler] Memory usage at error:', process.memoryUsage());
       
       // Don't re-throw - let scheduler continue running
       return false;
     }
-    
-    return true;
   }
 
   /**

@@ -547,6 +547,8 @@ class ESPNService {
   }
 
   async updateGameScores() {
+    console.log('[ESPN] Starting updateGameScores method');
+    
     try {
       const nflDataService = this.getNFLDataService();
       const currentSeason = await nflDataService.getCurrentSeason();
@@ -561,14 +563,26 @@ class ESPNService {
       const currentWeek = seasonStatus.week;
       const seasonType = seasonStatus.type;
       
+      console.log('[ESPN] Processing weeks:', [Math.max(1, currentWeek - 1), currentWeek]);
+      
       // Update current week and previous week
       for (const week of [Math.max(1, currentWeek - 1), currentWeek]) {
+        console.log(`[ESPN] Starting update for week ${week}, seasonType ${seasonType}`);
         const result = await this.updateNFLGames(currentSeason.id, week, seasonType);
+        console.log(`[ESPN] Completed update for week ${week}:`, result);
         results.push({ week, seasonType, ...result });
+        
+        // Force cleanup after each week
+        this.performPeriodicCleanup();
+        
+        // Small delay between weeks
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
+      console.log('[ESPN] updateGameScores completed successfully');
       return results;
     } catch (error) {
+      console.error('[ESPN] CRITICAL ERROR in updateGameScores:', error);
       logger.error('Failed to update game scores:', error);
       throw error;
     }

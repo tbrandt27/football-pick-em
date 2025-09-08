@@ -376,6 +376,17 @@ const startServer = async () => {
       // Start automatic scheduler
       console.log("🕐 Starting automatic scheduler...");
       scheduler.start();
+      
+      // Start heartbeat in production to detect silent failures
+      if (process.env.NODE_ENV === 'production') {
+        setInterval(() => {
+          console.log(`💓 Heartbeat: ${new Date().toISOString()} - Server alive, uptime: ${Math.round(process.uptime())}s`);
+          const memUsage = process.memoryUsage();
+          console.log(`💓 Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB used / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB total`);
+        }, 60000); // Every minute
+        
+        console.log('💓 Production heartbeat monitoring started');
+      }
     });
 
     // Handle server errors
