@@ -26,6 +26,10 @@ class ESPNService {
       schedule: 30 * 60 * 1000   // 30 minutes for schedule data
     };
     
+    // Connection management
+    this.lastCleanup = Date.now();
+    this.cleanupInterval = 10 * 60 * 1000; // Clean up every 10 minutes
+    
     // Configure HTTP agents with keep-alive to prevent connection resets
     this.httpAgent = new Agent({
       keepAlive: true,
@@ -116,6 +120,9 @@ class ESPNService {
   }
 
   async makeRequest(endpoint, params = {}, cacheType = 'scoreboard') {
+    // Periodic cleanup check
+    this.performPeriodicCleanup();
+    
     // Check cache first
     const cacheKey = this.generateCacheKey(endpoint, params);
     const cachedResponse = this.getCachedResponse(cacheKey, cacheType);
@@ -568,16 +575,73 @@ class ESPNService {
   }
 
   /**
+   * Periodic cleanup of connections and cache
+   */
+  performPeriodicCleanup() {
+    const now = Date.now();
+    if (now - this.lastCleanup < this.cleanupInterval) {
+      return; // Not time for cleanup yet
+    }
+    
+    try {
+      // Clear expired cache entries
+      const cleared = this.clearExpiredCache();
+      
+      // Force cleanup of idle sockets
+      if (this.httpAgent) {
+        this.httpAgent.destroy();
+        logger.debug('[ESPN] Destroyed HTTP agent for cleanup');
+      }
+      
+      if (this.httpsAgent) {
+        this.httpsAgent.destroy();
+        logger.debug('[ESPN] Destroyed HTTPS agent for cleanup');
+      }
+      
+      // Recreate agents
+      this.httpAgent = new Agent({
+        keepAlive: true,
+        keepAliveMsecs: 1000,
+        maxSockets: 10,
+        maxFreeSockets: 5,
+        timeout: 120000 // 2 minutes
+      });
+      
+      this.httpsAgent = new HttpsAgent({
+        keepAlive: true,
+        keepAliveMsecs: 1000,
+        maxSockets: 10,
+        maxFreeSockets: 5,
+        timeout: 120000 // 2 minutes
+      });
+      
+      // Update axios instance with new agents
+      this.axiosInstance.defaults.httpAgent = this.httpAgent;
+      this.axiosInstance.defaults.httpsAgent = this.httpsAgent;
+      
+      this.lastCleanup = now;
+      logger.debug(`[ESPN] Periodic cleanup completed. Cleared ${cleared} cache entries.`);
+      
+    } catch (error) {
+      logger.error('[ESPN] Error during periodic cleanup:', error);
+    }
+  }
+
+  /**
    * Clean up HTTP agents and connections
    */
   cleanup() {
-    if (this.httpAgent) {
-      this.httpAgent.destroy();
-      console.log('[ESPN] HTTP agent destroyed');
-    }
-    if (this.httpsAgent) {
-      this.httpsAgent.destroy();
-      console.log('[ESPN] HTTPS agent destroyed');
+    try {
+      if (this.httpAgent) {
+        this.httpAgent.destroy();
+        console.log('[ESPN] HTTP agent destroyed');
+      }
+      if (this.httpsAgent) {
+        this.httpsAgent.destroy();
+        console.log('[ESPN] HTTPS agent destroyed');
+      }
+    } catch (error) {
+      console.error('[ESPN] Error during cleanup:', error);
     }
   }
 }

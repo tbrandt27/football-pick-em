@@ -5,6 +5,7 @@ import db from '../models/database.js';
 import { requireHealthAccess, sanitizeHealthResponse } from '../middleware/healthAuth.js';
 import scheduler from '../services/scheduler.js';
 import espnService from '../services/espnApi.js';
+import configService from '../services/configService.js';
 
 const router = express.Router();
 
@@ -105,6 +106,30 @@ router.get('/', async (req, res) => {
         error: dbError.message,
         type: db.getType ? db.getType() : 'unknown',
         provider: DatabaseProviderFactory.getProviderType()
+      });
+      overallStatus = 'degraded';
+    }
+
+    // Configuration service health check
+    try {
+      const configStatus = configService.getStatus();
+      checks.push({
+        name: 'configuration',
+        status: configStatus.degradedMode ? 'degraded' : 'healthy',
+        degradedMode: configStatus.degradedMode,
+        configError: configStatus.configError,
+        environment: configStatus.environment,
+        configuredKeys: configStatus.configuredKeys.length
+      });
+      
+      if (configStatus.degradedMode) {
+        overallStatus = 'degraded';
+      }
+    } catch (configError) {
+      checks.push({
+        name: 'configuration',
+        status: 'unhealthy',
+        error: configError.message
       });
       overallStatus = 'degraded';
     }

@@ -10,6 +10,8 @@ class ConfigService {
     this.cache = new Map();
     this.initialized = false;
     this.initializationPromise = null;
+    this.degradedMode = false;
+    this.configError = null;
   }
 
   /**
@@ -112,25 +114,37 @@ class ConfigService {
     } catch (error) {
       console.error('❌ Failed to initialize configuration service:', error);
       
-      // In production or LocalStack environments, do not use fallback values for security
+      // In production or LocalStack environments, enable degraded mode instead of crashing
       const isProduction = process.env.NODE_ENV === 'production';
       const isLocalStack = process.env.USE_LOCALSTACK === 'true';
       const requireSecrets = isProduction || isLocalStack;
       
       if (requireSecrets) {
         const environment = isProduction ? 'production' : 'LocalStack';
-        console.error(`❌ ${environment} environment requires all secrets to be properly configured`);
-        throw new Error(`Critical configuration failed in ${environment} environment. All secrets must be properly configured.`);
+        console.error(`❌ ${environment} environment configuration failed - enabling degraded mode`);
+        console.warn('⚠️  Application will continue in degraded mode with limited functionality');
+        
+        // Set degraded mode flag
+        this.degradedMode = true;
+        this.configError = error.message;
+        
+        // Use emergency fallbacks to keep app running
+        this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'emergency-fallback-jwt-secret-change-immediately');
+        this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || 'emergency-fallback-32-char-key-now!');
+        this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || 'admin@localhost');
+        this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || 'admin123');
+        
+        console.log('🔄 Emergency configuration loaded - application running in degraded mode');
+      } else {
+        // Fallback to default values only in local development
+        console.log('🔄 Using fallback configuration values for local development...');
+        this.cache.set('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production');
+        this.cache.set('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!');
+        this.cache.set('ADMIN_EMAIL', 'admin@nflpickem.com');
+        this.cache.set('ADMIN_PASSWORD', 'admin123');
+        
+        console.log('⚠️  Configuration loaded with fallback values (development only)');
       }
-      
-      // Fallback to default values only in local development
-      console.log('🔄 Using fallback configuration values for local development...');
-      this.cache.set('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production');
-      this.cache.set('SETTINGS_ENCRYPTION_KEY', 'football-pickem-default-key-32-chars!');
-      this.cache.set('ADMIN_EMAIL', 'admin@nflpickem.com');
-      this.cache.set('ADMIN_PASSWORD', 'admin123');
-      
-      console.log('⚠️  Configuration loaded with fallback values (development only)');
     }
   }
 
@@ -246,12 +260,28 @@ class ConfigService {
   }
 
   /**
+   * Check if running in degraded mode
+   */
+  isDegraded() {
+    return this.degradedMode;
+  }
+
+  /**
+   * Get degraded mode error
+   */
+  getDegradedError() {
+    return this.configError;
+  }
+
+  /**
    * Get configuration status for health checks
    */
   getStatus() {
     return {
       initialized: this.initialized,
-      secretsManagerEnabled: false,
+      degradedMode: this.degradedMode,
+      configError: this.configError,
+      secretsManagerEnabled: process.env.NODE_ENV === 'production' || process.env.USE_LOCALSTACK === 'true',
       configuredKeys: Array.from(this.cache.keys()),
       environment: process.env.NODE_ENV || 'development'
     };

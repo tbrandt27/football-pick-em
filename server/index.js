@@ -34,6 +34,18 @@ if (process.env.USE_LOCALSTACK !== 'true') {
 process.on('uncaughtException', (error) => {
   console.error('🚨 Uncaught Exception:', error);
   console.error('Stack:', error.stack);
+  console.error('Memory usage:', process.memoryUsage());
+  
+  // In production, log detailed error information
+  if (process.env.NODE_ENV === 'production') {
+    console.error('🔍 Production error details:', {
+      pid: process.pid,
+      uptime: process.uptime(),
+      platform: process.platform,
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString()
+    });
+  }
   
   // Log the error but don't exit immediately - let the app try to recover
   console.error('⚠️  Server continuing after uncaught exception...');
@@ -42,10 +54,45 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection at:', promise);
   console.error('Reason:', reason);
+  console.error('Memory usage:', process.memoryUsage());
+  
+  // In production, log detailed error information
+  if (process.env.NODE_ENV === 'production') {
+    console.error('🔍 Production rejection details:', {
+      pid: process.pid,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString()
+    });
+  }
   
   // Log the error but don't exit - let the app continue
   console.error('⚠️  Server continuing after unhandled rejection...');
 });
+
+// Memory monitoring
+if (process.env.NODE_ENV === 'production') {
+  setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const memUsageMB = {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024)
+    };
+    
+    // Log memory warning if usage is high
+    if (memUsageMB.heapUsed > 200) { // More than 200MB
+      console.warn('⚠️  High memory usage detected:', memUsageMB);
+    }
+    
+    // Log memory info every 10 minutes in production
+    const now = Date.now();
+    if (!global.lastMemoryLog || (now - global.lastMemoryLog) > 600000) {
+      console.log('📊 Memory usage:', memUsageMB);
+      global.lastMemoryLog = now;
+    }
+  }, 60000); // Check every minute
+}
 
 // Handle process signals gracefully
 let isShuttingDown = false;

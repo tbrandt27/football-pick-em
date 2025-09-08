@@ -40,6 +40,7 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
     userTotalPoints: number;
     userWeekPoints: number;
   } | null>(null);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   
 
   useEffect(() => {
@@ -56,6 +57,73 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
       window.location.href = '/';
     }
   }, [isAuthenticated, user, isLoading, gameId, gameSlug]);
+
+  // Auto-refresh stats when there are active games
+  useEffect(() => {
+    // Clear any existing interval
+    if (autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      setAutoRefreshInterval(null);
+    }
+
+    // Only set up auto-refresh if we have game data and there are games that might need updates
+    if (game && currentSeason && weekGames.length > 0) {
+      const shouldAutoRefresh = weekGames.some(footballGame => {
+        const gameStart = new Date(footballGame.start_time);
+        const now = new Date();
+        const gameEnd = new Date(gameStart.getTime() + (4 * 60 * 60 * 1000)); // Assume 4 hours max game duration
+        
+        // Auto-refresh if:
+        // 1. Game has started but not ended (in progress)
+        // 2. Game ended recently (within 2 hours) to catch delayed score updates
+        // 3. Game has scores but status might not be final yet
+        const hasStarted = now >= gameStart;
+        const hasEnded = now >= gameEnd;
+        const hasRecentlyEnded = now.getTime() - gameEnd.getTime() < (2 * 60 * 60 * 1000); // Within 2 hours of end
+        const hasScores = (footballGame.home_score > 0) || (footballGame.away_score > 0);
+        const isNotFinal = footballGame.status !== 'STATUS_FINAL' && footballGame.status !== 'Final' && footballGame.status !== 'STATUS_CLOSED';
+        
+        return (hasStarted && !hasEnded) || hasRecentlyEnded || (hasScores && isNotFinal);
+      });
+
+      if (shouldAutoRefresh) {
+        console.log('[WeeklyGameView] Setting up auto-refresh for active games');
+        // Refresh stats every 5 minutes when there are active games
+        const interval = setInterval(() => {
+          console.log('[WeeklyGameView] Auto-refreshing weekly stats');
+          const currentGameId = game?.id || gameId;
+          if (currentGameId && currentSeason?.id) {
+            loadWeeklyStats(currentSeason.id, currentWeek, currentGameId).catch(error => {
+              console.error('[WeeklyGameView] Auto-refresh failed:', error);
+            });
+          }
+        }, 5 * 60 * 1000); // 5 minutes
+
+        setAutoRefreshInterval(interval);
+
+        // Cleanup function
+        return () => {
+          clearInterval(interval);
+        };
+      }
+    }
+
+    // Cleanup function when dependencies change or component unmounts
+    return () => {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+    };
+  }, [game, currentSeason, weekGames, currentWeek, gameId]);
+
+  // Cleanup auto-refresh on component unmount
+  useEffect(() => {
+    return () => {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+    };
+  }, []);
 
   const loadGameData = async () => {
     try {

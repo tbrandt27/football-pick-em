@@ -328,20 +328,26 @@ class SchedulerService {
     logger.info('[Scheduler] Starting automatic score and pick updates...');
     
     // Update scores every 15 minutes during game hours
-    const scoreUpdateTask = cron.schedule('*/15 * * * *', () => {
-      this.runScoreUpdate().catch(error => {
+    const scoreUpdateTask = cron.schedule('*/15 * * * *', async () => {
+      try {
+        await this.runScoreUpdate();
+      } catch (error) {
         logger.error('[Scheduler] Score update task failed:', error);
-      });
+        // Don't re-throw - keep scheduler running
+      }
     }, {
       scheduled: false, // Don't start immediately
       timezone: "America/New_York" // Use Eastern Time
     });
 
     // Calculate picks every hour during game days (less frequent)
-    const pickCalculationTask = cron.schedule('0 * * * *', () => {
-      this.runPickCalculations().catch(error => {
+    const pickCalculationTask = cron.schedule('0 * * * *', async () => {
+      try {
+        await this.runPickCalculations();
+      } catch (error) {
         logger.error('[Scheduler] Pick calculation task failed:', error);
-      });
+        // Don't re-throw - keep scheduler running
+      }
     }, {
       scheduled: false,
       timezone: "America/New_York"
@@ -376,21 +382,34 @@ class SchedulerService {
         }
       } catch (error) {
         console.error('[Scheduler] Off-hours check failed:', error);
+        // Don't re-throw - keep scheduler running
       }
     }, {
       scheduled: false,
       timezone: "America/New_York"
     });
 
-    // Start the tasks
-    scoreUpdateTask.start();
-    pickCalculationTask.start();
-    offHoursCheckTask.start();
-
-    // Store task references
-    this.currentTasks.set('scoreUpdate', scoreUpdateTask);
-    this.currentTasks.set('pickCalculation', pickCalculationTask);
-    this.currentTasks.set('offHoursCheck', offHoursCheckTask);
+    // Start the tasks with additional error handling
+    try {
+      scoreUpdateTask.start();
+      this.currentTasks.set('scoreUpdate', scoreUpdateTask);
+    } catch (error) {
+      logger.error('[Scheduler] Failed to start score update task:', error);
+    }
+    
+    try {
+      pickCalculationTask.start();
+      this.currentTasks.set('pickCalculation', pickCalculationTask);
+    } catch (error) {
+      logger.error('[Scheduler] Failed to start pick calculation task:', error);
+    }
+    
+    try {
+      offHoursCheckTask.start();
+      this.currentTasks.set('offHoursCheck', offHoursCheckTask);
+    } catch (error) {
+      logger.error('[Scheduler] Failed to start off-hours check task:', error);
+    }
     
     this.isRunning = true;
     logger.important('[Scheduler] Automatic updates started');
