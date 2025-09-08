@@ -564,13 +564,13 @@ const UsersManager: React.FC = () => {
                         <div className="flex-shrink-0 h-10 w-10">
                           <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
                             <span className="text-sm font-medium text-gray-700">
-                              {userData.first_name.charAt(0)}{userData.last_name.charAt(0)}
+                              {(userData.first_name || 'U').charAt(0)}{(userData.last_name || 'U').charAt(0)}
                             </span>
                           </div>
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {userData.first_name} {userData.last_name}
+                            {userData.first_name || 'Unknown'} {userData.last_name || 'User'}
                           </div>
                           <div className="text-sm text-gray-500">
                             {userData.is_admin && (
@@ -592,8 +592,8 @@ const UsersManager: React.FC = () => {
                             <span className="text-yellow-600">⚠ Unverified</span>
                             <button
                               onClick={() => {
-                                if (confirm(`Manually verify email for ${userData.first_name} ${userData.last_name}?\n\nThis will mark their email as verified without requiring them to click a verification link.`)) {
-                                  verifyUserEmail(userData.id, `${userData.first_name} ${userData.last_name}`, userData.email);
+                                if (confirm(`Manually verify email for ${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}?\n\nThis will mark their email as verified without requiring them to click a verification link.`)) {
+                                  verifyUserEmail(userData.id, `${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}`, userData.email);
                                 }
                               }}
                               className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-1 rounded text-xs font-medium"
@@ -642,7 +642,7 @@ const UsersManager: React.FC = () => {
                             onClick={() => {
                               setResetPasswordData({
                                 userId: userData.id,
-                                userName: `${userData.first_name} ${userData.last_name}`,
+                                userName: `${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}`,
                                 userEmail: userData.email
                               });
                               setShowResetPasswordModal(true);
@@ -656,7 +656,7 @@ const UsersManager: React.FC = () => {
                             onClick={() => {
                               setDeleteUserData({
                                 userId: userData.id,
-                                userName: `${userData.first_name} ${userData.last_name}`,
+                                userName: `${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}`,
                                 userEmail: userData.email
                               });
                               setShowDeleteUserModal(true);

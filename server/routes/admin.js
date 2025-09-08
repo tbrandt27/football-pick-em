@@ -321,17 +321,15 @@ router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
       const userService = DatabaseServiceFactory.getUserService();
       const users = await userService.getAllUsers();
       
-      // For each user, get game count using DynamoDB scan
+      // For each user, get game count using GSI for efficient lookup
       const usersWithGameCount = await Promise.all(
         users.map(async (user) => {
           try {
-            // Use DynamoDB scan to find game participations for this user
-            const gameParticipations = await db.provider._dynamoScan('game_participants', {
-              user_id: user.id
-            });
+            // Use GSI user_id-index for efficient lookup of game participations
+            const gameParticipations = await db.provider._getByUserIdGSI('game_participants', user.id);
             return {
               ...user,
-              game_count: gameParticipations.Items ? gameParticipations.Items.length : 0
+              game_count: gameParticipations ? gameParticipations.length : 0
             };
           } catch (error) {
             logger.warn(`Could not get game count for user ${user.id}:`, error);
