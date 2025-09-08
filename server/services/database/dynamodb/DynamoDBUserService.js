@@ -104,8 +104,8 @@ export default class DynamoDBUserService extends IUserService {
       return await this.db._getByEmailGSI('users', email);
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
-      if (error.name === 'ResourceNotFoundException') {
-        console.log(`[DynamoDB User] GSI not found, falling back to scan for email ${email}`);
+      if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
+        console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for email ${email}`);
         const result = await this.db._dynamoScan('users', { email: email.toLowerCase() });
         return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
@@ -217,8 +217,8 @@ export default class DynamoDBUserService extends IUserService {
       participations = await this.db._getByUserIdGSI('game_participants', userId);
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
-      if (error.name === 'ResourceNotFoundException') {
-        console.log(`[DynamoDB User] GSI not found, falling back to scan for user games ${userId}`);
+      if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
+        console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for user games ${userId}`);
         const participationsResult = await this.db._dynamoScan('game_participants', { user_id: userId });
         participations = participationsResult.Items || [];
       } else {
@@ -247,8 +247,8 @@ export default class DynamoDBUserService extends IUserService {
             allParticipants = await this.db._getByGameIdGSI('game_participants', participation.game_id);
           } catch (error) {
             // Fallback to scan if GSI doesn't exist (backward compatibility)
-            if (error.name === 'ResourceNotFoundException') {
-              console.log(`[DynamoDB User] GSI not found, falling back to scan for game participants ${participation.game_id}`);
+            if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
+              console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for game participants ${participation.game_id}`);
               const allParticipantsResult = await this.db._dynamoScan('game_participants', { game_id: participation.game_id });
               allParticipants = allParticipantsResult.Items || [];
             } else {
@@ -375,8 +375,8 @@ export default class DynamoDBUserService extends IUserService {
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
-      if (error.name === 'ResourceNotFoundException') {
-        console.log(`[DynamoDB User] GSI not found, falling back to scan for admin user`);
+      if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
+        console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for admin user`);
         const result = await this.db._dynamoScan('users', { is_admin: true });
         return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }

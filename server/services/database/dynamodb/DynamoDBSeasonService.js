@@ -32,25 +32,11 @@ export default class DynamoDBSeasonService extends ISeasonService {
    * @returns {Promise<Object|null>} Current season or null
    */
   async getCurrentSeason() {
-    try {
-      // Try GSI is_current-index for efficient lookup
-      const result = await this.db._getCurrentSeasonGSI('seasons');
-      
-      if (result) {
-        return result;
-      }
-      
-      return null;
-    } catch (error) {
-      // Fallback to scan if GSI doesn't exist (backward compatibility)
-      if (error.name === 'ResourceNotFoundException') {
-        console.log(`[DynamoDB Season] GSI not found, falling back to scan`);
-        const result = await this.db._dynamoScan('seasons', { is_current: true });
-        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
-      }
-      console.error(`[DynamoDB Season] Error in getCurrentSeason:`, error);
-      return null;
-    }
+    // Since there's only one current season, use scan directly - no GSI needed
+    // This is efficient enough for a single-record lookup that happens infrequently
+    console.log(`[DynamoDB Season] Getting current season via scan (single record expected)`);
+    const result = await this.db._dynamoScan('seasons', { is_current: true });
+    return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
   }
 
   /**
