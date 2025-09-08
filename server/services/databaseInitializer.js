@@ -117,7 +117,7 @@ export default class DatabaseInitializer {
         // If no admin email env var, check for any admin user
         let anyAdmin;
         if (this.db.getType() === 'dynamodb') {
-          const usersResult = await this.db._dynamoScan('users', { is_admin: true });
+          const usersResult = await this.db._dynamoScan('users', { is_admin: 'true' });
           anyAdmin = usersResult?.Items?.[0] || null;
         } else {
           anyAdmin = await this.db.get('SELECT id FROM users WHERE is_admin = ? LIMIT 1', [true]);
@@ -238,8 +238,8 @@ export default class DatabaseInitializer {
           password: hashedPassword,
           first_name: "Admin",
           last_name: "User",
-          is_admin: true,
-          email_verified: true,
+          is_admin: 'true',
+          email_verified: 'true',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -310,7 +310,7 @@ export default class DatabaseInitializer {
       const currentYear = new Date().getFullYear().toString();
       
       if (this.db.getType && this.db.getType() === 'dynamodb') {
-        const seasonsResult = await this.db._dynamoScan('seasons', { is_current: true });
+        const seasonsResult = await this.db._dynamoScan('seasons', { is_current: 'true' });
         const seasons = seasonsResult?.Items || [];
         currentSeason = seasons.length > 0 ? seasons[0] : null;
       } else {

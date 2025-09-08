@@ -76,7 +76,7 @@ async function createSecret(secretData) {
     const response = await secretsClient.send(new CreateSecretCommand({
       Name: SECRET_NAME,
       SecretString: JSON.stringify(secretData),
-      Description: 'All application secrets for local development'
+      Description: 'All application secrets for local development - emulates production Secret Manager'
     }));
     
     console.log('✅ Secret created successfully');
@@ -97,7 +97,7 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length === 0) {
-    // Default secret data
+    // Default secret data for LocalStack development
     const defaultSecretData = {
       JWT_SECRET: 'ee57f715bbe63996e58edeb81e2afb703291b77f0d8591ef3f47b0c7673b4ee7cbbb524d35c4333c9011e34b3935f066e8513e7153db53132fcbc46fb6da6eba',
       SETTINGS_ENCRYPTION_KEY: 'local-development-encryption-key-32',
@@ -105,7 +105,13 @@ async function main() {
       ADMIN_PASSWORD: 'admin123'
     };
     
-    console.log('\n📋 Using default secret values...');
+    console.log('\n📋 Using default secret values for LocalStack development...');
+    console.log('🔐 This emulates production Secret Manager behavior');
+    console.log('📝 Secret values:');
+    console.log(`   - JWT_SECRET: [64-char secure key]`);
+    console.log(`   - SETTINGS_ENCRYPTION_KEY: ${defaultSecretData.SETTINGS_ENCRYPTION_KEY}`);
+    console.log(`   - ADMIN_EMAIL: ${defaultSecretData.ADMIN_EMAIL}`);
+    console.log(`   - ADMIN_PASSWORD: ${defaultSecretData.ADMIN_PASSWORD}`);
     await listSecrets();
     await updateSecret(defaultSecretData);
     await listSecrets();

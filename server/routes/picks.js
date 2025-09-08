@@ -195,11 +195,14 @@ router.get('/game/:gameId/summary', authenticateToken, async (req, res) => {
     const { gameId } = req.params;
     const { seasonId, week } = req.query;
 
+    console.log(`[PicksRoute] Getting picks summary for game ${gameId}, season ${seasonId}, week ${week}`);
+
     // Verify user has access to this game
     const gameService = DatabaseServiceFactory.getGameService();
     const participant = await gameService.getParticipant(gameId, req.user.id);
 
     if (!participant && !req.user.is_admin) {
+      console.log(`[PicksRoute] Access denied for user ${req.user.id} to game ${gameId}`);
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -210,9 +213,10 @@ router.get('/game/:gameId/summary', authenticateToken, async (req, res) => {
       week: week ? parseInt(week) : undefined
     });
 
+    console.log(`[PicksRoute] Returning picks summary with ${summary.length} players`);
     res.json({ summary });
   } catch (error) {
-    console.error('Get picks summary error:', error);
+    console.error('[PicksRoute] Get picks summary error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

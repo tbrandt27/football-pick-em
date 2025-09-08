@@ -209,10 +209,10 @@ async function updateExistingTeam(teamId, teamData) {
     // Update any missing fields
     const updates = {};
     
-    if (!currentTeam.team_conference || currentTeam.team_conference === 'undefined') {
+    if (!currentTeam.team_conference || currentTeam.team_conference === 'undefined' || currentTeam.team_conference === 'Unknown') {
       updates.team_conference = teamData.conference;
     }
-    if (!currentTeam.team_division || currentTeam.team_division === 'undefined') {
+    if (!currentTeam.team_division || currentTeam.team_division === 'undefined' || currentTeam.team_division === 'Unknown') {
       updates.team_division = teamData.division;
     }
     if (!currentTeam.team_logo) {
@@ -279,10 +279,10 @@ async function updateExistingTeamDynamoDB(existingTeam, teamData) {
     // Check what fields need updating
     const updates = {};
     
-    if (!existingTeam.team_conference || existingTeam.team_conference === 'undefined') {
+    if (!existingTeam.team_conference || existingTeam.team_conference === 'undefined' || existingTeam.team_conference === 'Unknown') {
       updates.team_conference = teamData.conference;
     }
-    if (!existingTeam.team_division || existingTeam.team_division === 'undefined') {
+    if (!existingTeam.team_division || existingTeam.team_division === 'undefined' || existingTeam.team_division === 'Unknown') {
       updates.team_division = teamData.division;
     }
     if (!existingTeam.team_logo) {

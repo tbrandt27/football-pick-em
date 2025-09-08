@@ -51,8 +51,8 @@ class SchedulerService {
         return cached.hasGames;
       }
 
+      const currentSeason = await this.getCurrentSeason();
       const nflDataService = DatabaseServiceFactory.getNFLDataService();
-      const currentSeason = await nflDataService.getCurrentSeason();
       
       if (!currentSeason) {
         logger.debug('[Scheduler] No current season set');

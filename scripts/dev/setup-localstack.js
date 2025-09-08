@@ -42,7 +42,7 @@ const secretsClient = new SecretsManagerClient({
   }
 });
 
-// Table definitions
+// Table definitions - OPTIMIZED SCHEMA matching CloudFormation template
 const tableDefs = [
   {
     TableName: `${TABLE_PREFIX}users`,
@@ -51,13 +51,22 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'email', AttributeType: 'S' }
+      { AttributeName: 'email', AttributeType: 'S' },
+      { AttributeName: 'is_admin', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
         IndexName: 'email-index',
         KeySchema: [
           { AttributeName: 'email', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'is_admin-index',
+        KeySchema: [
+          { AttributeName: 'is_admin', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -72,13 +81,13 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'abbreviation', AttributeType: 'S' }
+      { AttributeName: 'team_code', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'abbreviation-index',
+        IndexName: 'team_code-index',
         KeySchema: [
-          { AttributeName: 'abbreviation', KeyType: 'HASH' }
+          { AttributeName: 'team_code', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -93,13 +102,22 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'commissioner_id', AttributeType: 'S' }
+      { AttributeName: 'commissioner_id', AttributeType: 'S' },
+      { AttributeName: 'season_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'commissioner-index',
+        IndexName: 'commissioner_id-index',
         KeySchema: [
           { AttributeName: 'commissioner_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -115,7 +133,8 @@ const tableDefs = [
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
-      { AttributeName: 'user_id', AttributeType: 'S' }
+      { AttributeName: 'user_id', AttributeType: 'S' },
+      { AttributeName: 'game_id_user_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
@@ -137,8 +156,7 @@ const tableDefs = [
       {
         IndexName: 'game_id-user_id-index',
         KeySchema: [
-          { AttributeName: 'game_id', KeyType: 'HASH' },
-          { AttributeName: 'user_id', KeyType: 'RANGE' }
+          { AttributeName: 'game_id_user_id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -153,13 +171,22 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'year', AttributeType: 'N' }
+      { AttributeName: 'season', AttributeType: 'S' },
+      { AttributeName: 'is_current', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'year-index',
+        IndexName: 'season-index',
         KeySchema: [
-          { AttributeName: 'year', KeyType: 'HASH' }
+          { AttributeName: 'season', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'is_current-index',
+        KeySchema: [
+          { AttributeName: 'is_current', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -175,14 +202,49 @@ const tableDefs = [
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'season_id', AttributeType: 'S' },
-      { AttributeName: 'week', AttributeType: 'N' }
+      { AttributeName: 'week', AttributeType: 'N' },
+      { AttributeName: 'season_id_week', AttributeType: 'S' },
+      { AttributeName: 'home_team_id', AttributeType: 'S' },
+      { AttributeName: 'away_team_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'season-week-index',
+        IndexName: 'season_id-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-week-index',
         KeySchema: [
           { AttributeName: 'season_id', KeyType: 'HASH' },
           { AttributeName: 'week', KeyType: 'RANGE' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id_week-index',
+        KeySchema: [
+          { AttributeName: 'season_id_week', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'home_team_id-index',
+        KeySchema: [
+          { AttributeName: 'home_team_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'away_team_id-index',
+        KeySchema: [
+          { AttributeName: 'away_team_id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -193,10 +255,21 @@ const tableDefs = [
   {
     TableName: `${TABLE_PREFIX}system_settings`,
     KeySchema: [
-      { AttributeName: 'key', KeyType: 'HASH' }
+      { AttributeName: 'id', KeyType: 'HASH' }
     ],
     AttributeDefinitions: [
-      { AttributeName: 'key', AttributeType: 'S' }
+      { AttributeName: 'id', AttributeType: 'S' },
+      { AttributeName: 'category_key', AttributeType: 'S' }
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'category_key-index',
+        KeySchema: [
+          { AttributeName: 'category_key', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      }
     ],
     BillingMode: 'PAY_PER_REQUEST'
   },
@@ -209,8 +282,14 @@ const tableDefs = [
       { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'user_id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
+      { AttributeName: 'season_id', AttributeType: 'S' },
+      { AttributeName: 'week', AttributeType: 'N' },
+      { AttributeName: 'football_game_id', AttributeType: 'S' },
+      { AttributeName: 'pick_team_id', AttributeType: 'S' },
       { AttributeName: 'season_id_week', AttributeType: 'S' },
-      { AttributeName: 'user_game_football', AttributeType: 'S' }
+      { AttributeName: 'user_game_football', AttributeType: 'S' },
+      { AttributeName: 'user_id_game_id', AttributeType: 'S' },
+      { AttributeName: 'user_id_season_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
@@ -225,6 +304,39 @@ const tableDefs = [
         IndexName: 'game_id-index',
         KeySchema: [
           { AttributeName: 'game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-week-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' },
+          { AttributeName: 'week', KeyType: 'RANGE' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'football_game_id-index',
+        KeySchema: [
+          { AttributeName: 'football_game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'pick_team_id-index',
+        KeySchema: [
+          { AttributeName: 'pick_team_id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -244,6 +356,22 @@ const tableDefs = [
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'user_id_game_id-index',
+        KeySchema: [
+          { AttributeName: 'user_id_game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'user_id_season_id-index',
+        KeySchema: [
+          { AttributeName: 'user_id_season_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
       }
     ],
     BillingMode: 'PAY_PER_REQUEST'
@@ -257,6 +385,8 @@ const tableDefs = [
       { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'user_id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
+      { AttributeName: 'season_id', AttributeType: 'S' },
+      { AttributeName: 'week', AttributeType: 'N' },
       { AttributeName: 'season_id_week', AttributeType: 'S' },
       { AttributeName: 'game_season_week', AttributeType: 'S' }
     ],
@@ -273,6 +403,23 @@ const tableDefs = [
         IndexName: 'game_id-index',
         KeySchema: [
           { AttributeName: 'game_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'season_id-week-index',
+        KeySchema: [
+          { AttributeName: 'season_id', KeyType: 'HASH' },
+          { AttributeName: 'week', KeyType: 'RANGE' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'
@@ -304,11 +451,15 @@ const tableDefs = [
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
       { AttributeName: 'game_id', AttributeType: 'S' },
-      { AttributeName: 'email', AttributeType: 'S' }
+      { AttributeName: 'invite_token', AttributeType: 'S' },
+      { AttributeName: 'email', AttributeType: 'S' },
+      { AttributeName: 'status', AttributeType: 'S' },
+      { AttributeName: 'game_email', AttributeType: 'S' },
+      { AttributeName: 'invited_by_user_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
       {
-        IndexName: 'game-invitations-index',
+        IndexName: 'game_id-index',
         KeySchema: [
           { AttributeName: 'game_id', KeyType: 'HASH' }
         ],
@@ -316,9 +467,41 @@ const tableDefs = [
         BillingMode: 'PAY_PER_REQUEST'
       },
       {
-        IndexName: 'email-invitations-index',
+        IndexName: 'invite_token-index',
+        KeySchema: [
+          { AttributeName: 'invite_token', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'email-index',
         KeySchema: [
           { AttributeName: 'email', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'status-index',
+        KeySchema: [
+          { AttributeName: 'status', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'game_email-index',
+        KeySchema: [
+          { AttributeName: 'game_email', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' },
+        BillingMode: 'PAY_PER_REQUEST'
+      },
+      {
+        IndexName: 'invited_by_user_id-index',
+        KeySchema: [
+          { AttributeName: 'invited_by_user_id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' },
         BillingMode: 'PAY_PER_REQUEST'

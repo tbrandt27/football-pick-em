@@ -140,8 +140,8 @@ export default class DynamoDBUserService extends IUserService {
       last_name: lastName,
       favorite_team_id: favoriteTeamId || null,
       email_verification_token: emailVerificationToken,
-      email_verified: emailVerified,
-      is_admin: isAdmin,
+      email_verified: emailVerified ? 'true' : 'false',
+      is_admin: isAdmin ? 'true' : 'false',
       created_at: now,
       updated_at: now
     };
@@ -177,7 +177,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateAdminStatus(userId, isAdmin) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      is_admin: isAdmin
+      is_admin: isAdmin ? 'true' : 'false'
     });
   }
 
@@ -189,7 +189,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateEmailVerified(userId, emailVerified) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      email_verified: emailVerified
+      email_verified: emailVerified ? 'true' : 'false'
     });
   }
 
@@ -377,7 +377,7 @@ export default class DynamoDBUserService extends IUserService {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
       if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
         console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for admin user`);
-        const result = await this.db._dynamoScan('users', { is_admin: true });
+        const result = await this.db._dynamoScan('users', { is_admin: 'true' });
         return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
       }
       throw error;

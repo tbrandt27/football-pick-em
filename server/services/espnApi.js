@@ -437,13 +437,17 @@ class ESPNService {
       
       const nflDataService = this.getNFLDataService();
       
+      // Check if team already exists to preserve conference/division data
+      const existingTeam = await nflDataService.getTeamByCode(ourTeamCode);
+      
       // Use the service layer to create or update the team
       const team = await nflDataService.createOrUpdateTeam({
         teamCode: ourTeamCode,
         teamName: teamData.name,
         teamCity: teamData.location,
-        conference: 'Unknown', // ESPN doesn't provide conference in this endpoint
-        division: 'Unknown', // ESPN doesn't provide division in this endpoint
+        // Preserve existing conference/division if available, otherwise use Unknown
+        conference: existingTeam?.team_conference || 'Unknown',
+        division: existingTeam?.team_division || 'Unknown',
         primaryColor: teamData.color ? `#${teamData.color}` : null,
         secondaryColor: teamData.alternateColor ? `#${teamData.alternateColor}` : null
       });

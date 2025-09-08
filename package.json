@@ -1,7 +1,7 @@
 {
   "name": "football-pickem",
   "type": "module",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -68,6 +68,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/nodemailer": "^6.4.17",
     "@types/uuid": "^10.0.0",
+    "csv-parser": "^3.0.0",
     "dotenv-cli": "^7.4.2",
     "nodemon": "^3.1.10"
   }
