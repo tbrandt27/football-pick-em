@@ -378,8 +378,20 @@ export default class DynamoDBGameService extends IGameService {
 
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
+      // Debug: Log error properties to understand the structure
+      console.log(`[DynamoDBGameService] 🔍 ERROR DEBUG:`, {
+        name: error.name,
+        code: error.code,
+        message: error.message,
+        type: error.__type,
+        fault: error.$fault
+      });
+
       // Handle missing GSI error - fallback to user_id-index GSI and filter
-      if (error.code === 'ValidationException' && (error.message.includes('game_id-user_id-index') || error.message.includes('does not have the specified index'))) {
+      const isValidationError = error.name === 'ValidationException' || error.code === 'ValidationException' || error.__type?.includes('ValidationException');
+      const isIndexError = error.message && (error.message.includes('game_id-user_id-index') || error.message.includes('does not have the specified index'));
+      
+      if (isValidationError && isIndexError) {
         console.log(`[DynamoDBGameService] ✅ FALLBACK TRIGGERED: GSI 'game_id-user_id-index' not found, falling back to user_id-index for user ${userId}, game ${gameId}`);
         
         // Fallback: Use user_id-index GSI and filter for gameId
@@ -393,6 +405,18 @@ export default class DynamoDBGameService extends IGameService {
         // Find the participation for this specific game
         const participation = userParticipations.find(p => p.game_id === gameId);
         console.log(`[DynamoDBGameService] ✅ FALLBACK RESULT: ${participation ? 'Found' : 'Not found'} participation for user ${userId} in game ${gameId}`);
+        return participation || null;
+      }
+      
+      // Additional catch-all for any ValidationException mentioning missing index
+      if (error.message && error.message.includes('does not have the specified index') && error.message.includes('game_id-user_id-index')) {
+        console.log(`[DynamoDBGameService] ✅ CATCH-ALL FALLBACK: Detected missing GSI via message inspection, falling back for user ${userId}, game ${gameId}`);
+        
+        const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
+        if (!userParticipations || userParticipations.length === 0) {
+          return null;
+        }
+        const participation = userParticipations.find(p => p.game_id === gameId);
         return participation || null;
       }
       
