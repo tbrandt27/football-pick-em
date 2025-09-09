@@ -344,7 +344,25 @@ export default class DynamoDBPickService extends IPickService {
         user_game_football: compositeKey
       });
       
-      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      // Check if GSI returned results
+      if (result.Items && result.Items.length > 0) {
+        return result.Items[0];
+      }
+      
+      // GSI exists but returned no results - might be missing composite key data
+      console.log(`[DynamoDBPickService] ⚠️ GSI returned no results, checking if pick exists via fallback for user ${userId}, game ${gameId}, football game ${footballGameId}`);
+      
+      // Use fallback to check if pick actually exists
+      const userPicks = await this.db._getByUserIdGSI('picks', userId);
+      const existingPick = userPicks.find(p =>
+        p.game_id === gameId && p.football_game_id === footballGameId
+      );
+      
+      if (existingPick) {
+        console.log(`[DynamoDBPickService] ✅ Found pick via fallback - GSI needs data migration for user ${userId}, game ${gameId}, football game ${footballGameId}`);
+      }
+      
+      return existingPick || null;
     } catch (error) {
       // Handle missing GSI error - fallback to user_id-index GSI and filter
       if (error.code === 'ValidationException' && (error.message.includes('user_game_football-index') || error.message.includes('does not have the specified index'))) {

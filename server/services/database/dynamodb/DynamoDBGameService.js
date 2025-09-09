@@ -376,7 +376,23 @@ export default class DynamoDBGameService extends IGameService {
         game_id_user_id: compositeKey
       });
 
-      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      // Check if GSI returned results
+      if (result.Items && result.Items.length > 0) {
+        return result.Items[0];
+      }
+      
+      // GSI exists but returned no results - might be missing composite key data
+      console.log(`[DynamoDBGameService] ⚠️ GSI returned no results, checking if data exists via fallback for user ${userId}, game ${gameId}`);
+      
+      // Use fallback to check if participation actually exists
+      const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
+      const participation = userParticipations.find(p => p.game_id === gameId);
+      
+      if (participation) {
+        console.log(`[DynamoDBGameService] ✅ Found participation via fallback - GSI needs data migration for user ${userId}, game ${gameId}`);
+      }
+      
+      return participation || null;
     } catch (error) {
       // Debug: Log error properties to understand the structure
       console.log(`[DynamoDBGameService] 🔍 ERROR DEBUG:`, {

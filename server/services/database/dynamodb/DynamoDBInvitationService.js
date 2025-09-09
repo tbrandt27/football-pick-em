@@ -160,11 +160,27 @@ export default class DynamoDBInvitationService extends IInvitationService {
         game_email: compositeKey
       });
 
-      // Find pending invitation
-      const pendingInvitation = (result.Items || []).find(invitation =>
-        invitation.status === 'pending'
-      );
+      // Check if GSI returned results
+      if (result.Items && result.Items.length > 0) {
+        const pendingInvitation = result.Items.find(invitation =>
+          invitation.status === 'pending'
+        );
+        return pendingInvitation || null;
+      }
 
+      // GSI exists but returned no results - might be missing composite key data
+      console.log(`[DynamoDBInvitationService] ⚠️ GSI returned no results, checking if invitation exists via fallback for game ${gameId}, email ${email}`);
+      
+      // Use fallback to check if invitation actually exists
+      const gameInvitations = await this.db._getByGameIdGSI('game_invitations', gameId);
+      const pendingInvitation = gameInvitations.find(invitation =>
+        invitation.email === email.toLowerCase() && invitation.status === 'pending'
+      );
+      
+      if (pendingInvitation) {
+        console.log(`[DynamoDBInvitationService] ✅ Found invitation via fallback - GSI needs data migration for game ${gameId}, email ${email}`);
+      }
+      
       return pendingInvitation || null;
     } catch (error) {
       // Handle missing GSI error - fallback to game_id-index GSI and filter
@@ -279,12 +295,30 @@ export default class DynamoDBInvitationService extends IInvitationService {
         game_email: compositeKey
       });
 
-      // Find pending admin invitation
-      const pendingInvitation = (result.Items || []).find(invitation =>
+      // Check if GSI returned results
+      if (result.Items && result.Items.length > 0) {
+        const pendingInvitation = result.Items.find(invitation =>
+          invitation.status === 'pending' &&
+          invitation.is_admin_invitation === true
+        );
+        return pendingInvitation || null;
+      }
+
+      // GSI exists but returned no results - might be missing composite key data
+      console.log(`[DynamoDBInvitationService] ⚠️ Admin GSI returned no results, checking if invitation exists via fallback for email ${email}`);
+      
+      // Use fallback to check if admin invitation actually exists
+      const scanResult = await this.db._dynamoScan('game_invitations');
+      const pendingInvitation = scanResult.Items.find(invitation =>
+        invitation.email === email.toLowerCase() &&
         invitation.status === 'pending' &&
         invitation.is_admin_invitation === true
       );
-
+      
+      if (pendingInvitation) {
+        console.log(`[DynamoDBInvitationService] ✅ Found admin invitation via fallback - GSI needs data migration for email ${email}`);
+      }
+      
       return pendingInvitation || null;
     } catch (error) {
       // Handle missing GSI error - fallback to scan with email filter
