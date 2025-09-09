@@ -136,15 +136,6 @@ export default class DynamoDBPickService extends IPickService {
         user_id_season_id: this.db._createCompositeKey(userId, footballGame.season_id)
       };
       
-      console.log(`[DynamoDBPickService] Creating pick with composite keys:`, {
-        pickId,
-        userId,
-        gameId,
-        season_id_week: pickItem.season_id_week,
-        user_game_football: pickItem.user_game_football,
-        user_id_game_id: pickItem.user_id_game_id,
-        user_id_season_id: pickItem.user_id_season_id
-      });
       
       await this.db._dynamoPut('picks', pickItem);
     }
@@ -215,65 +206,42 @@ export default class DynamoDBPickService extends IPickService {
     const { seasonId, week } = filters;
     
     try {
-      console.log(`[DynamoDBPickService] getGamePicksSummary called:`, { gameId, seasonId, week });
-      
       // Use GSI game_id-index for efficient lookup of participants
       let participants;
       try {
         participants = await this.db._getByGameIdGSI('game_participants', gameId);
-        console.log(`[DynamoDBPickService] Found ${participants.length} participants for game ${gameId}`);
       } catch (participantError) {
         console.error(`[DynamoDBPickService] Error fetching participants for game ${gameId}:`, participantError);
         // Fallback to scan if GSI fails
-        console.log(`[DynamoDBPickService] Falling back to scan for participants...`);
         const scanResult = await this.db._dynamoScan('game_participants', { game_id: gameId });
         participants = scanResult.Items || [];
-        console.log(`[DynamoDBPickService] Fallback scan found ${participants.length} participants for game ${gameId}`);
       }
       
       const summary = [];
     
     for (const participant of participants) {
       try {
-        console.log(`[DynamoDBPickService] Processing participant: ${participant.user_id}`);
-        
         // Use more efficient approach: get all picks for this user-game combination first
         const userPicks = await this.db._getByUserIdGSI('picks', participant.user_id);
-        console.log(`[DynamoDBPickService] Found ${userPicks.length} total picks for user ${participant.user_id}`);
         
-        // Apply filters in sequence with logging
+        // Apply filters in sequence
         let picks = userPicks.filter(p => p.game_id === gameId);
-        console.log(`[DynamoDBPickService] After game_id filter: ${picks.length} picks`);
         
         if (seasonId) {
           picks = picks.filter(p => p.season_id === seasonId);
-          console.log(`[DynamoDBPickService] After season_id filter: ${picks.length} picks`);
         }
         
         if (week !== undefined && week !== null && week !== '') {
           const weekNum = parseInt(week);
           if (!isNaN(weekNum) && weekNum > 0) {
             picks = picks.filter(p => p.week === weekNum);
-            console.log(`[DynamoDBPickService] After week filter (${weekNum}): ${picks.length} picks`);
-          } else {
-            console.warn(`[DynamoDBPickService] Invalid week value: ${week}, skipping week filter`);
           }
         }
-        
-        console.log(`[DynamoDBPickService] Final filtered picks for user ${participant.user_id}:`, picks.map(p => ({
-          id: p.id,
-          week: p.week,
-          season_id: p.season_id,
-          game_id: p.game_id,
-          is_correct: p.is_correct
-        })));
         
         const totalPicks = picks.length;
         const correctPicks = picks.filter(p => p.is_correct === true || p.is_correct === 1).length;
         const incorrectPicks = picks.filter(p => p.is_correct === false || p.is_correct === 0).length;
         const pickPercentage = totalPicks > 0 ? Math.round((correctPicks / totalPicks) * 100 * 100) / 100 : 0;
-        
-        console.log(`[DynamoDBPickService] Stats for user ${participant.user_id}: total=${totalPicks}, correct=${correctPicks}, incorrect=${incorrectPicks}, percentage=${pickPercentage}`);
         
         // Get user info
         const userResult = await this.db._dynamoGet('users', { id: participant.user_id });
@@ -291,8 +259,6 @@ export default class DynamoDBPickService extends IPickService {
         console.error(`[DynamoDBPickService] Error calculating picks for user ${participant.user_id}:`, error);
       }
     }
-    
-    console.log(`[DynamoDBPickService] Final summary:`, summary);
     
     // Sort by correct picks (descending), then by pick percentage (descending)
     return summary.sort((a, b) => {
@@ -350,29 +316,20 @@ export default class DynamoDBPickService extends IPickService {
       }
       
       // GSI exists but returned no results - might be missing composite key data
-      console.log(`[DynamoDBPickService] ⚠️ GSI returned no results, checking if pick exists via fallback for user ${userId}, game ${gameId}, football game ${footballGameId}`);
-      
       // Use fallback to check if pick actually exists
       const userPicks = await this.db._getByUserIdGSI('picks', userId);
       const existingPick = userPicks.find(p =>
         p.game_id === gameId && p.football_game_id === footballGameId
       );
       
-      if (existingPick) {
-        console.log(`[DynamoDBPickService] ✅ Found pick via fallback - GSI needs data migration for user ${userId}, game ${gameId}, football game ${footballGameId}`);
-      }
-      
       return existingPick || null;
     } catch (error) {
       // Handle missing GSI error - fallback to user_id-index GSI and filter
       if (error.code === 'ValidationException' && (error.message.includes('user_game_football-index') || error.message.includes('does not have the specified index'))) {
-        console.log(`[DynamoDBPickService] ✅ FALLBACK TRIGGERED: GSI 'user_game_football-index' not found, falling back to user_id-index for user ${userId}, game ${gameId}, football game ${footballGameId}`);
-        
         // Fallback: Use user_id-index GSI and filter for gameId and footballGameId
         const userPicks = await this.db._getByUserIdGSI('picks', userId);
         
         if (!userPicks || userPicks.length === 0) {
-          console.log(`[DynamoDBPickService] ✅ FALLBACK RESULT: No picks found for user ${userId}`);
           return null;
         }
         
@@ -380,7 +337,6 @@ export default class DynamoDBPickService extends IPickService {
         const existingPick = userPicks.find(p =>
           p.game_id === gameId && p.football_game_id === footballGameId
         );
-        console.log(`[DynamoDBPickService] ✅ FALLBACK RESULT: ${existingPick ? 'Found' : 'Not found'} existing pick for user ${userId}, game ${gameId}, football game ${footballGameId}`);
         return existingPick || null;
       }
       
@@ -426,21 +382,16 @@ export default class DynamoDBPickService extends IPickService {
    */
   async updatePicksForGame(footballGameId, winningTeamId) {
     try {
-      console.log(`[DynamoDBPickService] Updating picks for football game ${footballGameId}, winning team: ${winningTeamId}`);
-      
       // Use GSI football_game_id-index for efficient lookup
       const picks = await this.db._dynamoQueryGSI('picks', 'football_game_id-index', {
         football_game_id: footballGameId
       });
-      
-      console.log(`[DynamoDBPickService] Found ${picks.Items?.length || 0} picks to update for game ${footballGameId}`);
       
       let updatedCount = 0;
       
       for (const pick of (picks.Items || [])) {
         try {
           const isCorrect = winningTeamId ? (pick.pick_team_id === winningTeamId ? 1 : 0) : 0;
-          console.log(`[DynamoDBPickService] Updating pick ${pick.id}: team_id=${pick.pick_team_id}, winning_team=${winningTeamId}, is_correct=${isCorrect}`);
           
           await this.db._dynamoUpdate('picks', { id: pick.id }, {
             is_correct: isCorrect
@@ -451,7 +402,6 @@ export default class DynamoDBPickService extends IPickService {
         }
       }
       
-      console.log(`[DynamoDBPickService] Successfully updated ${updatedCount} picks for game ${footballGameId}`);
       return { updatedCount };
       
     } catch (error) {

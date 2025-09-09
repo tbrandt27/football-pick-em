@@ -1,4 +1,5 @@
 import espnService from './espnApi.js';
+import pickCalculator from './pickCalculator.js';
 import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 
 class OnDemandUpdateService {
@@ -136,18 +137,29 @@ class OnDemandUpdateService {
       
       let totalUpdated = 0;
       let totalCreated = 0;
+      let totalPicksUpdated = 0;
       
       for (const weekToUpdate of uniqueWeeks) {
         try {
           const result = await espnService.updateNFLGames(seasonId, weekToUpdate, seasonStatus.type, true);
           totalUpdated += result.updated;
           totalCreated += result.created;
+          
+          // After updating game scores, calculate pick results for completed games
+          console.log(`[OnDemand] Calculating picks for week ${weekToUpdate} after score update`);
+          try {
+            const pickResult = await pickCalculator.calculatePicks(seasonId, weekToUpdate);
+            totalPicksUpdated += pickResult.updatedPicks;
+            console.log(`[OnDemand] Updated ${pickResult.updatedPicks} picks for ${pickResult.completedGames} completed games in week ${weekToUpdate}`);
+          } catch (pickError) {
+            console.error(`[OnDemand] Failed to calculate picks for week ${weekToUpdate}:`, pickError);
+          }
         } catch (error) {
           console.error(`[OnDemand] Failed to update week ${weekToUpdate}:`, error);
         }
       }
       
-      const result = { updated: totalUpdated, created: totalCreated };
+      const result = { updated: totalUpdated, created: totalCreated, picksUpdated: totalPicksUpdated };
       
       const lastUpdate = await this.getLastUpdateTime(seasonId, week);
       
@@ -155,7 +167,9 @@ class OnDemandUpdateService {
         updated: true,
         reason: 'Scores were stale',
         lastUpdate,
-        ...result
+        gamesUpdated: result.updated,
+        gamesCreated: result.created,
+        picksUpdated: result.picksUpdated
       };
     } catch (error) {
       console.error('Error in on-demand score update:', error);

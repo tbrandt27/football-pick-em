@@ -88,49 +88,25 @@ export default class DynamoDBInvitationService extends IInvitationService {
    * @returns {Promise<Object|null>} Invitation data with game info
    */
   async getInvitationByToken(inviteToken) {
-    console.log(`[DynamoDBInvitationService] getInvitationByToken called with token:`, {
-      token: inviteToken,
-      tokenType: typeof inviteToken,
-      tokenLength: inviteToken?.length,
-      tokenDefined: !!inviteToken
-    });
-
     // Validate invitation token
     if (!inviteToken || typeof inviteToken !== 'string') {
-      console.warn(`[DynamoDBInvitationService] Invalid invite token provided:`, {
-        token: inviteToken,
-        type: typeof inviteToken
-      });
       return null;
     }
 
     try {
       // Use GSI invite_token-index for efficient lookup
-      console.log(`[DynamoDBInvitationService] Querying for invitation with token: ${inviteToken}`);
       const invitation = await this.db._getByInviteTokenGSI('game_invitations', inviteToken);
       
       if (!invitation) {
-        console.log(`[DynamoDBInvitationService] No invitation found for token: ${inviteToken}`);
         return null;
       }
-      console.log(`[DynamoDBInvitationService] Found invitation:`, {
-        id: invitation.id,
-        email: invitation.email,
-        status: invitation.status,
-        gameId: invitation.game_id,
-        isAdminInvitation: invitation.is_admin_invitation
-      });
 
       // Get game information only if it's not an admin invitation
       if (!invitation.is_admin_invitation && invitation.game_id) {
         try {
-          console.log(`[DynamoDBInvitationService] Fetching game info for ID: ${invitation.game_id}`);
           const gameResult = await this.db._dynamoGet('pickem_games', { id: invitation.game_id });
           if (gameResult.Item) {
             invitation.game_name = gameResult.Item.game_name;
-            console.log(`[DynamoDBInvitationService] Game name found: ${invitation.game_name}`);
-          } else {
-            console.warn(`[DynamoDBInvitationService] Game not found for ID: ${invitation.game_id}`);
           }
         } catch (error) {
           console.warn(`[DynamoDBInvitationService] Could not fetch game for invitation ${invitation.id}:`, error);
@@ -169,24 +145,16 @@ export default class DynamoDBInvitationService extends IInvitationService {
       }
 
       // GSI exists but returned no results - might be missing composite key data
-      console.log(`[DynamoDBInvitationService] ⚠️ GSI returned no results, checking if invitation exists via fallback for game ${gameId}, email ${email}`);
-      
       // Use fallback to check if invitation actually exists
       const gameInvitations = await this.db._getByGameIdGSI('game_invitations', gameId);
       const pendingInvitation = gameInvitations.find(invitation =>
         invitation.email === email.toLowerCase() && invitation.status === 'pending'
       );
       
-      if (pendingInvitation) {
-        console.log(`[DynamoDBInvitationService] ✅ Found invitation via fallback - GSI needs data migration for game ${gameId}, email ${email}`);
-      }
-      
       return pendingInvitation || null;
     } catch (error) {
       // Handle missing GSI error - fallback to game_id-index GSI and filter
       if (error.code === 'ValidationException' && error.message.includes('game_email-index')) {
-        console.warn(`[DynamoDBInvitationService] GSI 'game_email-index' not found, falling back to game_id-index for game ${gameId}`);
-        
         // Fallback: Use game_id-index GSI and filter for email
         const gameInvitations = await this.db._getByGameIdGSI('game_invitations', gameId);
         
@@ -305,8 +273,6 @@ export default class DynamoDBInvitationService extends IInvitationService {
       }
 
       // GSI exists but returned no results - might be missing composite key data
-      console.log(`[DynamoDBInvitationService] ⚠️ Admin GSI returned no results, checking if invitation exists via fallback for email ${email}`);
-      
       // Use fallback to check if admin invitation actually exists
       const scanResult = await this.db._dynamoScan('game_invitations');
       const pendingInvitation = scanResult.Items.find(invitation =>
@@ -315,16 +281,10 @@ export default class DynamoDBInvitationService extends IInvitationService {
         invitation.is_admin_invitation === true
       );
       
-      if (pendingInvitation) {
-        console.log(`[DynamoDBInvitationService] ✅ Found admin invitation via fallback - GSI needs data migration for email ${email}`);
-      }
-      
       return pendingInvitation || null;
     } catch (error) {
       // Handle missing GSI error - fallback to scan with email filter
       if (error.code === 'ValidationException' && error.message.includes('game_email-index')) {
-        console.warn(`[DynamoDBInvitationService] GSI 'game_email-index' not found, falling back to scan for admin invitation ${email}`);
-        
         // Fallback: Scan all invitations and filter for admin invitations with this email
         const scanResult = await this.db._dynamoScan('game_invitations');
         

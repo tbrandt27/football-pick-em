@@ -867,7 +867,6 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
         efficiency: result.ScannedCount > 0 ? ((result.Items?.length || 0) / result.ScannedCount * 100).toFixed(1) + '%' : '100%'
       };
 
-      console.log(`[DynamoDB] GSI QUERY completed:`, logData);
       this._logPerformance('GSI_QUERY', duration, logData);
       
       return result;

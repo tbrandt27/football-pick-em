@@ -299,10 +299,36 @@ router.post(
   async (req, res) => {
     try {
       const results = await espnService.updateGameScores();
+      
+      // After updating scores, calculate pick results for completed games
+      let pickResults = null;
+      try {
+        logger.info("Admin score update: Calculating picks after score update");
+        const seasonService = DatabaseServiceFactory.getSeasonService();
+        const currentSeason = await seasonService.getCurrentSeason();
+        
+        if (currentSeason) {
+          const seasonStatus = await espnService.getCurrentSeasonStatus();
+          const currentWeek = seasonStatus.week;
+          
+          // Calculate picks for current and previous week
+          const weeks = [Math.max(1, currentWeek - 1), currentWeek];
+          pickResults = await pickCalculator.calculatePicksForWeeks(currentSeason.id, weeks);
+          
+          logger.info(`Admin score update: Updated ${pickResults.totalUpdatedPicks} picks across ${weeks.length} weeks`);
+        }
+      } catch (pickError) {
+        logger.error("Admin score update: Failed to calculate picks:", pickError);
+        // Don't fail the whole request if pick calculation fails
+      }
 
       res.json({
         message: "Game scores updated successfully",
         results,
+        pickResults: pickResults ? {
+          picksUpdated: pickResults.totalUpdatedPicks,
+          weeksProcessed: pickResults.weekResults.length
+        } : null
       });
     } catch (error) {
       logger.error("Update scores error:", error);
