@@ -379,18 +379,20 @@ export default class DynamoDBGameService extends IGameService {
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
       // Handle missing GSI error - fallback to user_id-index GSI and filter
-      if (error.code === 'ValidationException' && error.message.includes('game_id-user_id-index')) {
-        console.warn(`[DynamoDBGameService] GSI 'game_id-user_id-index' not found, falling back to user_id-index for user ${userId}`);
+      if (error.code === 'ValidationException' && (error.message.includes('game_id-user_id-index') || error.message.includes('does not have the specified index'))) {
+        console.log(`[DynamoDBGameService] ✅ FALLBACK TRIGGERED: GSI 'game_id-user_id-index' not found, falling back to user_id-index for user ${userId}, game ${gameId}`);
         
         // Fallback: Use user_id-index GSI and filter for gameId
         const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
         
         if (!userParticipations || userParticipations.length === 0) {
+          console.log(`[DynamoDBGameService] ✅ FALLBACK RESULT: No participations found for user ${userId}`);
           return null;
         }
         
         // Find the participation for this specific game
         const participation = userParticipations.find(p => p.game_id === gameId);
+        console.log(`[DynamoDBGameService] ✅ FALLBACK RESULT: ${participation ? 'Found' : 'Not found'} participation for user ${userId} in game ${gameId}`);
         return participation || null;
       }
       

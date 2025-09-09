@@ -347,13 +347,14 @@ export default class DynamoDBPickService extends IPickService {
       return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
     } catch (error) {
       // Handle missing GSI error - fallback to user_id-index GSI and filter
-      if (error.code === 'ValidationException' && error.message.includes('user_game_football-index')) {
-        console.warn(`[DynamoDBPickService] GSI 'user_game_football-index' not found, falling back to user_id-index for user ${userId}`);
+      if (error.code === 'ValidationException' && (error.message.includes('user_game_football-index') || error.message.includes('does not have the specified index'))) {
+        console.log(`[DynamoDBPickService] ✅ FALLBACK TRIGGERED: GSI 'user_game_football-index' not found, falling back to user_id-index for user ${userId}, game ${gameId}, football game ${footballGameId}`);
         
         // Fallback: Use user_id-index GSI and filter for gameId and footballGameId
         const userPicks = await this.db._getByUserIdGSI('picks', userId);
         
         if (!userPicks || userPicks.length === 0) {
+          console.log(`[DynamoDBPickService] ✅ FALLBACK RESULT: No picks found for user ${userId}`);
           return null;
         }
         
@@ -361,6 +362,7 @@ export default class DynamoDBPickService extends IPickService {
         const existingPick = userPicks.find(p =>
           p.game_id === gameId && p.football_game_id === footballGameId
         );
+        console.log(`[DynamoDBPickService] ✅ FALLBACK RESULT: ${existingPick ? 'Found' : 'Not found'} existing pick for user ${userId}, game ${gameId}, football game ${footballGameId}`);
         return existingPick || null;
       }
       
