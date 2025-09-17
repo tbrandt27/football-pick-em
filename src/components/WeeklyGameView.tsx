@@ -18,7 +18,7 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
   
   const [game, setGame] = useState<(PickemGame & { participants: GameParticipant[] }) | null>(null);
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
-  const [currentWeek, setCurrentWeek] = useState<number>(1);
+  const [currentWeek, setCurrentWeek] = useState<number>(1); // Default to 1, will be updated by API
   const [weekGames, setWeekGames] = useState<NFLGame[]>([]);
   const [userPicks, setUserPicks] = useState<Pick[]>([]);
   const [loading, setLoading] = useState(true);
@@ -252,9 +252,21 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
         setFavoriteTeam(null);
       }
       
+      // Determine current week from season status
+      let currentWeekToUse = 1;
+      try {
+        const seasonStatusResponse = await api.getSeasonStatus();
+        if (seasonStatusResponse.success && seasonStatusResponse.data) {
+          currentWeekToUse = seasonStatusResponse.data.status.isPreseason ? 1 : seasonStatusResponse.data.status.week;
+          setCurrentWeek(currentWeekToUse); // Update state with the actual current week
+        }
+      } catch (statusError) {
+        console.warn('[GameView] Failed to get current season status, defaulting to week 1:', statusError);
+      }
+
       // Load current week games and user picks
       try {
-        await loadWeekData(seasonResponse.data.season.id, currentWeek, gameResponse.data.game.id, gameResponse.data.game);
+        await loadWeekData(seasonResponse.data.season.id, currentWeekToUse, gameResponse.data.game.id, gameResponse.data.game);
       } catch (weekError) {
         console.error('[GameView] Error loading week data:', weekError);
         // This is not critical, show the game interface even if week data fails
