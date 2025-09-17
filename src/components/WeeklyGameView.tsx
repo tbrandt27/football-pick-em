@@ -357,7 +357,8 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
       // Calculate correct picks for current week only
       let userWeekPoints = 0;
       if (userPicksResponse.success && userPicksResponse.data) {
-        userWeekPoints = userPicksResponse.data.picks.filter(pick => pick.is_correct === true).length;
+        // Use loose equality or truthy check to handle 0/1 from backend
+        userWeekPoints = userPicksResponse.data.picks.filter(pick => pick.is_correct == true).length;
       }
 
       // Count players who have made all their picks for this week
