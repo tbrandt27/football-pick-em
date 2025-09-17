@@ -155,8 +155,8 @@ class SchedulerService {
       const seasonStatus = await espnService.getCurrentSeasonStatus();
       const currentWeek = seasonStatus.week;
 
-      // Calculate picks for current week and previous week
-      const weeks = [Math.max(1, currentWeek - 1), currentWeek];
+      // Calculate picks for all weeks up to the current week
+      const weeks = Array.from({ length: currentWeek }, (_, i) => i + 1);
       
       const result = await pickCalculator.calculatePicksForWeeks(currentSeason.id, weeks);
       
@@ -223,8 +223,13 @@ class SchedulerService {
 
       logger.debug('[Scheduler] Running score update...');
 
-      const result = await this.updateScores();
-      logger.info('[Scheduler] Score update completed successfully:', result);
+      const scoresResult = await this.updateScores();
+      logger.info('[Scheduler] Score update completed successfully:', scoresResult);
+
+      if (scoresResult.success) {
+        logger.debug('[Scheduler] Scores updated successfully, triggering pick calculations...');
+        await this.runPickCalculations();
+      }
       
       // Force garbage collection if available
       if (global.gc) {
@@ -234,7 +239,7 @@ class SchedulerService {
       
       console.log('[Scheduler] Memory usage after score update:', process.memoryUsage());
       console.log('[Scheduler] runScoreUpdate method completed successfully');
-      return true;
+      return scoresResult.success;
       
     } catch (error) {
       console.error('[Scheduler] CRITICAL ERROR in runScoreUpdate:', error);

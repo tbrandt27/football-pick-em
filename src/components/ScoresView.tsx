@@ -492,7 +492,7 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
                 </span>
               </h2>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="grid grid-cols-6 md:grid-cols-9 lg:grid-cols-18 gap-2">
               <button
                 onClick={() => handleWeekChange(null)}
                 className={`px-3 py-1 rounded text-sm transition-colors ${
