@@ -9,49 +9,52 @@ class OnDemandUpdateService {
   }
 
   /**
-   * Check if scores for a specific week are stale
+   * Check if scores for a specific week are stale.
+   * A week is considered stale if any completed game within that week
+   * has a scores_updated_at timestamp older than the staleThresholdMinutes.
    */
   async areScoresStale(seasonId, week) {
     try {
       const nflDataService = DatabaseServiceFactory.getNFLDataService();
       const games = await nflDataService.getGamesBySeasonAndWeek(seasonId, week);
-      
-      const totalGames = games.length;
-      const updatedGames = games.filter(game => game.scores_updated_at).length;
-      const lastUpdate = games.reduce((latest, game) => {
-        if (game.scores_updated_at && (!latest || new Date(game.scores_updated_at) > new Date(latest))) {
-          return game.scores_updated_at;
-        }
-        return latest;
-      }, null);
-      
-      const result = {
-        total_games: totalGames,
-        updated_games: updatedGames,
-        last_update: lastUpdate
-      };
 
-      if (!result || result.total_games === 0) {
-        return true; // No games found, consider stale
+      if (games.length === 0) {
+        return true; // No games found for the week, consider stale to trigger initial fetch
       }
 
-      if (result.updated_games === 0) {
-        return true; // No games have been updated yet
-      }
-
-      if (!result.last_update) {
-        return true; // No update timestamp
-      }
-
-      // Check if last update was more than threshold minutes ago
-      const lastUpdateDate = new Date(result.last_update);
       const now = new Date();
-      const minutesSinceUpdate = (now - lastUpdateDate) / (1000 * 60);
+      const staleThresholdMs = this.staleThresholdMinutes * 60 * 1000;
 
-      return minutesSinceUpdate > this.staleThresholdMinutes;
+      // Check if any completed game's scores_updated_at is older than the threshold
+      const anyStaleCompletedGame = games.some(game => {
+        // Only consider games that are completed or final
+        const isCompleted = ['STATUS_FINAL', 'STATUS_CLOSED', 'Final'].includes(game.status);
+        
+        if (isCompleted) {
+          // If scores_updated_at is missing or too old, it's stale
+          if (!game.scores_updated_at) {
+            return true;
+          }
+          const lastUpdateDate = new Date(game.scores_updated_at);
+          return (now.getTime() - lastUpdateDate.getTime()) > staleThresholdMs;
+        }
+        return false; // Not a completed game, or not stale
+      });
+
+      // If there are no completed games, but there are scheduled games,
+      // we might want to consider it stale if no games have been updated at all
+      const hasScheduledGames = games.some(game => ['scheduled', 'STATUS_SCHEDULED'].includes(game.status));
+      const hasAnyUpdatedGame = games.some(game => game.scores_updated_at);
+
+      if (hasScheduledGames && !hasAnyUpdatedGame) {
+        return true; // Week has scheduled games but no scores have ever been updated
+      }
+
+      return anyStaleCompletedGame;
+
     } catch (error) {
       console.error('Error checking if scores are stale:', error);
-      return true; // Err on the side of updating
+      return true; // Err on the side of updating if an error occurs
     }
   }
 
