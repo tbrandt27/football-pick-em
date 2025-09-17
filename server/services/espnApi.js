@@ -568,10 +568,12 @@ class ESPNService {
       const currentWeek = seasonStatus.week;
       const seasonType = seasonStatus.type;
       
-      console.log('[ESPN] Processing weeks:', [Math.max(1, currentWeek - 1), currentWeek]);
+      // Create an array of weeks from 1 to currentWeek
+      const weeksToProcess = Array.from({ length: currentWeek }, (_, i) => i + 1);
+      console.log('[ESPN] Processing weeks:', weeksToProcess);
       
-      // Update current week and previous week
-      for (const week of [Math.max(1, currentWeek - 1), currentWeek]) {
+      // Update all weeks up to the current week
+      for (const week of weeksToProcess) {
         console.log(`[ESPN] Starting update for week ${week}, seasonType ${seasonType}`);
         const result = await this.updateNFLGames(currentSeason.id, week, seasonType);
         console.log(`[ESPN] Completed update for week ${week}:`, result);

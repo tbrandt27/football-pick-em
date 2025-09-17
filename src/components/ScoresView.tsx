@@ -483,26 +483,26 @@ const ScoresView: React.FC<ScoresViewProps> = ({ gameId, gameSlug }) => {
 
         {/* Week Filter */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center space-x-2">
-                <TrophyIcon className="h-8 w-8 text-yellow-500" />
-                <span>
-                  {selectedWeek ? `Week ${selectedWeek} Standings` : 'Overall Standings'}
-                </span>
-              </h2>
-            </div>
-            <div className="grid grid-cols-6 md:grid-cols-9 lg:grid-cols-18 gap-2">
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center space-x-2 mb-4">
+              <TrophyIcon className="h-8 w-8 text-yellow-500" />
+              <span>
+                {selectedWeek ? `Week ${selectedWeek} Standings` : 'Overall Standings'}
+              </span>
+            </h2>
+            <div className="mb-4">
               <button
                 onClick={() => handleWeekChange(null)}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
+                className={`w-full px-3 py-2 rounded text-sm transition-colors ${
                   selectedWeek === null
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
               >
-                Overall
+                Overall Standings
               </button>
+            </div>
+            <div className="grid grid-cols-6 md:grid-cols-9 lg:grid-cols-18 gap-2">
               {Array.from({ length: 18 }, (_, i) => i + 1).map(week => (
                 <button
                   key={week}
