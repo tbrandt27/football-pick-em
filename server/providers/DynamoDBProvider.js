@@ -2,6 +2,13 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import BaseDatabaseProvider from "./BaseDatabaseProvider.js";
 
+/**
+ * Upper bound on pages a single paginated Scan will follow. At 1 MB per page
+ * this is ~1 GB, far beyond any table here; it exists so a pathological filter
+ * cannot spin forever. Hitting it is logged as an error, never silently.
+ */
+const MAX_SCAN_PAGES = 1000;
+
 export default class DynamoDBProvider extends BaseDatabaseProvider {
   constructor() {
     super();
@@ -612,24 +619,73 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
       scanParams.ExpressionAttributeValues = expressionAttributeValues;
     }
 
-    const command = new ScanCommand(scanParams);
     try {
-      const result = await this.docClient.send(command);
+      // DynamoDB caps a Scan response at 1 MB of *scanned* data, applying any
+      // FilterExpression only afterwards. A single ScanCommand therefore
+      // returns a silently truncated page once a table grows past that -- no
+      // error, just missing rows. Standings are built from
+      // _dynamoScan('picks', { game_id }), so truncation shows up as players'
+      // picks quietly vanishing from the leaderboard mid-season.
+      //
+      // Follow LastEvaluatedKey until the table is exhausted and return the
+      // accumulated result in the same { Items, Count, ScannedCount } shape
+      // callers already destructure.
+      const items = [];
+      let scannedCount = 0;
+      let consumedCapacity = 0;
+      let pages = 0;
+      let lastEvaluatedKey;
+
+      do {
+        if (pages >= MAX_SCAN_PAGES) {
+          // A runaway guard, not a normal exit. Truncating here is the very
+          // bug this loop exists to fix, so it must be loud.
+          console.error(`[DynamoDB] SCAN hit the ${MAX_SCAN_PAGES}-page ceiling on ${actualTableName} and is returning TRUNCATED results. This table needs a query/GSI access pattern instead of a scan.`, {
+            tableName: actualTableName,
+            itemsSoFar: items.length,
+            scannedSoFar: scannedCount,
+            filters: Object.keys(filters),
+          });
+          break;
+        }
+
+        const page = await this.docClient.send(
+          new ScanCommand(
+            lastEvaluatedKey
+              ? { ...scanParams, ExclusiveStartKey: lastEvaluatedKey }
+              : scanParams
+          )
+        );
+
+        if (page.Items?.length) {
+          items.push(...page.Items);
+        }
+        scannedCount += page.ScannedCount || 0;
+        consumedCapacity += page.ConsumedCapacity?.CapacityUnits || 0;
+        lastEvaluatedKey = page.LastEvaluatedKey;
+        pages += 1;
+      } while (lastEvaluatedKey);
+
       const duration = Date.now() - startTime;
-      
+
       // Enhanced logging with performance metrics
       const logData = {
         tableName: actualTableName,
-        itemCount: result.Items?.length || 0,
-        scannedCount: result.ScannedCount,
+        itemCount: items.length,
+        scannedCount,
+        pages,
         duration: `${duration}ms`,
         hasFilters,
         filterCount: Object.keys(filters).length,
-        efficiency: result.ScannedCount > 0 ? ((result.Items?.length || 0) / result.ScannedCount * 100).toFixed(1) + '%' : '0%'
+        efficiency: scannedCount > 0 ? ((items.length / scannedCount) * 100).toFixed(1) + '%' : '0%'
       };
 
-      // Log all scans with performance data, but highlight problematic ones
-      if (result.ScannedCount > 100 || duration > 500 || (result.Items?.length || 0) > 50) {
+      // Log all scans with performance data, but highlight problematic ones.
+      // A multi-page scan is called out separately: it means this table has
+      // outgrown a scan and wants a GSI-backed query.
+      if (pages > 1) {
+        console.warn(`[DynamoDB] Multi-page SCAN (${pages} pages) -- consider a GSI-backed query:`, logData);
+      } else if (scannedCount > 100 || duration > 500 || items.length > 50) {
         console.warn(`[DynamoDB] Large/Slow SCAN:`, logData);
       } else {
         console.log(`[DynamoDB] SCAN completed:`, logData);
@@ -637,8 +693,13 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
 
       // Track performance metrics
       this._logPerformance('SCAN', duration, logData);
-      
-      return result;
+
+      return {
+        Items: items,
+        Count: items.length,
+        ScannedCount: scannedCount,
+        ...(consumedCapacity ? { ConsumedCapacity: { CapacityUnits: consumedCapacity } } : {}),
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[DynamoDB] SCAN failed:`, {

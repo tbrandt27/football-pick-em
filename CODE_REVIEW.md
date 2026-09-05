@@ -151,11 +151,9 @@ GET /logos/NFL.svg                 ->  200
 
 ## 2. Correctness bugs found
 
-### 2.1 DynamoDB scans are unpaginated — silent data loss
+### 2.1 DynamoDB scans were unpaginated — silent data loss **[done]**
 
-**This will corrupt standings mid-season.** Highest-priority remaining bug.
-
-`_dynamoScan` issues exactly one `ScanCommand` and returns `result.Items`:
+`_dynamoScan` issued exactly one `ScanCommand` and returned `result.Items`:
 
 ```js
 // server/providers/DynamoDBProvider.js
@@ -172,12 +170,30 @@ applied. Past that, results are truncated with no error. There are
 - `DynamoDBSeasonService.js:248,317` — `_dynamoScan('football_games', { season_id })`
 - `DynamoDBUserService.js:18,392,435` — full `users` scans
 
-`picks` grows as players × games × weeks. Once the table crosses 1 MB,
-leaderboards quietly drop picks. Fix: wrap `_dynamoScan` in a
-`LastEvaluatedKey` loop (and log when pagination actually engages, so you
-can see which call sites need a GSI).
+`picks` grows as players × games × weeks. Once the table crossed 1 MB,
+leaderboards would quietly drop picks.
 
-### 2.2 Scans on hot paths where GSIs already exist
+Fixed: `_dynamoScan` now follows `LastEvaluatedKey` to exhaustion,
+accumulating into the same `{ Items, Count, ScannedCount }` shape the 115
+call sites already destructure — no caller changed. `ScannedCount` is
+summed across pages.
+
+A multi-page scan now logs a distinct warning (`Multi-page SCAN (N pages)
+-- consider a GSI-backed query`), so the call sites that have outgrown a
+scan and need §2.2's treatment announce themselves in production. A
+1000-page ceiling guards against a runaway loop; hitting it logs at
+`error` with `TRUNCATED` in the message, because silent truncation is the
+exact failure this replaces. Errors on a later page propagate rather than
+returning partial data — a short read must never be mistaken for a
+complete one.
+
+`test/server/dynamoScan.test.js` (10 tests) stubs the AWS SDK and covers
+multi-page accumulation, `ExclusiveStartKey` threading, filter
+expressions surviving onto continuation pages, `ScannedCount` summing,
+ordering across page boundaries, an all-filtered-out page that still has
+more to scan, mid-scan error propagation, and the ceiling warning.
+
+### 2.2 Scans on hot paths where GSIs already exist — now the top open item
 
 `infrastructure/dynamodb-tables.yml` defines `email-index`,
 `game_id-index`, `season_id-index`, `is_admin-index` and more. The
@@ -629,7 +645,7 @@ Vitest 5 with two projects (`vitest.config.ts`): a `node` pool for
 don't pay for jsdom and `server/` never sees browser globals. V8
 coverage is configured.
 
-**63 tests across 4 files, all passing.** These target the code the audit
+**73 tests across 5 files, all passing.** These target the code the audit
 flagged as risky, not easy wins:
 
 - `test/server/coerce.test.js` (9) — the `toBoolean` helper from §1.1,
@@ -645,6 +661,8 @@ flagged as risky, not easy wins:
   client/server-equivalence check (they're separate modules; if they ever
   diverge, every game link 404s), idempotency, and a test documenting the
   known punctuation-collision behaviour.
+- `test/server/dynamoScan.test.js` (10) — the §2.1 pagination fix,
+  against a stubbed AWS SDK.
 - `test/client/api.test.ts` (9) — `ApiClient` token persistence and
   header injection, the `{success, data}` / `{success, error}` response
   contract, status-code fallback, network-failure handling, and URL/query
@@ -674,11 +692,9 @@ Ordered by risk covered per unit of effort:
 2. `POST /api/picks` — the kickoff cutoff and the survivor
    already-picked-that-team rule. Highest-value business logic in the app
    and completely untested.
-3. `_dynamoScan` pagination, once §2.1 is fixed — a >1 MB fixture is the
-   only way to keep that regression from returning.
-4. `scheduler.isGameDay` / `isActiveGameTime` with a frozen clock across
+3. `scheduler.isGameDay` / `isActiveGameTime` with a frozen clock across
    timezone boundaries (§2.7).
-5. Supertest coverage of the `requireAdmin` routes, so §1.1 can't recur
+4. Supertest coverage of the `requireAdmin` routes, so §1.1 can't recur
    at the HTTP layer.
 
 ---
@@ -709,21 +725,22 @@ production secrets scrubbed · hardcoded emergency JWT secret replaced
 with per-process random · secret values no longer logged (3 sites) ·
 path traversal in `/logos`
 
-**Correctness:** 4 `ReferenceError`s · error middleware ordering · 15
-empty catch blocks now rethrow real failures · `Object.hasOwn` ·
-stray empty template literal
+**Correctness:** unpaginated DynamoDB scans (silent truncation past 1 MB)
+· 4 `ReferenceError`s · error middleware ordering · 15 empty catch blocks
+now rethrow real failures · `Object.hasOwn` · stray empty template
+literal
 
 **Upgrade:** Astro 5 → 7, Node 18 → 22, multi-stage Dockerfile,
 dependency split corrected, TypeScript pinned at the 6.x ceiling
 
 **Tooling:** ESLint 10 flat config (0 errors) · Prettier · Vitest with
-63 passing tests · GitHub Actions CI · `.nvmrc`
+73 passing tests · GitHub Actions CI · `.nvmrc`
 
 **Cleanup:** `createGameSlug` deduplicated from 4 copies to 2 tested
 modules · `Dockerfile.backup` and a dangling tracked symlink removed
 
 Verified: `npm run build`, `npx astro check` (0 errors), `npx vitest run`
-(63/63), `npx eslint .` (0 errors), and a live boot test confirming SSR
+(73/73), `npx eslint .` (0 errors), and a live boot test confirming SSR
 serves and the traversal fix holds.
 
 **Not verified by me:** App Runner `nodejs22` runtime availability in
