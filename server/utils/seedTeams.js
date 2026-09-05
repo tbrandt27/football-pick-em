@@ -84,7 +84,7 @@ export async function seedTeams() {
           team.secondaryColor
         ]);
         
-        console.log(`Added ${team.city} ${team.name} with logo ${logoFilename}`);
+        console.log(`Added ${team.city} ${team.name} with logo ${logoPath}`);
       } else {
         // Update existing team with missing data (colors, logos, conference info)
         await updateExistingTeam(existingTeam.id, team);
@@ -174,7 +174,7 @@ async function seedTeamsDynamoDB() {
         // Use native DynamoDB PUT operation
         await db._dynamoPut('football_teams', teamItem);
         
-        console.log(`Added ${team.city} ${team.name} with logo ${logoFilename}`);
+        console.log(`Added ${team.city} ${team.name} with logo ${logoPath}`);
       } else {
         console.log(`Team ${team.code} already exists (ID: ${existingTeam.id}), skipping`);
         

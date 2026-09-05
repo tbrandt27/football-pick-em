@@ -1,5 +1,5 @@
 version: 1.0
-runtime: nodejs18  # Specify Node.js version (use nodejs16, nodejs18, etc.)
+runtime: nodejs22  # Astro 7 requires Node >= 22.12
 
 # Minimum resource configuration for AppRunner
 cpu: 0.5 # 0.5 vCPU minimum for background tasks and SSR
@@ -20,7 +20,7 @@ build:
       value: production
 
 run:
-  runtime-version: nodejs18  # Match the runtime above
+  runtime-version: nodejs22  # Match the runtime above
   command: ./scripts/start.sh
   network:
     port: 8080
@@ -57,18 +57,23 @@ run:
     - name: AWS_REGION
       value: "us-east-1"
 
-    # Security Configuration - Use actual secrets or ARNs
-    # Replace these with actual values or AWS Secrets Manager ARNs
-    - name: JWT_SECRET
-      value: "your-super-secret-jwt-key-change-this-in-production"
-    - name: SETTINGS_ENCRYPTION_KEY
-      value: "football-pickem-default-key-32-chars!"
-
-    # Admin Configuration
-    - name: ADMIN_EMAIL
-      value: "admin@nflpickem.com"
-    - name: ADMIN_PASSWORD
-      value: "admin123"
+    # Security Configuration
+    #
+    # DO NOT put literal secret values in this file -- it is committed to git.
+    # configService.js resolves any value starting with "arn:aws:secretsmanager:"
+    # through Secrets Manager at runtime, so set these to ARNs instead.
+    #
+    # Configure them either as App Runner service-level secrets (console/CLI) or
+    # by uncommenting the lines below with your own secret ARN:
+    #
+    # - name: JWT_SECRET
+    #   value: "arn:aws:secretsmanager:us-east-1:<account-id>:secret:football-pickem/app-<suffix>"
+    # - name: SETTINGS_ENCRYPTION_KEY
+    #   value: "arn:aws:secretsmanager:us-east-1:<account-id>:secret:football-pickem/app-<suffix>"
+    # - name: ADMIN_EMAIL
+    #   value: "arn:aws:secretsmanager:us-east-1:<account-id>:secret:football-pickem/app-<suffix>"
+    # - name: ADMIN_PASSWORD
+    #   value: "arn:aws:secretsmanager:us-east-1:<account-id>:secret:football-pickem/app-<suffix>"
 
 
     # SMTP Configuration (optional - can be configured via admin panel):

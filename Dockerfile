@@ -1,50 +1,53 @@
-# Use Node.js 18 LTS Alpine for smaller image size and better security
-FROM node:18-alpine
+# syntax=docker/dockerfile:1
 
-# Set working directory
+# ---- Stage 1: build ---------------------------------------------------------
+# Astro 7 requires Node >= 22.12. Build needs devDependencies (astro, vite,
+# typescript), so the build runs in its own stage and only the built output
+# plus production dependencies are copied forward.
+FROM node:22-alpine AS build
+
 WORKDIR /app
 
-# Install curl for health checks (required by App Runner)
-RUN apk add --no-cache curl
-
-# Create app user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
-
-# Copy package files first for better Docker layer caching
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies with npm ci for production builds
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy the rest of the application code
 COPY . .
-
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/data /app/logs /app/dist && \
-    chown -R nextjs:nodejs /app
-
-# Make startup script executable
-RUN chmod +x scripts/start.sh
-
-# Build the application
 RUN npm run build
 
-# Switch to non-root user
-USER nextjs
+# Drop devDependencies from node_modules so the runtime stage can reuse it.
+RUN npm prune --omit=dev
 
-# Expose the port that App Runner expects
+# ---- Stage 2: runtime ------------------------------------------------------
+FROM node:22-alpine AS runtime
+
+WORKDIR /app
+
+# curl is used by the container HEALTHCHECK below.
+RUN apk add --no-cache curl
+
+# Run as a non-root user. node:alpine already ships uid/gid 1000 as `node`.
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/server ./server
+COPY --from=build --chown=node:node /app/scripts ./scripts
+COPY --from=build --chown=node:node /app/public ./public
+COPY --from=build --chown=node:node /app/package*.json ./
+
+RUN mkdir -p /app/server/data /app/logs && \
+    chown -R node:node /app/server/data /app/logs && \
+    chmod +x scripts/start.sh
+
+USER node
+
 EXPOSE 8080
 
-# Set environment variables
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV FRONTEND_PORT=8080
 ENV BACKEND_PORT=3001
 
-# Health check for App Runner
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# /api/health/live is the cheapest liveness probe; it does no database work.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8080/api/health/live || exit 1
 
-# Use the startup script as the entry point
 CMD ["./scripts/start.sh"]

@@ -1599,7 +1599,7 @@ function decrypt(encryptedText) {
       
       // Try method 3: MD5 hash of key (another common legacy method)
       try {
-        let key = crypto.createHash('md5').update(ENCRYPTION_KEY).digest();
+        let key = crypto.createHash('md5').update(getEncryptionKey()).digest();
         key = Buffer.concat([key, key]); // Extend to 32 bytes
         const iv = Buffer.alloc(16, 0);
         

@@ -1,0 +1,8 @@
+dist/
+.astro/
+node_modules/
+coverage/
+localstack-data/
+support_docs/
+package-lock.json
+*.sqlite

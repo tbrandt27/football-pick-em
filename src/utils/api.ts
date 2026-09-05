@@ -6,16 +6,9 @@ interface ApiResponse<T> {
   error?: string;
 }
 
-// Utility function to create URL-friendly slugs
-export function createGameSlug(gameName: string): string {
-  return gameName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-    .trim()
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-}
+// Re-exported so existing `import api, { createGameSlug } from '../utils/api'`
+// call sites keep working. The implementation lives in src/lib/slug.ts.
+export { createGameSlug } from '../lib/slug';
 
 class ApiClient {
   private baseUrl: string;
@@ -354,6 +347,13 @@ export interface PickemGame {
   id: string;
   game_name: string;
   type: 'week' | 'weekly' | 'survivor';
+  /**
+   * Legacy alias for `type`. Every game service returns both fields (SQLite via
+   * `g.type as game_type`, DynamoDB via an explicit mapping), and parts of the UI
+   * read this one. Prefer `type` in new code; see the analysis notes on collapsing
+   * the two into a single field.
+   */
+  game_type?: 'week' | 'weekly' | 'survivor';
   created_at: string;
   updated_at: string;
   player_count: number;

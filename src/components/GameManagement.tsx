@@ -418,6 +418,10 @@ const GameManagement: React.FC<GameManagementProps> = ({ gameId }) => {
                         if (e.key === 'Enter') handleUpdateGameName();
                         if (e.key === 'Escape') handleCancelGameNameEdit();
                       }}
+                      // Focusing the rename field the moment the user opens it
+                      // is the expected behaviour here; the rule targets
+                      // autofocus on page load, which this is not.
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
                       autoFocus
                     />
                     <button
