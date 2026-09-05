@@ -249,7 +249,29 @@ threw, so errors from the API routes and the Astro SSR handler fell
 through to Express's default handler instead. Moved below the catch-all,
 with a `res.headersSent` guard.
 
-### 2.7 Timezone handling is inconsistent
+### 2.7 Health-check path 404s in production **[done]**
+
+The `Dockerfile` `HEALTHCHECK` probed `/api/health/live`. Everything under
+`/api/health` except the index passes through `requireHealthAccess`
+(`server/routes/health.js:13`), which returns **404** in production unless
+`ENABLE_DETAILED_HEALTH=true`. Verified against a production-mode boot:
+
+```
+NODE_ENV=production, ENABLE_DETAILED_HEALTH unset:
+  /health            -> 200
+  /api/health        -> 200
+  /api/health/live   -> 404   <-- what the Dockerfile probed
+  /api/health/ready  -> 404
+```
+
+Latent on App Runner today, because `apprunner.yaml` uses `path: "/health"`
+and the source-based runtime ignores the Docker `HEALTHCHECK`. It becomes
+load-bearing on ECS: an ALB target group pointed at `/api/health/live`
+marks every task unhealthy and the service never stabilises. Switched to
+`/health`, which `server/index.js` serves directly, ungated and with no
+database work. See §8.
+
+### 2.8 Timezone handling is inconsistent
 
 ```js
 // server/services/scheduler.js:87
@@ -263,7 +285,7 @@ work for extracting an hour on a UTC host, but `isGameDay()`
 as Monday. Use `Intl.DateTimeFormat` with an explicit `timeZone` and
 `hour12: false` for both.
 
-### 2.8 Interval stored in state, not a ref
+### 2.9 Interval stored in state, not a ref
 
 ```js
 // src/components/WeeklyGameView.tsx:42
@@ -275,7 +297,7 @@ array, so the cleanup closure captures a stale handle and intervals can
 leak across re-renders. Use `useRef`. This is one of the 42
 `react-hooks/*` warnings the new lint config surfaces.
 
-### 2.9 `type` vs `game_type` duplication
+### 2.10 `type` vs `game_type` duplication
 
 Every game service returns both (`SQLiteGameService`: `g.type as game_type`;
 `DynamoDBGameService`: an explicit mapping), and consumers check both:
@@ -631,7 +653,7 @@ reaches zero:
 | 219 | `no-unused-vars` (both plugins) | Mostly unused imports and dead locals. Largely auto-fixable. |
 | 145 | `react-hooks/error-boundaries` | New in react-hooks v7; fires on JSX inside `try`/`catch`. Mostly noise here. |
 | 67 | `no-return-await` | Cosmetic. |
-| 42 | `react-hooks/immutability`, `set-state-in-effect`, `exhaustive-deps` | **Read these.** They point at the render loops and leaked intervals in §2.8. |
+| 42 | `react-hooks/immutability`, `set-state-in-effect`, `exhaustive-deps` | **Read these.** They point at the render loops and leaked intervals in §2.9. |
 | 33 | `jsx-a11y/*` | §5.3. |
 | 15 | `@typescript-eslint/no-explicit-any` | 9 of 15 are in `WeeklyGameView.tsx`. |
 
@@ -693,7 +715,7 @@ Ordered by risk covered per unit of effort:
    already-picked-that-team rule. Highest-value business logic in the app
    and completely untested.
 3. `scheduler.isGameDay` / `isActiveGameTime` with a frozen clock across
-   timezone boundaries (§2.7).
+   timezone boundaries (§2.8).
 4. Supertest coverage of the `requireAdmin` routes, so §1.1 can't recur
    at the HTTP layer.
 
@@ -718,6 +740,108 @@ first, then triage the remainder against the CI audit job.
 
 ---
 
+## 8. App Runner → ECS Express Mode
+
+App Runner is **closed to new customers**. Per AWS's announcement, existing
+customers "can continue to use the service as normal, including creating
+new resources and services," and AWS continues investing in security and
+availability — but **no new features**. No end-of-life date has been
+announced.
+
+So: no fire drill, and your current deploy keeps working. But the service
+is terminal, and the migration has one real prerequisite that is worth
+knowing about now.
+
+### The prerequisite this PR happens to satisfy
+
+`apprunner.yaml` uses App Runner's **source-based** deployment —
+`runtime: nodejs22` plus `build.commands`. ECS Express Mode only deploys
+**container images**; AWS's guide calls this out as the one structural
+difference for source-based services.
+
+The multi-stage `Dockerfile` in this PR is exactly that missing piece.
+Before this branch, the Dockerfile was single-stage, ran
+`npm ci --only=production` *before* `npm run build`, and only worked
+because every build tool was mis-declared as a runtime dependency. It is
+now a clean, non-root, Node 22 image — a usable migration artifact rather
+than a liability.
+
+### Three repo-level things to fix before cutting over
+
+**1. `scripts/start.sh` must go.** It is a process supervisor: it
+background-launches Node, polls `/health` every 60s, watches RSS against
+`MEMORY_LIMIT_MB`, and restarts up to `MAX_RESTARTS`. That made sense on
+App Runner. On ECS it is actively harmful — the shell is PID 1, so when
+Node dies ECS still sees a **live** task and will not replace it. You lose
+the deployment circuit breaker, task-level restarts, and honest exit
+codes, and you get a task that looks healthy to ECS while serving
+nothing.
+
+Replace `CMD ["./scripts/start.sh"]` with `CMD ["node", "server/index.js"]`
+so Node is PID 1 and receives SIGTERM directly — `server/index.js` already
+has a proper `gracefulShutdown` handler. Let ECS do the supervising:
+`healthCheckGracePeriodSeconds`, circuit breaker with rollback, and
+auto-scaling replace every feature the script hand-rolled. The one thing
+to port is the SQLite init branch, which is dead in production anyway
+(`DATABASE_TYPE: auto` → DynamoDB).
+
+**2. Health check path.** See §2.7 — `/api/health/live` 404s in
+production. The ALB target-group health check must point at `/health`.
+Getting this wrong is the classic "service never stabilises" ECS failure.
+
+**3. IAM roles split in two.** App Runner has one instance role. ECS has
+two, and conflating them is the single most common migration bug:
+
+| Role | Used by | Needs |
+|---|---|---|
+| **Execution role** (`ecsTaskExecutionRole`) | the ECS agent | ECR pull, CloudWatch Logs, *injecting* secrets |
+| **Task role** | your application code | **DynamoDB**, Secrets Manager reads from `secretsManager.js` |
+
+DynamoDB permissions go on the **task role**. Putting them on the
+execution role produces `AccessDeniedException` at runtime with everything
+looking correctly configured. Express Mode also wants a third,
+`ecsInfrastructureRoleForExpressServices`, for provisioning.
+
+### Other things specific to this app
+
+- **Outbound internet is required.** `espnApi.js` calls the ESPN API on a
+  schedule. Public subnets need `assignPublicIp`; private subnets need a
+  NAT gateway. A task with no egress fails silently — scores just stop
+  updating.
+- **Sizing maps cleanly.** Your current `cpu: 0.5` / `memory: 1` is exactly
+  Fargate `512` / `1024`, which is a valid combination. No re-tuning needed.
+- **Secrets belong in the `secrets` field**, referencing Secrets Manager
+  ARNs — never `environment`, which is plaintext in the task definition.
+  This dovetails with the §1.2 rotation you already owe: rotate once, into
+  Secrets Manager, and wire the new ARNs straight into the Express Mode
+  service rather than doing it twice.
+- **`node-cron` runs in-process** (`scheduler.js`). Scaling past one task
+  means every task runs the scheduler, so score syncs and pick
+  calculations execute N times concurrently. App Runner's single instance
+  hid this. Set `minTaskCount: 1, maxTaskCount: 1` at first, or move the
+  scheduler to an EventBridge rule hitting an endpoint.
+- **No custom domain = no gradual cutover.** AWS's weighted-DNS migration
+  needs a shared hostname. If you are on the default
+  `*.awsapprunner.com` URL, there is nothing to weight — you validate the
+  Express Mode URL, then switch clients. Worth adding a custom domain
+  *before* migrating if you want the safe path.
+
+### Suggested order
+
+1. Merge this PR (gets you the container image and the Node 22 baseline).
+2. Add an ECR repo + a GitHub Actions build/push job — AWS publishes
+   `aws-actions/amazon-ecs-deploy-express-service` for the deploy step,
+   which restores App Runner's push-to-deploy behaviour.
+3. Switch `CMD` to run Node directly; drop `start.sh`.
+4. Stand up Express Mode alongside App Runner, validate on its own URL.
+5. Cut over (weighted DNS if you have a custom domain, otherwise a
+   straight switch), then `aws apprunner delete-service`.
+
+Steps 2–5 are their own piece of work and should not ride along with the
+Astro upgrade.
+
+---
+
 ## Summary of changes on this branch
 
 **Security:** privilege escalation via string booleans · committed
@@ -726,7 +850,8 @@ with per-process random · secret values no longer logged (3 sites) ·
 path traversal in `/logos`
 
 **Correctness:** unpaginated DynamoDB scans (silent truncation past 1 MB)
-· 4 `ReferenceError`s · error middleware ordering · 15 empty catch blocks
+· 4 `ReferenceError`s · Docker health check that 404s in production ·
+error middleware ordering · 15 empty catch blocks
 now rethrow real failures · `Object.hasOwn` · stray empty template
 literal
 

@@ -46,8 +46,17 @@ ENV PORT=8080
 ENV FRONTEND_PORT=8080
 ENV BACKEND_PORT=3001
 
-# /api/health/live is the cheapest liveness probe; it does no database work.
+# Use /health, NOT /api/health/live.
+#
+# Everything under /api/health except the index goes through
+# requireHealthAccess, which returns 404 in production unless
+# ENABLE_DETAILED_HEALTH=true. /api/health/live therefore fails here and, more
+# importantly, would fail an ALB target-group health check on ECS -- every task
+# would be marked unhealthy and the service would never stabilise.
+#
+# /health is served directly by server/index.js, is ungated, does no database
+# work, and always returns 200.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:8080/api/health/live || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 CMD ["./scripts/start.sh"]
