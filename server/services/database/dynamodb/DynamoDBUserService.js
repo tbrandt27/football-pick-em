@@ -82,6 +82,31 @@ export default class DynamoDBUserService extends IUserService {
   }
 
   /**
+   * Get all users with a participation count.
+   *
+   * Mirrors the SQLite implementation so GET /api/admin/users no longer needs
+   * to branch on provider. DynamoDB has no join, so this queries
+   * `game_participants` per user via `user_id-index` — bounded by user count,
+   * and the route already did exactly this inline.
+   *
+   * @returns {Promise<Array>} Users with numeric game_count
+   */
+  async getAllUsersWithGameCount() {
+    const users = await this.getAllUsers();
+    return Promise.all(
+      users.map(async (user) => {
+        try {
+          const participations = await this.db._getByUserIdGSI('game_participants', user.id);
+          return { ...user, game_count: participations ? participations.length : 0 };
+        } catch (error) {
+          console.warn(`Could not get game count for user ${user.id}:`, error.message);
+          return { ...user, game_count: 0 };
+        }
+      })
+    );
+  }
+
+  /**
    * Get user by ID
    * @param {string} userId - User ID
    * @returns {Promise<Object|null>} User with team info

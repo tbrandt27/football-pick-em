@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import IGameService from '../interfaces/IGameService.js';
 import db from '../../../models/database.js';
 import { createGameSlug } from '../../../utils/slug.js';
+import { toBoolean } from '../../../utils/coerce.js';
 
 /**
  * SQLite-specific Game Service
@@ -373,7 +374,7 @@ export default class SQLiteGameService extends IGameService {
    * @returns {Promise<Array>} Games with commissioner, season, participant details
    */
   async getAllGamesWithDetails() {
-    return await db.all(`
+    const rows = await db.all(`
       SELECT
         g.*,
         COALESCE(g.game_name, 'Unnamed Game') as name,
@@ -388,6 +389,17 @@ export default class SQLiteGameService extends IGameService {
       GROUP BY g.id
       ORDER BY g.created_at DESC
     `);
+
+    // SQLite returns is_current as 0/1. Passing that straight to the client
+    // meant GamesManager rendered `{game.season_is_current && ...}` as the
+    // *number* 0 -- React renders 0, so the season read "20250" instead of
+    // "2025". Emit real booleans, matching the DynamoDB path.
+    return (rows || []).map((r) => ({
+      ...r,
+      season_is_current: toBoolean(r.season_is_current),
+      is_active: toBoolean(r.is_active),
+      participant_count: Number(r.participant_count) || 0,
+    }));
   }
 
   /**

@@ -342,39 +342,11 @@ router.post(
 // Get all users (for user management)
 router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    if (db.getType() === 'dynamodb') {
-      // For DynamoDB, get users and game counts using service layer
-      const userService = DatabaseServiceFactory.getUserService();
-      const users = await userService.getAllUsers();
-      
-      // For each user, get game count using GSI for efficient lookup
-      const usersWithGameCount = await Promise.all(
-        users.map(async (user) => {
-          try {
-            // Use GSI user_id-index for efficient lookup of game participations
-            const gameParticipations = await db.provider._getByUserIdGSI('game_participants', user.id);
-            return {
-              ...user,
-              game_count: gameParticipations ? gameParticipations.length : 0
-            };
-          } catch (error) {
-            logger.warn(`Could not get game count for user ${user.id}:`, error);
-            return {
-              ...user,
-              game_count: 0
-            };
-          }
-        })
-      );
-      
-      res.json({ users: usersWithGameCount });
-    } else {
-      // For SQLite, use the service layer
-      const userService = DatabaseServiceFactory.getUserService();
-      const users = await userService.getAllUsersWithGameCount();
+    // Both providers implement this, so no provider branch is needed here.
+    const userService = DatabaseServiceFactory.getUserService();
+    const users = await userService.getAllUsersWithGameCount();
 
-      res.json({ users });
-    }
+    res.json({ users });
   } catch (error) {
     logger.error("Get admin users error:", error);
     res.status(500).json({ error: "Internal server error" });

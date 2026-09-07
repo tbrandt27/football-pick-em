@@ -41,6 +41,10 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
     userWeekPoints: number;
   } | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  // Team W-L records for the displayed week, keyed by team code (e.g. { KC: '4-1' }).
+  // ESPN reports each competitor's record as of that game, so this reflects the
+  // standings at the week being viewed rather than today's.
+  const [teamRecords, setTeamRecords] = useState<Record<string, string>>({});
   
 
   useEffect(() => {
@@ -287,11 +291,21 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
   const loadWeekData = async (seasonId: string, week: number, currentGameId?: string, gameData?: PickemGame & { participants: GameParticipant[] }) => {
     try {
       
-      const [gamesResponse, picksResponse] = await Promise.all([
+      const [gamesResponse, picksResponse, recordsResponse] = await Promise.all([
         api.getSeasonGames(seasonId, week),
         // Use the passed gameId or fall back to the current game or provided gameId
-        api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week })
+        api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week }),
+        // Records come from ESPN, so a failure here must not block the picks UI.
+        api.getTeamRecords({ week })
       ]);
+
+      if (recordsResponse.success && recordsResponse.data) {
+        setTeamRecords(recordsResponse.data.records || {});
+      } else {
+        // Non-fatal: the badge is simply omitted when records are unavailable.
+        console.warn('[GameView] Team records unavailable:', recordsResponse.error);
+        setTeamRecords({});
+      }
 
 
       if (gamesResponse.success && gamesResponse.data) {
@@ -1223,6 +1237,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                                       >
                                         Visitor
                                       </span>
+                                        {teamRecords[footballGame.away_team_code] && (
+                                          <span
+                                            className="text-xs font-semibold text-gray-600"
+                                            title="Win-loss record as of this week"
+                                          >
+                                            {teamRecords[footballGame.away_team_code]}
+                                          </span>
+                                        )}
                                     </div>
                                   </div>
                                 </div>
@@ -1296,6 +1318,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                                       >
                                         Home
                                       </span>
+                                        {teamRecords[footballGame.home_team_code] && (
+                                          <span
+                                            className="text-xs font-semibold text-gray-600"
+                                            title="Win-loss record as of this week"
+                                          >
+                                            {teamRecords[footballGame.home_team_code]}
+                                          </span>
+                                        )}
                                     </div>
                                   </div>
                                 </div>

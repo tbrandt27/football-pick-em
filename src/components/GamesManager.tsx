@@ -245,18 +245,18 @@ const GamesManager: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -276,9 +276,9 @@ const GamesManager: React.FC = () => {
   const survivorGames = games.filter(g => g.type === 'survivor').length;
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-blue-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -291,13 +291,13 @@ const GamesManager: React.FC = () => {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+                className="bg-success hover:bg-success-ink text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Create Game
               </button>
               <a
                 href="/admin"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Admin
               </a>
@@ -308,42 +308,42 @@ const GamesManager: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Total Games</h3>
-            <p className="text-3xl font-bold text-blue-600">{games.length}</p>
+          <div className="bg-surface p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-ink-muted">Total Games</h3>
+            <p className="text-3xl font-bold text-brand">{games.length}</p>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Active Games</h3>
-            <p className="text-3xl font-bold text-green-600">{activeGames}</p>
+          <div className="bg-surface p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-ink-muted">Active Games</h3>
+            <p className="text-3xl font-bold text-success">{activeGames}</p>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Weekly Games</h3>
-            <p className="text-3xl font-bold text-purple-600">{weeklyGames}</p>
+          <div className="bg-surface p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-ink-muted">Weekly Games</h3>
+            <p className="text-3xl font-bold text-brand">{weeklyGames}</p>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Survivor Games</h3>
-            <p className="text-3xl font-bold text-red-600">{survivorGames}</p>
+          <div className="bg-surface p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-ink-muted">Survivor Games</h3>
+            <p className="text-3xl font-bold text-danger">{survivorGames}</p>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md mb-8">
+        <div className="bg-surface rounded-lg shadow-md mb-8">
           <div className="p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Filters</h2>
+            <h2 className="text-xl font-bold text-ink mb-4">Filters</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Season</label>
+                <label className="block text-sm font-medium text-ink-muted mb-2">Season</label>
                 <select
                   value={selectedSeason}
                   onChange={(e) => setSelectedSeason(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <option value="all">All Seasons</option>
                   {seasons.map(season => (
@@ -355,11 +355,11 @@ const GamesManager: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Game Type</label>
+                <label className="block text-sm font-medium text-ink-muted mb-2">Game Type</label>
                 <select
                   value={selectedType}
                   onChange={(e) => setSelectedType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <option value="all">All Types</option>
                   <option value="weekly">Weekly Picks</option>
@@ -371,43 +371,43 @@ const GamesManager: React.FC = () => {
         </div>
 
         {/* Games List */}
-        <div className="bg-white rounded-lg shadow-md">
+        <div className="bg-surface rounded-lg shadow-md">
           <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">All Games</h2>
-            <p className="text-gray-600">Showing {filteredGames.length} of {games.length} games</p>
+            <h2 className="text-2xl font-bold text-ink">All Games</h2>
+            <p className="text-ink-muted">Showing {filteredGames.length} of {games.length} games</p>
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-sunk">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Game
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Type
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Commissioner
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Season
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Participants
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-line">
                 {filteredGames.map((game) => {
                   // Ensure we have proper data fallbacks using correct property names
                   const gameName = game.name || 'Unnamed Game';
@@ -419,54 +419,54 @@ const GamesManager: React.FC = () => {
                   const createdAt = game.created_at || new Date().toISOString();
                   
                   return (
-                    <tr key={game.id} className="hover:bg-gray-50">
+                    <tr key={game.id} className="hover:bg-surface-sunk">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{gameName}</div>
+                        <div className="text-sm font-medium text-ink">{gameName}</div>
                         {gameType === 'weekly' && game.weekly_week && (
-                          <div className="text-sm text-gray-500">Week {game.weekly_week}</div>
+                          <div className="text-sm text-ink-subtle">Week {game.weekly_week}</div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           gameType === 'weekly'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-brand-soft text-brand-ink'
+                            : 'bg-danger-soft text-danger-ink'
                         }`}>
                           {gameType === 'weekly' ? 'Weekly Picks' : 'Survivor'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink">
                         {commissionerName}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-ink">
                           {seasonYear}
-                          {game.season_is_current && (
-                            <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                          {Boolean(game.season_is_current) && (
+                            <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-success-soft text-success-ink">
                               Current
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink">
                         {participantCount} players
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           isActive
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                            ? 'bg-success-soft text-success-ink'
+                            : 'bg-surface-alt text-ink'
                         }`}>
                           {isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-subtle">
                         {new Date(createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                         <button
                           onClick={() => setEditingGame(game)}
-                          className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded text-xs font-medium"
+                          className="bg-brand-soft text-brand hover:bg-brand-soft px-3 py-1 rounded text-xs font-medium"
                         >
                           Edit
                         </button>
@@ -474,21 +474,21 @@ const GamesManager: React.FC = () => {
                           onClick={() => toggleGameStatus(game.id, !isActive)}
                           className={`px-3 py-1 rounded text-xs font-medium ${
                             isActive
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              ? 'bg-danger-soft text-danger-ink hover:bg-danger-soft'
+                              : 'bg-success-soft text-success-ink hover:bg-success-soft'
                           }`}
                         >
                           {isActive ? 'Deactivate' : 'Activate'}
                         </button>
                         <a
                           href={`/game/${game.id}/manage`}
-                          className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium"
+                          className="bg-brand-soft text-brand hover:bg-brand-soft-hover px-3 py-1 rounded text-xs font-medium"
                         >
                           Manage
                         </a>
                         <button
                           onClick={() => handleDeleteClick(game)}
-                          className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                          className="bg-danger-soft text-danger-ink hover:bg-danger-soft px-3 py-1 rounded text-xs font-medium"
                         >
                           Delete
                         </button>
@@ -501,7 +501,7 @@ const GamesManager: React.FC = () => {
           </div>
 
           {filteredGames.length === 0 && games.length > 0 && (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-ink-subtle">
               No games found matching the selected filters.
               <div className="mt-2 text-sm">
                 Total games available: {games.length}
@@ -510,7 +510,7 @@ const GamesManager: React.FC = () => {
           )}
           
           {games.length === 0 && !loading && (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-ink-subtle">
               <p className="mb-2">No games found.</p>
               <p className="text-sm">Create your first game to get started.</p>
             </div>
@@ -520,11 +520,11 @@ const GamesManager: React.FC = () => {
         {/* Create Game Modal */}
         {showCreateForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Create New Game</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Game Name
                   </label>
                   <input
@@ -532,18 +532,18 @@ const GamesManager: React.FC = () => {
                     value={newGame.name}
                     onChange={(e) => setNewGame({...newGame, name: e.target.value})}
                     placeholder="e.g., Week 1 Picks, 2024 Survivor Pool"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Game Type
                   </label>
                   <select
                     value={newGame.type}
                     onChange={(e) => setNewGame({...newGame, type: e.target.value as 'weekly' | 'survivor'})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <option value="weekly">Weekly Picks</option>
                     <option value="survivor">Survivor</option>
@@ -558,13 +558,13 @@ const GamesManager: React.FC = () => {
                     setShowCreateForm(false);
                     setError('');
                   }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={createGame}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-hover transition-colors"
                 >
                   Create Game
                 </button>
@@ -576,17 +576,17 @@ const GamesManager: React.FC = () => {
         {/* Edit Game Modal */}
         {editingGame && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Edit Game: {editingGame.name}</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Current Season
                   </label>
-                  <p className="text-sm text-gray-600 mb-2">
+                  <p className="text-sm text-ink-muted mb-2">
                     Currently: {editingGame.season_year || 'No Season Assigned'}
-                    {editingGame.season_is_current && (
-                      <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                    {Boolean(editingGame.season_is_current) && (
+                      <span className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-success-soft text-success-ink">
                         Current
                       </span>
                     )}
@@ -594,7 +594,7 @@ const GamesManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Change Season To
                   </label>
                   <select
@@ -605,7 +605,7 @@ const GamesManager: React.FC = () => {
                       }
                     }}
                     disabled={updatingGame}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <option value="">Select a season</option>
                     {seasons.map(season => (
@@ -617,8 +617,8 @@ const GamesManager: React.FC = () => {
                 </div>
 
                 {updatingGame && (
-                  <div className="text-center text-blue-600">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <div className="text-center text-brand">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand mx-auto mb-2"></div>
                     Updating game season...
                   </div>
                 )}
@@ -628,7 +628,7 @@ const GamesManager: React.FC = () => {
                 <button
                   onClick={() => setEditingGame(null)}
                   disabled={updatingGame}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
                 >
                   Close
                 </button>
@@ -640,17 +640,17 @@ const GamesManager: React.FC = () => {
         {/* Delete Game Modal */}
         {showDeleteModal && gameToDelete && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Game "{gameToDelete.name}"</h3>
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-danger">Delete Game "{gameToDelete.name}"</h3>
               
               <div className="mb-6">
-                <p className="text-gray-700 mb-4">
+                <p className="text-ink-muted mb-4">
                   Are you sure you want to delete "{gameToDelete.name}"?
                 </p>
                 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-yellow-800 mb-2">This will permanently delete:</h4>
-                  <ul className="text-yellow-700 text-sm space-y-1">
+                <div className="bg-warning-soft border border-warning rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-warning-ink mb-2">This will permanently delete:</h4>
+                  <ul className="text-warning-ink text-sm space-y-1">
                     <li>• The game and all its settings</li>
                     <li>• All participants and their picks</li>
                     <li>• All game statistics and history</li>
@@ -658,13 +658,13 @@ const GamesManager: React.FC = () => {
                   </ul>
                 </div>
 
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                  <p className="text-red-700 text-sm font-semibold">
+                <div className="bg-danger-soft border border-danger rounded-lg p-4 mb-4">
+                  <p className="text-danger-ink text-sm font-semibold">
                     ⚠️ Warning: This action cannot be undone.
                   </p>
                 </div>
                 
-                <p className="text-gray-600 text-sm">
+                <p className="text-ink-muted text-sm">
                   Game Type: <span className="font-semibold">{gameToDelete.type === 'weekly' ? 'Weekly Picks' : 'Survivor'}</span>
                   <br />
                   Participants: <span className="font-semibold">{gameToDelete.participant_count} players</span>
@@ -681,14 +681,14 @@ const GamesManager: React.FC = () => {
                     setError('');
                   }}
                   disabled={deleting}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
                   disabled={deleting}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? (
                     <span className="flex items-center space-x-2">

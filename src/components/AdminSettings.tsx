@@ -155,18 +155,18 @@ const AdminSettings: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -176,9 +176,9 @@ const AdminSettings: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-indigo-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -191,7 +191,7 @@ const AdminSettings: React.FC = () => {
             <div className="flex items-center space-x-4">
               <a
                 href="/admin"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Admin
               </a>
@@ -202,29 +202,29 @@ const AdminSettings: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+          <div className="bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6">
             {success}
           </div>
         )}
 
         {/* SMTP Settings */}
-        <div className="bg-white rounded-lg shadow-md">
+        <div className="bg-surface rounded-lg shadow-md">
           <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">SMTP Email Settings</h2>
-            <p className="text-gray-600 mt-1">Configure email server settings for sending invitations and notifications</p>
+            <h2 className="text-2xl font-bold text-ink">SMTP Email Settings</h2>
+            <p className="text-ink-muted mt-1">Configure email server settings for sending invitations and notifications</p>
           </div>
 
           <div className="p-6">
             <div className="space-y-6">
               {smtpSettings.map((setting) => (
                 <div key={setting.key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     {setting.key.toUpperCase()}
                   </label>
                   <input
@@ -232,9 +232,9 @@ const AdminSettings: React.FC = () => {
                     value={setting.value}
                     onChange={(e) => updateSetting(setting.key, e.target.value)}
                     placeholder={setting.description}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
-                  <p className="text-sm text-gray-500 mt-1">{setting.description}</p>
+                  <p className="text-sm text-ink-subtle mt-1">{setting.description}</p>
                 </div>
               ))}
 
@@ -242,13 +242,13 @@ const AdminSettings: React.FC = () => {
               {testResult && (
                 <div className={`p-4 rounded-md flex items-center space-x-2 ${
                   testResult.success 
-                    ? 'bg-green-100 border border-green-300 text-green-800' 
-                    : 'bg-red-100 border border-red-300 text-red-800'
+                    ? 'bg-success-soft border border-success text-success-ink' 
+                    : 'bg-danger-soft border border-danger text-danger-ink'
                 }`}>
                   {testResult.success ? (
-                    <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                    <CheckCircleIcon className="h-5 w-5 text-success" />
                   ) : (
-                    <ExclamationCircleIcon className="h-5 w-5 text-red-600" />
+                    <ExclamationCircleIcon className="h-5 w-5 text-danger" />
                   )}
                   <span>{testResult.message}</span>
                 </div>
@@ -259,7 +259,7 @@ const AdminSettings: React.FC = () => {
                 <button
                   onClick={saveSettings}
                   disabled={saving}
-                  className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -267,13 +267,13 @@ const AdminSettings: React.FC = () => {
                 <button
                   onClick={testSmtpConnection}
                   disabled={testing || !smtpSettings.every(s => s.value.trim())}
-                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="bg-success text-white px-6 py-2 rounded-lg hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {testing ? 'Testing...' : 'Test Connection'}
                 </button>
               </div>
 
-              <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
+              <div className="text-sm text-ink-muted bg-surface-sunk p-4 rounded-lg">
                 <p className="font-medium mb-2">💡 Tips:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>For Gmail, use smtp.gmail.com with port 587 and an app password</li>

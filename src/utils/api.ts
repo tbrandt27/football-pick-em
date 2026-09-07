@@ -153,12 +153,22 @@ class ApiClient {
     return this.request<{ teams: NFLTeam[] }>('/teams');
   }
 
-  async getTeamRecords() {
+  /**
+   * Team win/loss records, as of the given week.
+   *
+   * ESPN reports each competitor's record at the time of that game, so passing
+   * a past week returns the standings then rather than today's.
+   */
+  async getTeamRecords(params: { week?: number; season?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.week !== undefined) q.set('week', String(params.week));
+    if (params.season) q.set('season', params.season);
+    const suffix = q.toString() ? `?${q}` : '';
     return this.request<{
       records: Record<string, string>;
       week: number;
       season: string;
-    }>('/teams/records');
+    }>(`/teams/records${suffix}`);
   }
 
   // Games endpoints

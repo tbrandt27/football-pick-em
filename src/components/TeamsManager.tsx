@@ -190,18 +190,18 @@ const TeamsManager: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -224,9 +224,9 @@ const TeamsManager: React.FC = () => {
   }, {} as Record<string, Record<string, NFLTeam[]>>);
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-purple-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -239,7 +239,7 @@ const TeamsManager: React.FC = () => {
             <div className="flex items-center space-x-4">
               <a
                 href="/admin"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Admin
               </a>
@@ -250,17 +250,17 @@ const TeamsManager: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {logoError && (
-          <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+          <div className="bg-warning-soft border border-warning text-warning-ink px-4 py-3 rounded mb-6">
             <strong>Logo Loading Warning:</strong> {logoError}
             <button
               onClick={loadAvailableLogos}
-              className="ml-3 text-yellow-800 underline hover:no-underline"
+              className="ml-3 text-warning-ink underline hover:no-underline"
             >
               Retry
             </button>
@@ -268,7 +268,7 @@ const TeamsManager: React.FC = () => {
         )}
 
         {/* Teams Overview */}
-        <div className="bg-white rounded-lg shadow-md mb-8">
+        <div className="bg-surface rounded-lg shadow-md mb-8">
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -283,8 +283,8 @@ const TeamsManager: React.FC = () => {
                       const container = target.parentElement;
                       if (container) {
                         container.innerHTML = `
-                          <div class="w-12 h-12 bg-gray-300 rounded flex items-center justify-center">
-                            <span class="text-sm font-bold text-gray-600">NFL</span>
+                          <div class="w-12 h-12 bg-line-strong rounded flex items-center justify-center">
+                            <span class="text-sm font-bold text-ink-muted">NFL</span>
                           </div>
                         `;
                       }
@@ -292,13 +292,13 @@ const TeamsManager: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Teams Overview</h2>
-                  <p className="text-gray-600">Total: {teams.length} teams</p>
+                  <h2 className="text-2xl font-bold text-ink">Teams Overview</h2>
+                  <p className="text-ink-muted">Total: {teams.length} teams</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowDefaultColorsModal(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                className="bg-brand hover:bg-brand-hover text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
               >
                 <span>Set Default Colors</span>
               </button>
@@ -320,15 +320,15 @@ const TeamsManager: React.FC = () => {
                         const container = target.parentElement;
                         if (container) {
                           container.innerHTML = `
-                            <div class="w-8 h-8 bg-gray-300 rounded flex items-center justify-center">
-                              <span class="text-xs font-bold text-gray-600">${conference.slice(0, 3)}</span>
+                            <div class="w-8 h-8 bg-line-strong rounded flex items-center justify-center">
+                              <span class="text-xs font-bold text-ink-muted">${conference.slice(0, 3)}</span>
                             </div>
                           `;
                         }
                       }}
                     />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-800">
+                  <h3 className="text-xl font-bold text-ink">
                     {conference} Conference
                   </h3>
                 </div>
@@ -336,7 +336,7 @@ const TeamsManager: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {Object.entries(divisions).map(([division, divisionTeams]) => (
                     <div key={division} className="border rounded-lg p-4">
-                      <h4 className="text-lg font-semibold text-gray-700 mb-3">
+                      <h4 className="text-lg font-semibold text-ink-muted mb-3">
                         {division} Division
                       </h4>
                       
@@ -355,7 +355,7 @@ const TeamsManager: React.FC = () => {
                               style={gradientStyle}
                             >
                               <div className="flex items-center space-x-3">
-                                <div className="w-12 h-12 flex items-center justify-center bg-white rounded-lg shadow-sm">
+                                <div className="w-12 h-12 flex items-center justify-center bg-surface rounded-lg shadow-sm">
                                   {team.team_logo ? (
                                     <img
                                       src={team.team_logo}
@@ -382,10 +382,10 @@ const TeamsManager: React.FC = () => {
                                   )}
                                 </div>
                                 <div>
-                                  <div className="font-medium text-gray-800">
+                                  <div className="font-medium text-ink">
                                     {team.team_city} {team.team_name}
                                   </div>
-                                  <div className="text-sm text-gray-600">
+                                  <div className="text-sm text-ink-muted">
                                     {team.team_code}
                                   </div>
                                 </div>
@@ -394,7 +394,7 @@ const TeamsManager: React.FC = () => {
                               <div className="flex items-center space-x-2">
                                 <button
                                   onClick={() => setEditingTeam(team)}
-                                  className="bg-white bg-opacity-80 hover:bg-opacity-100 text-blue-600 hover:text-blue-800 px-3 py-1 rounded text-sm font-medium shadow-sm transition-all"
+                                  className="bg-surface bg-opacity-80 hover:bg-opacity-100 text-brand hover:text-brand-ink px-3 py-1 rounded text-sm font-medium shadow-sm transition-all"
                                 >
                                   Edit
                                 </button>
@@ -414,47 +414,47 @@ const TeamsManager: React.FC = () => {
         {/* Edit Team Modal */}
         {editingTeam && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-semibold mb-4">Edit Team</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Team Code
                   </label>
                   <input
                     type="text"
                     value={editingTeam.team_code}
                     readOnly
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md bg-surface-alt"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     City
                   </label>
                   <input
                     type="text"
                     value={editingTeam.team_city}
                     onChange={(e) => setEditingTeam({...editingTeam, team_city: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Team Name
                   </label>
                   <input
                     type="text"
                     value={editingTeam.team_name}
                     onChange={(e) => setEditingTeam({...editingTeam, team_name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Primary Color
                   </label>
                   <div className="flex items-center space-x-2">
@@ -462,12 +462,12 @@ const TeamsManager: React.FC = () => {
                       type="color"
                       value={editingTeam.team_primary_color || '#000000'}
                       onChange={(e) => setEditingTeam({...editingTeam, team_primary_color: e.target.value})}
-                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                      className="flex-1 h-10 border border-line-strong rounded-md"
                     />
                     <button
                       type="button"
                       onClick={() => setEditingTeam({...editingTeam, team_primary_color: defaultPrimaryColor})}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm transition-colors"
+                      className="bg-surface-alt hover:bg-line text-ink-muted px-3 py-2 rounded-md text-sm transition-colors"
                     >
                       Default
                     </button>
@@ -475,7 +475,7 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Secondary Color
                   </label>
                   <div className="flex items-center space-x-2">
@@ -483,12 +483,12 @@ const TeamsManager: React.FC = () => {
                       type="color"
                       value={editingTeam.team_secondary_color || '#ffffff'}
                       onChange={(e) => setEditingTeam({...editingTeam, team_secondary_color: e.target.value})}
-                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                      className="flex-1 h-10 border border-line-strong rounded-md"
                     />
                     <button
                       type="button"
                       onClick={() => setEditingTeam({...editingTeam, team_secondary_color: defaultSecondaryColor})}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm transition-colors"
+                      className="bg-surface-alt hover:bg-line text-ink-muted px-3 py-2 rounded-md text-sm transition-colors"
                     >
                       Default
                     </button>
@@ -496,13 +496,13 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Team Logo
                   </label>
-                  <div className="border border-gray-300 rounded-md p-3">
+                  <div className="border border-line-strong rounded-md p-3">
                     {editingTeam.team_logo && (
                       <div className="flex items-center space-x-3 mb-3">
-                        <div className="w-12 h-12 flex items-center justify-center bg-white rounded border">
+                        <div className="w-12 h-12 flex items-center justify-center bg-surface rounded border">
                           <img
                             src={editingTeam.team_logo}
                             alt="Current logo"
@@ -513,39 +513,39 @@ const TeamsManager: React.FC = () => {
                               const container = target.parentElement;
                               if (container) {
                                 container.innerHTML = `
-                                  <div class="w-10 h-10 bg-gray-300 rounded flex items-center justify-center">
-                                    <span class="text-xs font-bold text-gray-600">${editingTeam.team_code}</span>
+                                  <div class="w-10 h-10 bg-line-strong rounded flex items-center justify-center">
+                                    <span class="text-xs font-bold text-ink-muted">${editingTeam.team_code}</span>
                                   </div>
                                 `;
                               }
                             }}
                           />
                         </div>
-                        <span className="text-sm text-gray-600">Current logo</span>
+                        <span className="text-sm text-ink-muted">Current logo</span>
                       </div>
                     )}
                     
                     <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto">
                       {logosLoading ? (
-                        <div className="col-span-6 text-center text-gray-500 py-4">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                        <div className="col-span-6 text-center text-ink-subtle py-4">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand mx-auto mb-2"></div>
                           Loading logos...
                         </div>
                       ) : logoError ? (
                         <div className="col-span-6 text-center py-4">
-                          <div className="text-red-500 mb-2">Failed to load logos</div>
+                          <div className="text-danger mb-2">Failed to load logos</div>
                           <button
                             onClick={loadAvailableLogos}
-                            className="text-purple-600 hover:text-purple-800 underline"
+                            className="text-brand hover:text-brand-ink underline"
                           >
                             Retry
                           </button>
-                          <div className="mt-3 text-sm text-gray-600">
+                          <div className="mt-3 text-sm text-ink-muted">
                             Or manually enter logo path:
                             <input
                               type="text"
                               placeholder="/logos/TEAM.svg"
-                              className="block w-full mt-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="block w-full mt-1 px-2 py-1 border border-line-strong rounded text-sm"
                               onBlur={(e) => {
                                 if (e.target.value.trim()) {
                                   setEditingTeam({...editingTeam, team_logo: e.target.value.trim()});
@@ -555,7 +555,7 @@ const TeamsManager: React.FC = () => {
                           </div>
                         </div>
                       ) : availableLogos.length === 0 ? (
-                        <div className="col-span-6 text-center text-gray-500 py-4">
+                        <div className="col-span-6 text-center text-ink-subtle py-4">
                           No logos found in directory
                         </div>
                       ) : (
@@ -563,10 +563,10 @@ const TeamsManager: React.FC = () => {
                           <button
                             key={logoFile}
                             onClick={() => handleLogoSelect(logoFile)}
-                            className={`p-2 border rounded-lg hover:bg-gray-50 transition-colors ${
+                            className={`p-2 border rounded-lg hover:bg-surface-sunk transition-colors ${
                               editingTeam.team_logo === `/logos/${logoFile}`
-                                ? 'border-purple-500 bg-purple-50'
-                                : 'border-gray-200'
+                                ? 'border-brand bg-brand-soft'
+                                : 'border-line'
                             }`}
                           >
                             <img
@@ -576,7 +576,7 @@ const TeamsManager: React.FC = () => {
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
-                                target.parentElement!.innerHTML = `<div class="text-xs text-gray-400">${logoFile.replace('.svg', '')}</div>`;
+                                target.parentElement!.innerHTML = `<div class="text-xs text-ink-subtle">${logoFile.replace('.svg', '')}</div>`;
                               }}
                             />
                           </button>
@@ -590,13 +590,13 @@ const TeamsManager: React.FC = () => {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => setEditingTeam(null)}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => saveTeam(editingTeam)}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand transition-colors"
                 >
                   Save Changes
                 </button>
@@ -608,15 +608,15 @@ const TeamsManager: React.FC = () => {
         {/* Default Colors Modal */}
         {showDefaultColorsModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Set Default Colors</h3>
-              <p className="text-sm text-gray-600 mb-6">
+              <p className="text-sm text-ink-muted mb-6">
                 These colors will be used as defaults when editing teams.
               </p>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Default Primary Color
                   </label>
                   <div className="flex items-center space-x-2">
@@ -624,16 +624,16 @@ const TeamsManager: React.FC = () => {
                       type="color"
                       value={defaultPrimaryColor}
                       onChange={(e) => setDefaultPrimaryColor(e.target.value)}
-                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                      className="flex-1 h-10 border border-line-strong rounded-md"
                     />
-                    <span className="text-sm text-gray-600 font-mono">
+                    <span className="text-sm text-ink-muted font-mono">
                       {defaultPrimaryColor}
                     </span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1">
                     Default Secondary Color
                   </label>
                   <div className="flex items-center space-x-2">
@@ -641,9 +641,9 @@ const TeamsManager: React.FC = () => {
                       type="color"
                       value={defaultSecondaryColor}
                       onChange={(e) => setDefaultSecondaryColor(e.target.value)}
-                      className="flex-1 h-10 border border-gray-300 rounded-md"
+                      className="flex-1 h-10 border border-line-strong rounded-md"
                     />
-                    <span className="text-sm text-gray-600 font-mono">
+                    <span className="text-sm text-ink-muted font-mono">
                       {defaultSecondaryColor}
                     </span>
                   </div>
@@ -662,13 +662,13 @@ const TeamsManager: React.FC = () => {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => setShowDefaultColorsModal(false)}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={saveDefaultColors}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand transition-colors"
                 >
                   Save Defaults
                 </button>

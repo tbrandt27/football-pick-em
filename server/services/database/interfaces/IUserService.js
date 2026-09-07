@@ -7,6 +7,14 @@ export default class IUserService {
    * Get all users (admin only)
    * @returns {Promise<Array>} Users with team info
    */
+  /**
+   * Get all users with the number of games each participates in.
+   * @returns {Promise<Array>} Users, each with a numeric game_count
+   */
+  async getAllUsersWithGameCount() {
+    throw new Error('getAllUsersWithGameCount must be implemented');
+  }
+
   async getAllUsers() {
     throw new Error('getAllUsers must be implemented');
   }

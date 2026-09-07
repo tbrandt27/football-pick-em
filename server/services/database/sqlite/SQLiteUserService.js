@@ -53,6 +53,42 @@ export default class SQLiteUserService extends IUserService {
   }
 
   /**
+   * Get all users with a participation count.
+   *
+   * Used by GET /api/admin/users. This method was called by that route but
+   * never implemented on either provider, so the SQLite path threw
+   * `TypeError: ... is not a function` and the admin Users tab showed
+   * "Failed to load users".
+   *
+   * Counts in one LEFT JOIN rather than a query per user.
+   *
+   * @returns {Promise<Array>} Users with numeric game_count
+   */
+  async getAllUsersWithGameCount() {
+    const rows = await db.all(`
+      SELECT
+        u.id,
+        u.email,
+        u.first_name,
+        u.last_name,
+        u.favorite_team_id,
+        u.is_admin,
+        u.email_verified,
+        u.last_login,
+        u.created_at,
+        t.team_name as favorite_team_name,
+        t.team_city as favorite_team_city,
+        COUNT(DISTINCT gp.game_id) as game_count
+      FROM users u
+      LEFT JOIN football_teams t ON u.favorite_team_id = t.id
+      LEFT JOIN game_participants gp ON gp.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `);
+    return (rows || []).map((r) => ({ ...normaliseUser(r), game_count: Number(r.game_count) || 0 }));
+  }
+
+  /**
    * Get user by ID
    * @param {string} userId - User ID
    * @returns {Promise<Object|null>} User with team info
