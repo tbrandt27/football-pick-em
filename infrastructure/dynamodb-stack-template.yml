@@ -1,5 +1,9 @@
-# AWS SAM/CloudFormation Stack Template for DynamoDB Tables
-# This is a simplified stack template focused specifically on DynamoDB resources
+# CloudFormation stack template for the DynamoDB layer.
+#
+# Wraps dynamodb-tables-optimized.yml (the only table template that defines
+# every GSI the application queries) and adds the pieces that live nowhere
+# else: the application IAM role for DynamoDB access, and the SSM parameters
+# that publish the database config and role ARN.
 
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
@@ -17,18 +21,12 @@ Parameters:
     Default: 'football_pickem_'
     Description: 'Prefix for all table names'
 
-Globals:
-  Function:
-    Timeout: 30
-    MemorySize: 128
-    Runtime: nodejs18.x
-
 Resources:
   # DynamoDB Tables Stack
   DynamoDBTablesStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./dynamodb-tables-simple.yml
+      TemplateURL: ./dynamodb-tables-optimized.yml
       Parameters:
         Environment: !Ref Environment
         TablePrefix: !Ref TablePrefix

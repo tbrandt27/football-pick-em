@@ -114,7 +114,24 @@ Anything added to one must be added to the other.
 `system_settings`, `users`.
 
 SQLite schema lives in `server/providers/SQLiteProvider.js`; the DynamoDB
-equivalents, including their GSIs, are in `infrastructure/dynamodb-tables.yml`.
+equivalents, including their GSIs, are in
+`infrastructure/dynamodb-tables-optimized.yml`.
+
+`infrastructure/` holds two templates:
+
+| Template | Purpose |
+|---|---|
+| `dynamodb-tables-optimized.yml` | The 10 tables and every GSI the code queries |
+| `dynamodb-stack-template.yml` | Wraps the above, and adds the application IAM role for DynamoDB plus SSM parameters publishing the database config and role ARN |
+
+Deploy the stack template to get the roles and parameters as well, or the
+tables template alone if you manage IAM separately.
+
+> Two earlier table templates (`dynamodb-tables.yml`,
+> `dynamodb-tables-simple.yml`) were removed: each omitted GSIs the code
+> queries, and a missing index fails quietly — the app keeps working and
+> silently falls back to full table scans. Recover them from git history if
+> you ever need the comparison.
 
 ## Configuration
 
@@ -247,7 +264,7 @@ Deployment checklist:
 - [ ] `JWT_SECRET` and `SETTINGS_ENCRYPTION_KEY` set — as Secrets Manager ARNs, not literals
 - [ ] `DATABASE_TYPE` correct for the target (`auto` or `dynamodb`)
 - [ ] `AWS_REGION` and `DYNAMODB_TABLE_PREFIX` match the deployed tables
-- [ ] DynamoDB tables and **their GSIs** created from `infrastructure/dynamodb-tables.yml`
+- [ ] DynamoDB tables and **their GSIs** created from `infrastructure/dynamodb-tables-optimized.yml` (the only complete template)
 - [ ] Role has DynamoDB access — on ECS this is the **task** role, not the execution role
 - [ ] Outbound internet available, or the ESPN sync silently stops
 - [ ] Health check pointed at `/health`
@@ -258,7 +275,7 @@ DynamoDB tables:
 
 ```bash
 aws cloudformation deploy \
-  --template-file infrastructure/dynamodb-tables.yml \
+  --template-file infrastructure/dynamodb-tables-optimized.yml \
   --stack-name football-pickem-tables \
   --parameter-overrides TablePrefix=football_pickem_
 ```

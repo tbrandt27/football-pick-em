@@ -216,7 +216,43 @@ more to scan, mid-scan error propagation, and the ceiling warning.
 
 ### 2.2 Scans on hot paths where GSIs already exist — now the top open item
 
-`infrastructure/dynamodb-tables.yml` defines `email-index`,
+> **Which CloudFormation template is authoritative.** Recovered from
+> `support_docs/` before those notes were deleted, and re-verified against
+> the code on 2026-09-06.
+>
+> The code queries **11** distinct GSIs. `infrastructure/` used to hold four
+> templates and only one defined all 11:
+>
+> | Template | GSIs defined | Missing (that the code queries) | Outcome |
+> |---|---|---|---|
+> | `dynamodb-tables-optimized.yml` | 25 | **none** | kept — authoritative |
+> | `dynamodb-tables.yml` | 15 | `football_game_id-index`, `is_admin-index` | deleted |
+> | `dynamodb-tables-simple.yml` | 8 | 4 | deleted |
+> | `dynamodb-stack-template.yml` | 0 directly | — | **kept**, repointed |
+>
+> Deploying an incomplete template leaves the app working while silently
+> falling back to full table scans — a cost and latency regression, not an
+> error.
+>
+> `dynamodb-stack-template.yml` showed zero GSIs only because it is a
+> nested-stack wrapper. It carries the `ApplicationDynamoDBRole` IAM role
+> (trust policy already covering `ecs-tasks.amazonaws.com`) and the SSM
+> parameters publishing the database config and role ARN — none of which
+> exist elsewhere. It was repointed from the deleted `-simple` template to
+> `-optimized`; parameter contract (`Environment`, `TablePrefix`) verified
+> compatible. Its vestigial SAM `Globals` block, which pinned the EOL Node
+> 18 Lambda runtime despite the template defining no functions, was
+> removed.
+>
+> Separately: `is_current-index` appears only in the optimized template and
+> **is not queried by any code path**. An earlier round of notes concluded it
+> was a critical missing index and wrote console instructions to create it;
+> a later note reversed that. The reversal was correct — current-season
+> lookup was reworked to not need it. Do not add it.
+
+
+
+`infrastructure/dynamodb-tables-optimized.yml` defines `email-index`,
 `game_id-index`, `season_id-index`, `is_admin-index` and more. The
 provider has `_dynamoQueryGSI` and uses it in a few places — but
 `getUserByEmail` (called on **every login**) still does
