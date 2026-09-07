@@ -23,7 +23,7 @@ worth more than the diff alone. Everything else is still open.
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
 | 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
-| 7 | npm advisories — **15 remaining, down from 67**. Express family, `jws`, `axios`, and the AWS SDK are cleared. 13 of the 15 left are `sqlite3`'s build toolchain (dev-only, incl. the last critical); `nodemailer` and `uuid` were verified non-applicable. See §7 |
+| ~~7~~ | **Largely closed.** npm advisories: **67 → 4, no criticals, none in the request path.** Express family, `jws`, `axios`, AWS SDK, and `sqlite3` all cleared. The 4 left are `nodemailer` and `uuid` (both verified not applicable) plus two build-time transitives. See §7 |
 | 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
 
 Delete this file once the open items are closed or moved.
@@ -925,14 +925,14 @@ Ordered by risk covered per unit of effort:
 
 ## 7. Dependency health
 
-Re-assessed 2026-09-07 after the Express 5 migration. **15 advisories remain
-in production dependencies (down from 67 at the start of this work), and the
-raw count substantially overstates real exposure** — each was checked against how this codebase actually uses the
+Re-assessed 2026-09-07 after the Express 5 migration. **4 advisories remain in production
+dependencies, down from 67 at the start of this work, with no criticals and
+none in the request path.** — each was checked against how this codebase actually uses the
 package.
 
 ### Cleared
 
-- **AWS SDK** and **`axios`** — see below.
+- **`sqlite3`**, **AWS SDK**, and **`axios`** — see below.
 - **The whole Express family** — `express`, `path-to-regexp` (ReDoS),
   `body-parser`, `send`, `serve-static`, `cookie`, `qs` — all clean after the
   v5 migration (§3).
@@ -970,6 +970,15 @@ package.
   competitors intact, response cache working, and `/api/seasons/status`
   returning 200 through the running app with no connection errors.
 
+### All that remains
+
+| Package | Severity | Note |
+|---|---|---|
+| `nodemailer` | high | Verified not applicable — see below |
+| `uuid` | moderate | Verified not applicable — see below |
+| `picomatch` | high | Build-tool transitive |
+| `tar-fs` | high | Via `prebuild-install`, build-time only |
+
 ### Checked and not applicable
 
 - **`nodemailer` 7.0.5 (high, 8 advisories).** The CRLF header-injection
@@ -981,18 +990,33 @@ package.
 - **`uuid` (moderate).** The advisory is a missing buffer bounds check in
   v3/v5/v6 when a `buf` argument is supplied. All 32 call sites here are bare
   `uuidv4()`. Not affected.
-- **`sqlite3` (high) — the entire remaining tail.** 13 of the 15 advisories
-  left are `sqlite3`'s native-build toolchain:
-  `sqlite3@5.1.7 → node-gyp@8.4.1 → make-fetch-happen → cacache → tar`
-  (plus `minimatch`, `brace-expansion`, `ip-address`, `socks`,
-  `http-proxy-agent`, `@tootallnate/once`, `tar-fs`, `picomatch`). That
-  includes the only remaining **critical** (`tar`).
+- **`sqlite3` 5.1.7 → 6.0.1 — done.** This was the entire remaining tail:
+  13 of 15 advisories came from its native-build toolchain
+  (`node-gyp@8.4.1 → make-fetch-happen → cacache → tar`, plus `minimatch`,
+  `brace-expansion`, `ip-address`, `socks`, `http-proxy-agent`,
+  `@tootallnate/once`), including the last **critical** (`tar`).
 
-  These are build-time dependencies of a package used **only in local
-  development** — production runs DynamoDB via `DATABASE_TYPE: auto`. Bumping
-  `sqlite3` to 6.x is a major and would very likely clear all 13, leaving just
-  `nodemailer` and `uuid`, both already verified non-applicable. Worth doing,
-  but it is a dev-tooling change, not a production exposure.
+  v6 drops `node-gyp` as a dependency in favour of `prebuild-install` and
+  `tar@^7`, which is precisely why the chain collapses. It requires Node
+  ≥ 20.17, satisfied by the 22.12 floor. **101 packages removed, 11 added.**
+
+  Verified, because a major bump on a native module deserves it:
+
+  - Local: schema creation (10 tables), team seeding (32 teams),
+    register → login → authenticated `/auth/me` → game creation, zero SQLite
+    errors.
+  - **musl/Alpine prebuild exists** — the production image is
+    `node:22-alpine`, and without a prebuild `npm ci` would try to compile
+    with no toolchain in the image. Confirmed installing in ~3s with no
+    compile step.
+  - Full `docker build` succeeds, and the running container reports
+    `/health` 200, SSR 200, `/api/teams` → 32 teams, and a Docker
+    `HEALTHCHECK` status of **healthy** — which also validates the §2.7
+    health-path fix inside the real image.
+
+  > `prebuild-install@7.1.3` prints a deprecation notice ("No longer
+  > maintained"). It works, and it is a build-time dependency only, but it is
+  > worth watching for a successor.
 - **AWS SDK — done.** `client-dynamodb`, `lib-dynamodb`, and
   `client-secrets-manager` moved together 3.873/3.876 → **3.1127.0**
   (they share `@aws-sdk/core`, which deduped to a single copy afterwards).
