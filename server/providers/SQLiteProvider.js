@@ -4,6 +4,22 @@ import { fileURLToPath } from "url";
 import BaseDatabaseProvider from "./BaseDatabaseProvider.js";
 import databaseSwitcher from "../utils/databaseSwitcher.js";
 
+/**
+ * SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so the migrations
+ * below just attempt the add and ignore the "duplicate column" failure. Any
+ * other error (locked database, bad SQL, disk full) is a real problem and must
+ * not be swallowed silently.
+ *
+ * @param {Error} error
+ */
+function rethrowUnlessDuplicateColumn(error) {
+  if (/duplicate column name/i.test(error?.message ?? "")) {
+    return;
+  }
+  throw error;
+}
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -113,22 +129,22 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
     // Add missing columns to existing pickem_games table if they don't exist
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN game_name TEXT`);
-    } catch (e) {} // Column might already exist
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN type TEXT DEFAULT 'weekly'`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN commissioner_id TEXT`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN season_id TEXT`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN weekly_week INTEGER`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     try {
       await this.run(`ALTER TABLE pickem_games ADD COLUMN is_active BOOLEAN DEFAULT 1`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
 
     // Game participants (owners and players)
     await this.run(`
@@ -182,12 +198,12 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
     // Add season_type column to existing football_games table if it doesn't exist
     try {
       await this.run(`ALTER TABLE football_games ADD COLUMN season_type INTEGER DEFAULT 2`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
 
     // Add scores_updated_at column to track when scores were last fetched from ESPN
     try {
       await this.run(`ALTER TABLE football_games ADD COLUMN scores_updated_at DATETIME`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
 
     // System Settings table for admin configuration
     await this.run(`
@@ -230,27 +246,27 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
     // Add missing columns to existing picks table if they don't exist
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN football_game_id TEXT`);
-    } catch (e) {} // Column might already exist
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN pick_team_id TEXT`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN is_correct BOOLEAN DEFAULT NULL`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN tiebreaker INTEGER`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN season_id TEXT`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
     
     try {
       await this.run(`ALTER TABLE picks ADD COLUMN week INTEGER`);
-    } catch (e) {}
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
 
     // Weekly Standings table
     await this.run(`
@@ -297,7 +313,7 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
     // Add is_admin_invitation column to existing game_invitations table if it doesn't exist
     try {
       await this.run(`ALTER TABLE game_invitations ADD COLUMN is_admin_invitation BOOLEAN DEFAULT 0`);
-    } catch (e) {} // Column might already exist
+    } catch (e) { rethrowUnlessDuplicateColumn(e); }
 
     // Update game_id to allow NULL for admin invitations by recreating constraint
     try {

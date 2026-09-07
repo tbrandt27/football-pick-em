@@ -135,10 +135,11 @@ class DynamoDBOptimizationTester {
     console.log(`❌ Failed Tests: ${failedTests.length}`);
     console.log(`📊 Total Tests: ${this.testResults.length}`);
     
+    const totalDuration = successfulTests.reduce((sum, test) => sum + test.duration, 0);
+
     if (successfulTests.length > 0) {
       console.log('\n⚡ Performance Summary:');
       
-      const totalDuration = successfulTests.reduce((sum, test) => sum + test.duration, 0);
       const avgDuration = totalDuration / successfulTests.length;
       const fastestTest = successfulTests.reduce((min, test) => test.duration < min.duration ? test : min);
       const slowestTest = successfulTests.reduce((max, test) => test.duration > max.duration ? test : max);

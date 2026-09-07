@@ -40,3 +40,12 @@ localstack-data/
 .localstack-data/
 
 support_docs/
+# test coverage
+coverage/
+
+# vitest cache
+.vitest/
+
+# eslint cache
+.eslintcache
+database_current.sqlite

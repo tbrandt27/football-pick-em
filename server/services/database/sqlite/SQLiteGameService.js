@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import IGameService from '../interfaces/IGameService.js';
 import db from '../../../models/database.js';
+import { createGameSlug } from '../../../utils/slug.js';
 
 /**
  * SQLite-specific Game Service
@@ -39,16 +40,6 @@ export default class SQLiteGameService extends IGameService {
    */
   async getGameBySlug(gameSlug, userId) {
     // Helper function to create URL-friendly slugs
-    const createGameSlug = (gameName) => {
-      return gameName
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-        .trim()
-        .replace(/^-+|-+$/g, "");
-    };
-
     // Get all games and find the one that matches the slug
     const games = await db.all(`
       SELECT g.*, g.type as game_type, u.first_name || ' ' || u.last_name as commissioner_name

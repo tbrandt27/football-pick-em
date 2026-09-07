@@ -197,7 +197,15 @@ app.use("/api/health", healthRoutes);
 // Serve static logo files with graceful fallback for missing files
 app.get("/logos/:filename", (req, res) => {
   const { filename } = req.params;
-  
+
+  // Express percent-decodes route params, so a request for
+  // /logos/..%2f..%2fpackage.json arrives here as "../../package.json" and the
+  // join() calls below would happily resolve outside the logos directory.
+  // Restrict to a single plain filename before touching the filesystem.
+  if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes("..")) {
+    return res.status(400).json({ error: "Invalid logo filename" });
+  }
+
   // Check for explicit environment variable first
   const explicitLogosPath = process.env.LOGOS_PATH;
   
@@ -255,12 +263,6 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
-});
-
 // Import Astro SSR handler
 let astroHandler;
 const serverPath = join(__dirname, "../dist/server/entry.mjs");
@@ -288,6 +290,20 @@ app.get("*", async (req, res) => {
   } else {
     res.status(404).json({ error: "Application not built. Run 'npm run build' first." });
   }
+});
+
+// Error handling middleware.
+//
+// Express only routes to an error handler registered AFTER the middleware that
+// threw, so this must stay below the SSR catch-all above -- otherwise errors
+// from the API routes and the Astro handler fall through to Express's default
+// handler instead.
+app.use((err, req, res, _next) => {
+  console.error(err.stack);
+  if (res.headersSent) {
+    return;
+  }
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 // Function to find an available port

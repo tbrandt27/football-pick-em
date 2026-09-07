@@ -2,17 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user, $isAuthenticated, $isLoading, initAuth } from '../stores/auth';
 import { HomeIcon } from '@heroicons/react/24/outline';
-
-// Utility function to create URL-friendly slugs (matches server-side logic)
-function createGameSlug(gameName: string) {
-  return gameName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-    .trim()
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-}
+import { createGameSlug } from '../lib/slug';
 
 interface PickemGame {
   id: string;

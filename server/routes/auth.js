@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 import db from '../models/database.js';
+import { toBoolean } from '../utils/coerce.js';
 
 const router = express.Router();
 
@@ -270,8 +271,8 @@ router.post('/login', async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
-        isAdmin: Boolean(user.is_admin),
-        emailVerified: Boolean(user.email_verified)
+        isAdmin: toBoolean(user.is_admin),
+        emailVerified: toBoolean(user.email_verified)
       }
     });
 
@@ -293,8 +294,8 @@ router.get('/me', authenticateToken, async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
-        isAdmin: Boolean(user.is_admin),
-        emailVerified: Boolean(user.email_verified)
+        isAdmin: toBoolean(user.is_admin),
+        emailVerified: toBoolean(user.email_verified)
       }
     });
   } catch (error) {
@@ -320,8 +321,8 @@ router.put('/update', authenticateToken, async (req, res) => {
         firstName: updatedUser.first_name,
         lastName: updatedUser.last_name,
         favoriteTeamId: updatedUser.favorite_team_id,
-        isAdmin: Boolean(updatedUser.is_admin),
-        emailVerified: Boolean(updatedUser.email_verified)
+        isAdmin: toBoolean(updatedUser.is_admin),
+        emailVerified: toBoolean(updatedUser.email_verified)
       }
     });
 
