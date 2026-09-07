@@ -17,7 +17,7 @@ worth more than the diff alone. Everything else is still open.
 | 1.2 | **Rotate the committed secrets.** The code fix is not sufficient; the values remain in git history. |
 | 1.6 | Rate limiting, password-reset email, JWT in `localStorage`, request validation, cross-player pick disclosure |
 | 2.2 | Hot-path DynamoDB scans that should use the GSIs already defined in `infrastructure/` — the top open engineering item |
-| 2.2a | Production GSI audit **[done]**. Remaining: enforce a single `is_admin` encoding at the write boundary; delete two unused GSIs |
+| ~~2.2a~~ | **Closed.** GSI audit, unused-index cleanup, and write-boundary encoding all shipped. Zero admin invitations were ever issued in production, so the promotion bug affected no real user. |
 | 2.3 | `getGameBySlug` reads the entire games table |
 | 2.5 | `/api/teams/records` is unreachable (route shadowing) |
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |

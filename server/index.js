@@ -17,6 +17,7 @@ import pickRoutes from "./routes/picks.js";
 import seasonRoutes from "./routes/seasons.js";
 import adminRoutes from "./routes/admin.js";
 import healthRoutes from "./routes/health.js";
+import { apiLimiter } from "./middleware/rateLimit.js";
 // import databaseAdminRoutes from "./routes/databaseAdmin.js";
 
 // Import services
@@ -158,6 +159,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Behind App Runner (and behind an ALB after the ECS migration) the client IP
+// arrives in X-Forwarded-For. Without this, req.ip is the proxy address, every
+// request shares one rate-limit key, and a single caller can lock out everyone.
+//
+// Trust exactly one hop, never `true`: blanket trust lets a client spoof
+// X-Forwarded-For and sidestep the limiters entirely. Raise the count only if
+// a further trusted proxy is genuinely added in front.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -182,6 +194,10 @@ const clientPath = join(__dirname, "../dist/client");
 if (existsSync(clientPath)) {
   app.use(express.static(clientPath));
 }
+
+// Rate limiting. Applies to /api only, so static assets and SSR pages are
+// untouched. Per-route stricter limits live on the auth router itself.
+app.use("/api", apiLimiter);
 
 // Routes
 app.use("/api/auth", authRoutes);

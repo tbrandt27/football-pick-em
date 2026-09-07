@@ -7,11 +7,13 @@ import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 import db from '../models/database.js';
 import { toBoolean } from '../utils/coerce.js';
+import emailService from '../services/emailService.js';
+import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
 // Register new user
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const { email, password, firstName, lastName, favoriteTeamId } = req.body;
 
@@ -134,7 +136,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Register user with invitation token
-router.post('/register-invite', async (req, res) => {
+router.post('/register-invite', registerLimiter, async (req, res) => {
   try {
     const { email, password, firstName, lastName, favoriteTeamId, inviteToken } = req.body;
 
@@ -231,7 +233,7 @@ router.post('/register-invite', async (req, res) => {
 });
 
 // Login user
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -333,7 +335,7 @@ router.put('/update', authenticateToken, async (req, res) => {
 });
 
 // Request password reset
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -353,8 +355,20 @@ router.post('/forgot-password', async (req, res) => {
 
     await userService.setPasswordResetToken(user.id, resetToken, resetExpires);
 
-    // TODO: Send reset email
-    console.log(`Password reset requested for ${email}. Reset token: ${resetToken}`);
+    // Never log the token -- it is a bearer credential for the account, and
+    // these logs ship to CloudWatch. Send it, and report only success/failure.
+    const emailResult = await emailService.sendPasswordReset(
+      user.email,
+      `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
+      resetToken,
+      { selfInitiated: true }
+    );
+
+    if (!emailResult.success) {
+      // Log for operators, but keep the client response identical so this
+      // endpoint cannot be used to probe which addresses are registered.
+      console.error(`Failed to send password reset email to ${user.email}:`, emailResult.error);
+    }
 
     res.json({ message: 'If an account exists, a reset email has been sent' });
 
@@ -365,7 +379,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // Reset password
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', passwordResetLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
