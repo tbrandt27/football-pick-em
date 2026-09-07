@@ -466,7 +466,9 @@ router.get('/dynamodb/config', async (req, res) => {
 /**
  * Test specific DynamoDB table operations
  */
-router.get('/dynamodb/test/:tableName?', async (req, res) => {
+// Express 5 drops the "?" optional-parameter suffix; the optional segment
+// (including its leading slash) goes in braces instead.
+router.get('/dynamodb/test{/:tableName}', async (req, res) => {
   try {
     const tableName = req.params.tableName || 'system_settings';
     const healthCheck = new DynamoDBHealthCheck();

@@ -3,7 +3,7 @@
 A web app for running NFL pick'em pools — weekly-picks and survivor formats,
 automatic scoring from the ESPN API, leaderboards, and email invitations.
 
-Astro 7 + React 19 on the front, Express on the back, with a pluggable
+Astro 7 + React 19 on the front, Express 5 on the back, with a pluggable
 database layer that runs SQLite locally and DynamoDB in production.
 
 ---
@@ -88,6 +88,11 @@ football-pick-em/
 ├── scripts/                  # setup, init-db, LocalStack helpers
 └── Dockerfile                # Multi-stage production image
 ```
+
+> **Route paths use Express 5 / path-to-regexp 8 syntax.** A wildcard must be
+> named, and `/*splat` does **not** match the root — the SSR catch-all is
+> `/{*splat}` for that reason. Optional segments use braces
+> (`/test{/:name}`), not a `?` suffix.
 
 ### Database abstraction
 

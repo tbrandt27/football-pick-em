@@ -288,8 +288,13 @@ if (existsSync(serverPath)) {
   astroHandler = astroModule.handler;
 }
 
-// Handle all non-API routes with Astro SSR
-app.get("*", async (req, res) => {
+// Handle all non-API routes with Astro SSR.
+//
+// Express 5 uses path-to-regexp 8, where a bare "*" is no longer a valid
+// path -- a wildcard must be named. "/{*splat}" matches the root as well as
+// every deeper path, which is what "*" did in Express 4; "/*splat" alone
+// would skip "/".
+app.get("/{*splat}", async (req, res) => {
   // Skip API routes - they're already handled above
   if (req.path.startsWith('/api/') || req.path.startsWith('/logos/')) {
     return res.status(404).json({ error: "Route not found" });

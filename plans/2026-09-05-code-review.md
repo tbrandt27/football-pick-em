@@ -23,7 +23,7 @@ worth more than the diff alone. Everything else is still open.
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
 | 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
-| 7 | 67 npm advisories, `jws` and `axios` being the ones in the request path |
+| 7 | npm advisories. The Express family cleared with the v5 migration; **`jws`** (weak HMAC verification, reached via `jsonwebtoken`), `axios`, and `nodemailer` remain in the request path, plus AWS SDK moderates |
 | 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
 
 Delete this file once the open items are closed or moved.
@@ -555,17 +555,41 @@ TS 7 support.
    `eslint-plugin-astro` warns `EBADENGINE` against it. Switch to 22 or
    24 LTS (`nvm use` now reads `.nvmrc`).
 
-### Deferred: Express 4 → 5
+### Express 4 → 5 **[done]**
 
-Not bundled with this change — it's an independent migration with its own
-breaking changes, and stacking it on the Astro jump would make a
-regression impossible to attribute. When you do it, the known work is:
+Kept out of the Astro PR so a regression would be attributable; done
+separately on 2026-09-07. Express 4.21.2 → **5.2.1**.
 
-- `app.get("*")` → `app.get("/*splat")` (`server/index.js`)
-- `req.params` no longer partially decoded — re-check the `/logos` guard
-- `res.status(500).json()` after `headersSent` now throws
+The migration surface turned out to be two path patterns:
 
-Express 4.21.2 is in maintenance-only, so this shouldn't wait long.
+- `app.get("*")` → **`app.get("/{*splat}")`** (`server/index.js`). Note the
+  braces. path-to-regexp 8 requires a *named* wildcard, and the obvious
+  `"/*splat"` does **not** match `/` — it would have silently 404'd the
+  homepage. `test/server/express5.test.js` pins both forms so the trap is
+  documented rather than rediscovered.
+- `:tableName?` → **`{/:tableName}`** (`server/routes/health.js`). The `?`
+  suffix is gone; the optional segment, including its leading slash, goes in
+  braces.
+
+Audited and found clean: no `app.del`, `res.sendfile`, `req.param()`,
+`res.redirect('back')`, or two-argument `res.send(body, status)`; nothing
+writes to `req.query` (now a read-only getter); nothing depends on nested
+query syntax (the parser default changed from extended to simple); and
+`express.urlencoded({ extended: true })` was already explicit, so the
+default flipping to `false` is a non-event. The dynamic `res.status(...)`
+calls in `health.js` resolve to literal 200/503, inside the 100-999 range
+v5 now validates.
+
+**What this buys beyond the version bump:** rejected promises from handlers
+are now forwarded to error middleware automatically, so the try/catch in
+every route handler is no longer load-bearing. That only works because the
+500 handler was moved below the SSR catch-all (§2.6) — Express routes to
+error handlers declared *after* the throwing middleware. Both facts are
+covered by tests.
+
+It also cleared every advisory in the request path: `express`,
+`path-to-regexp` (ReDoS), `body-parser`, `send`, `serve-static`, `cookie`,
+and `qs` all report clean afterwards.
 
 ---
 
