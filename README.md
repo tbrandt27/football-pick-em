@@ -163,7 +163,7 @@ openssl rand -hex 32   # SETTINGS_ENCRYPTION_KEY
 
 | Variable | Notes |
 |---|---|
-| `AWS_REGION` | Must match the region the tables live in |
+| `AWS_REGION` | `us-east-1` — must match the region the tables live in |
 | `DYNAMODB_TABLE_PREFIX` | e.g. `football_pickem_` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Omit in AWS — use the instance/task role instead |
 | `USE_LOCALSTACK`, `LOCALSTACK_ENDPOINT` | Point the SDK at LocalStack |

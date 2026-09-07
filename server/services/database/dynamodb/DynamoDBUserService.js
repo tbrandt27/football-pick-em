@@ -1,5 +1,27 @@
 import IUserService from '../interfaces/IUserService.js';
 import db from '../../../models/database.js';
+import { toBoolean } from '../../../utils/coerce.js';
+
+/**
+ * Normalises a raw DynamoDB user item for callers.
+ *
+ * DynamoDB stores is_admin/email_verified as the strings "true"/"false", and
+ * `'false'` is truthy in JS. Any consumer doing `if (user.is_admin)` -- the
+ * admin Users list did exactly that -- reads every non-admin as an admin.
+ * The service interface contract is real booleans, so convert here rather
+ * than making every call site remember.
+ *
+ * @param {Object|null|undefined} user
+ * @returns {Object|null}
+ */
+function normaliseUser(user) {
+  if (!user) return null;
+  return {
+    ...user,
+    is_admin: toBoolean(user.is_admin),
+    email_verified: toBoolean(user.email_verified),
+  };
+}
 
 /**
  * DynamoDB User Service Implementation
@@ -50,11 +72,13 @@ export default class DynamoDBUserService extends IUserService {
     );
 
     // Sort by created_at DESC (DynamoDB doesn't support ORDER BY)
-    return usersWithTeams.sort((a, b) => {
-      const dateA = new Date(a.created_at || 0);
-      const dateB = new Date(b.created_at || 0);
-      return dateB - dateA;
-    });
+    return usersWithTeams
+      .sort((a, b) => {
+        const dateA = new Date(a.created_at || 0);
+        const dateB = new Date(b.created_at || 0);
+        return dateB - dateA;
+      })
+      .map(normaliseUser);
   }
 
   /**
@@ -76,21 +100,21 @@ export default class DynamoDBUserService extends IUserService {
         const teamResult = await this.db._dynamoGet('football_teams', { id: user.favorite_team_id });
         const team = teamResult.Item;
         
-        return {
+        return normaliseUser({
           ...user,
           favorite_team_name: team?.team_name || null,
           favorite_team_city: team?.team_city || null
-        };
+        });
       } catch (error) {
         console.warn(`Could not fetch team for user ${userId}:`, error);
       }
     }
 
-    return {
+    return normaliseUser({
       ...user,
       favorite_team_name: null,
       favorite_team_city: null
-    };
+    });
   }
 
   /**
@@ -101,13 +125,13 @@ export default class DynamoDBUserService extends IUserService {
   async getUserByEmail(email) {
     try {
       // Try GSI email-index for efficient lookup
-      return await this.db._getByEmailGSI('users', email);
+      return normaliseUser(await this.db._getByEmailGSI('users', email));
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
       if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
         console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for email ${email}`);
         const result = await this.db._dynamoScan('users', { email: email.toLowerCase() });
-        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+        return (result.Items && result.Items.length > 0) ? normaliseUser(result.Items[0]) : null;
       }
       throw error;
     }
@@ -372,13 +396,13 @@ export default class DynamoDBUserService extends IUserService {
     try {
       // Try GSI is_admin-index for efficient lookup
       const result = await this.db._dynamoQueryGSI('users', 'is_admin-index', { is_admin: 'true' });
-      return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+      return (result.Items && result.Items.length > 0) ? normaliseUser(result.Items[0]) : null;
     } catch (error) {
       // Fallback to scan if GSI doesn't exist (backward compatibility)
       if (error.name === 'ResourceNotFoundException' || error.name === 'ValidationException') {
         console.log(`[DynamoDB User] GSI not found (${error.name}), falling back to scan for admin user`);
         const result = await this.db._dynamoScan('users', { is_admin: 'true' });
-        return (result.Items && result.Items.length > 0) ? result.Items[0] : null;
+        return (result.Items && result.Items.length > 0) ? normaliseUser(result.Items[0]) : null;
       }
       throw error;
     }
@@ -391,7 +415,7 @@ export default class DynamoDBUserService extends IUserService {
   async getAnyUser() {
     const result = await this.db._dynamoScan('users');
 
-    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
+    return result.Items && result.Items.length > 0 ? normaliseUser(result.Items[0]) : null;
   }
 
   /**

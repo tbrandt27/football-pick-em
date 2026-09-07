@@ -17,6 +17,7 @@ worth more than the diff alone. Everything else is still open.
 | 1.2 | **Rotate the committed secrets.** The code fix is not sufficient; the values remain in git history. |
 | 1.6 | Rate limiting, password-reset email, JWT in `localStorage`, request validation, cross-player pick disclosure |
 | 2.2 | Hot-path DynamoDB scans that should use the GSIs already defined in `infrastructure/` — the top open engineering item |
+| 2.2a | Production GSI audit **[done]**. Remaining: enforce a single `is_admin` encoding at the write boundary; delete two unused GSIs |
 | 2.3 | `getGameBySlug` reads the entire games table |
 | 2.5 | `/api/teams/records` is unreachable (route shadowing) |
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
@@ -191,8 +192,12 @@ applied. Past that, results are truncated with no error. There are
 - `DynamoDBSeasonService.js:248,317` — `_dynamoScan('football_games', { season_id })`
 - `DynamoDBUserService.js:18,392,435` — full `users` scans
 
-`picks` grows as players × games × weeks. Once the table crossed 1 MB,
-leaderboards would quietly drop picks.
+`picks` grows as players × games × weeks.
+
+**This was already happening.** The live table measured **2,959 items /
+1.89 MB** on 2026-09-07 — past the 1 MB Scan page limit. Standings built
+from `_dynamoScan('picks', { game_id })` were silently dropping picks
+before the fix landed, not at some future threshold.
 
 Fixed: `_dynamoScan` now follows `LastEvaluatedKey` to exhaustion,
 accumulating into the same `{ Items, Count, ScannedCount }` shape the 115
@@ -264,6 +269,75 @@ Related: `is_admin-index` is queried with the string `'true'`
 (`DynamoDBUserService.js:374`), which matches how the value is stored —
 correct, but it's the same string-boolean encoding behind §1.1. Consider
 migrating the attribute to a native boolean and updating the GSI.
+
+### 2.2a Production GSI audit and the mixed-type `is_admin` bug **[done]**
+
+Audited against the live tables in `us-east-1` (account `137830278828`) on
+2026-09-07. This replaces the earlier template-based inference with the
+deployed state.
+
+**11 of 12 GSIs the code queries were already deployed.** The one gap was
+`is_admin-index` on `users`, since created and now `ACTIVE`.
+
+Two indexes are deployed that no code path queries — `is_current-index` on
+`seasons` and `commissioner_id-index` on `pickem_games`. Every write to
+those tables pays to maintain them. `is_current-index` is the one the old
+notes flip-flopped over: it was created by hand, then the current-season
+lookup was reworked so it was no longer needed. Safe to delete both.
+
+#### What creating the index exposed
+
+`is_admin` was stored in **three different types** in the same table:
+
+| Count | Stored as |
+|---|---|
+| 16 | `BOOL: false` |
+| 1 | `S: "false"` |
+| 1 | `BOOL: true` — the only real admin |
+
+A GSI only indexes items whose key attribute matches the declared type. The
+index declares `is_admin` as `S`, so it captured exactly one item — the
+`S:"false"` one — and the actual admin was absent. The query the code runs
+returned `Count: 0`.
+
+Creating the index did **not** cause this. The pre-existing scan fallback
+filtered on `S:"true"`, of which there were zero, so it returned `Count: 0`
+too — verified directly. `getFirstAdminUser()` had been returning `null` in
+production since these rows were written. The index made a silent bug
+visible.
+
+Blast radius was small: `getFirstAdminUser` is used only by an admin
+data-repair route that backfills a missing `commissioner_id`, and it already
+degrades to `getAnyUser()`. Authorization was never affected — `requireAdmin`
+does a direct `getUserById` and runs the value through `toBoolean`, which
+reads all three encodings correctly (§1.1).
+
+#### Fix applied
+
+1. **Data normalised** — all 18 rows now store `is_admin` as `S`
+   (`"true"`/`"false"`). The GSI query now returns the admin with
+   `ScannedCount: 1`, a true index hit.
+2. **Service layer normalises on read.** Normalising the data surfaced a
+   *second* bug: `/api/users` returned raw provider rows, and
+   `UsersManager.tsx` does `{userData.is_admin && …}`. With the value as the
+   string `"false"` — truthy — every user rendered an "Admin" badge and a
+   "Remove Admin" button. This was already broken for the one pre-existing
+   string row; normalising made it universal.
+
+   Both `DynamoDBUserService` and `SQLiteUserService` now run rows through a
+   `normaliseUser()` helper on every user-returning read, so the interface
+   contract is real booleans and no caller has to be provider-aware.
+   `test/server/userService.normalise.test.js` covers all encodings
+   including the exact mixed-type shape production was in.
+
+#### Still open
+
+The write path is the root cause and is unfixed. `DynamoDBUserService`
+writes `is_admin: isAdmin ? 'true' : 'false'` while older rows hold `BOOL`,
+and nothing enforces either. Pick one encoding and enforce it at the write
+boundary, or the drift returns. A native `BOOL` is the better target
+long-term — but note that changing it means recreating the GSI with
+`AttributeType` to match, since a GSI key type cannot be altered in place.
 
 ### 2.3 `getGameBySlug` reads the entire games table
 

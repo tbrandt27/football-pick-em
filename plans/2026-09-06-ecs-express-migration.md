@@ -105,11 +105,10 @@ Add an ECR repository plus a GitHub Actions job to build, push, and
 deploy. AWS publishes `aws-actions/amazon-ecs-deploy-express-service`,
 which restores App Runner's push-to-deploy behaviour.
 
-> **Check the region.** The old `support_docs/TODO.md` had an ECR login
-> against **us-east-2**, while `apprunner.yaml` sets `AWS_REGION: us-east-1`.
-> Confirm which region the DynamoDB tables actually live in before
-> creating the ECR repo — ECR and the ECS service should sit in the same
-> region as the tables.
+> **Region: `us-east-1`** (confirmed 2026-09-07). Create the ECR repository
+> and the ECS Express service there, alongside the DynamoDB tables. An old
+> `support_docs/TODO.md` note had an ECR login against us-east-2; disregard
+> it. `apprunner.yaml` already sets `AWS_REGION: us-east-1`.
 
 ## Sizing
 

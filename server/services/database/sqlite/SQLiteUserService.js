@@ -1,5 +1,27 @@
 import IUserService from '../interfaces/IUserService.js';
 import db from '../../../models/database.js';
+import { toBoolean } from '../../../utils/coerce.js';
+
+/**
+ * Normalises a SQLite user row for callers.
+ *
+ * SQLite stores booleans as 0/1. Those happen to be falsy/truthy in JS, so
+ * this is less dangerous than the DynamoDB string encoding -- but the service
+ * interface promises real booleans, and both providers must agree or callers
+ * end up provider-aware. See the DynamoDB twin in
+ * services/database/dynamodb/DynamoDBUserService.js.
+ *
+ * @param {Object|null|undefined} user
+ * @returns {Object|null}
+ */
+function normaliseUser(user) {
+  if (!user) return null;
+  return {
+    ...user,
+    is_admin: toBoolean(user.is_admin),
+    email_verified: toBoolean(user.email_verified),
+  };
+}
 
 /**
  * SQLite User Service Implementation
@@ -10,7 +32,7 @@ export default class SQLiteUserService extends IUserService {
    * @returns {Promise<Array>} Users with team info
    */
   async getAllUsers() {
-    return await db.all(`
+    const rows = await db.all(`
       SELECT 
         u.id,
         u.email,
@@ -27,6 +49,7 @@ export default class SQLiteUserService extends IUserService {
       LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       ORDER BY u.created_at DESC
     `);
+    return (rows || []).map(normaliseUser);
   }
 
   /**
@@ -35,7 +58,7 @@ export default class SQLiteUserService extends IUserService {
    * @returns {Promise<Object|null>} User with team info
    */
   async getUserById(userId) {
-    return await db.get(`
+    return normaliseUser(await db.get(`
       SELECT 
         u.id,
         u.email,
@@ -51,7 +74,7 @@ export default class SQLiteUserService extends IUserService {
       FROM users u
       LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       WHERE u.id = ?
-    `, [userId]);
+    `, [userId]));
   }
 
   /**
