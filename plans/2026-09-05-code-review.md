@@ -23,7 +23,7 @@ worth more than the diff alone. Everything else is still open.
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
 | 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
-| 7 | npm advisories. The Express family cleared with the v5 migration; **`jws`** (weak HMAC verification, reached via `jsonwebtoken`), `axios`, and `nodemailer` remain in the request path, plus AWS SDK moderates |
+| 7 | npm advisories — 38 remaining, but see §7 for which actually apply. The Express family and `jws` are cleared. `axios` is the one worth taking; `nodemailer`, `uuid`, and `sqlite3` are non-applicable or dev-only |
 | 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
 
 Delete this file once the open items are closed or moved.
@@ -925,22 +925,63 @@ Ordered by risk covered per unit of effort:
 
 ## 7. Dependency health
 
-`npm audit` reports **67 vulnerabilities (3 critical, 28 high)** — and
-that's *after* the Astro upgrade. Notable:
+Re-assessed 2026-09-07 after the Express 5 migration. **38 advisories remain
+in production dependencies, but the raw count substantially overstates real
+exposure** — each was checked against how this codebase actually uses the
+package.
 
-- **`jws` — "Improperly Verifies HMAC Signature"** (high). Reached via
-  `jsonwebtoken`. Directly relevant to auth; triage first.
-- `tar` — arbitrary file write via hardlink traversal (critical)
-- `shell-quote`, `fast-xml-parser` (critical)
-- `path-to-regexp` ReDoS, `body-parser` (high) — both cleared by the
-  Express 5 migration
-- `axios` DoS via missing size check (high) — used by `espnApi`
+### Cleared
 
-Most are transitive dev-tool dependencies, but the `jws`, `axios`, and
-Express-family ones sit in the request path. Recommend `npm audit fix`
-first, then triage the remainder against the CI audit job.
+- **The whole Express family** — `express`, `path-to-regexp` (ReDoS),
+  `body-parser`, `send`, `serve-static`, `cookie`, `qs` — all clean after the
+  v5 migration (§3).
+- **`jws` (high, CVE-2025-65945, "Improperly Verifies HMAC Signature").**
+  Bumped `jsonwebtoken` 9.0.2 → 9.0.3, which moves to `jws@4.0.1`.
 
----
+  Worth recording that this **never applied here.** The advisory affects only
+  callers of `jws.createVerify()` that derive the HMAC secret from
+  user-supplied data in the token header or payload. `jsonwebtoken` uses
+  `jws.verify()` (`verify.js:165`; `createVerify` appears nowhere in the
+  package), and this app passes a static secret from `configService`. The
+  advisory text excludes `jsonwebtoken` users explicitly. Patched to clear CI
+  noise, not to close a hole.
+
+  While in there, the auth path was tested directly: `alg:none` rejected
+  ("jwt signature is required"), wrong-secret rejected, expired token
+  rejected, valid token accepted. `jsonwebtoken` 9 restricts a string secret
+  to HMAC, so the missing `algorithms` option is not exploitable — though
+  passing `algorithms: ['HS256']` explicitly is still worth doing as defence
+  in depth.
+
+### Worth taking
+
+- **`axios` 1.11.0 → 1.20.0 (high, 29 advisories).** Far behind, and the
+  single biggest reduction available. Mostly prototype-pollution gadgets,
+  SSRF, and proxy-credential leaks — all of which need attacker-influenced
+  request construction. Here `axios` is used only by `espnApi.js` against the
+  hardcoded `https://site.api.espn.com/...` base URL, with no proxy
+  configuration and no user input reaching the URL, so live exposure is low.
+  It is a same-major bump, so the risk of taking it is also low.
+
+### Checked and not applicable
+
+- **`nodemailer` 7.0.5 (high, 8 advisories).** The CRLF header-injection
+  surface looked real — `emailService.js:288` interpolates the user-supplied
+  `gameName` straight into the Subject header. Tested against a
+  `streamTransport` and the raw MIME shows the subject Q-encoded, with the
+  injected `Bcc:` and `X-Injected:` lines neutralised. Upgrading means three
+  majors (→ 10.x); not urgent on this evidence.
+- **`uuid` (moderate).** The advisory is a missing buffer bounds check in
+  v3/v5/v6 when a `buf` argument is supplied. All 32 call sites here are bare
+  `uuidv4()`. Not affected.
+- **`sqlite3` (high).** Local development only — production runs DynamoDB
+  (`DATABASE_TYPE: auto`). Major bump, low priority.
+- **AWS SDK (moderate ×3, via `fast-xml-parser`).** 3.873 → 3.1127 is a large
+  minor jump but v3 minors are routine. Worth doing on its own.
+
+> Do **not** run `npm audit fix` unexamined here — the dry run reports
+> "removed 506 packages", which is not a change to apply without reading it.
+> Upgrade the direct dependencies deliberately instead.
 
 ## 8. App Runner → ECS Express Mode
 
