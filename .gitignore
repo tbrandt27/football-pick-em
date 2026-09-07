@@ -49,3 +49,6 @@ coverage/
 # eslint cache
 .eslintcache
 database_current.sqlite
+
+# generated LocalStack dev secrets (never commit)
+.localstack-dev-secrets.json
