@@ -1,10 +1,31 @@
 # Code review & upgrade notes
 
-Branch: `chore/astro-upgrade-tooling` · Reviewed at `801311e` · 2026-09-05
+**Status:** In progress — the `[done]` items shipped, the rest is open.
 
-Scope: full repo (~31k lines across `server/`, `src/`, `scripts/`, `infrastructure/`).
-Sections marked **[done]** were changed on this branch. Everything else is a
-recommendation with the evidence behind it.
+Reviewed at `801311e` on 2026-09-05. Scope: full repo (~31k lines across
+`server/`, `src/`, `scripts/`, `infrastructure/`).
+
+Sections marked **[done]** shipped in
+[#6](https://github.com/tbrandt27/football-pick-em/pull/6) and are kept
+here for the evidence trail — the reproduction steps and reasoning are
+worth more than the diff alone. Everything else is still open.
+
+## Still open
+
+| § | Item |
+|---|---|
+| 1.2 | **Rotate the committed secrets.** The code fix is not sufficient; the values remain in git history. |
+| 1.6 | Rate limiting, password-reset email, JWT in `localStorage`, request validation, cross-player pick disclosure |
+| 2.2 | Hot-path DynamoDB scans that should use the GSIs already defined in `infrastructure/` — the top open engineering item |
+| 2.3 | `getGameBySlug` reads the entire games table |
+| 2.5 | `/api/teams/records` is unreachable (route shadowing) |
+| 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
+| 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
+| 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
+| 7 | 67 npm advisories, `jws` and `axios` being the ones in the request path |
+| 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
+
+Delete this file once the open items are closed or moved.
 
 ---
 
