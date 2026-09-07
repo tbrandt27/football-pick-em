@@ -1,6 +1,6 @@
 import IUserService from '../interfaces/IUserService.js';
 import db from '../../../models/database.js';
-import { toBoolean } from '../../../utils/coerce.js';
+import { toBoolean, toFlagString } from '../../../utils/coerce.js';
 
 /**
  * Normalises a raw DynamoDB user item for callers.
@@ -164,8 +164,8 @@ export default class DynamoDBUserService extends IUserService {
       last_name: lastName,
       favorite_team_id: favoriteTeamId || null,
       email_verification_token: emailVerificationToken,
-      email_verified: emailVerified ? 'true' : 'false',
-      is_admin: isAdmin ? 'true' : 'false',
+      email_verified: toFlagString(emailVerified),
+      is_admin: toFlagString(isAdmin),
       created_at: now,
       updated_at: now
     };
@@ -201,7 +201,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateAdminStatus(userId, isAdmin) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      is_admin: isAdmin ? 'true' : 'false'
+      is_admin: toFlagString(isAdmin)
     });
   }
 
@@ -213,7 +213,7 @@ export default class DynamoDBUserService extends IUserService {
    */
   async updateEmailVerified(userId, emailVerified) {
     await this.db._dynamoUpdate('users', { id: userId }, {
-      email_verified: emailVerified ? 'true' : 'false'
+      email_verified: toFlagString(emailVerified)
     });
   }
 
@@ -437,6 +437,17 @@ export default class DynamoDBUserService extends IUserService {
       // DynamoDB needs null instead of undefined to clear the field
       updateItem.favorite_team_id = updates.favoriteTeamId || null;
     }
+    // Must be handled here: routes/auth.js promotes a user via
+    // updateUserDynamic(id, { isAdmin: true }) when redeeming an admin
+    // invitation. Without these branches updateItem stayed empty, the method
+    // threw 'No valid fields to update', auth.js swallowed it per-invitation,
+    // and the user was told they were an admin while the row never changed.
+    if (updates.isAdmin !== undefined) {
+      updateItem.is_admin = toFlagString(updates.isAdmin);
+    }
+    if (updates.emailVerified !== undefined) {
+      updateItem.email_verified = toFlagString(updates.emailVerified);
+    }
 
     if (Object.keys(updateItem).length === 0) {
       throw new Error('No valid fields to update');
@@ -444,11 +455,9 @@ export default class DynamoDBUserService extends IUserService {
 
     await this.db._dynamoUpdate('users', { id: userId }, updateItem);
 
-    // Return updated user data - convert to format expected by auth routes
-    const userResult = await this.db._dynamoGet('users', { id: userId });
-    const user = userResult.Item;
-
-    return user;
+    // Return through getUserById so the caller gets normalised booleans and
+    // the joined team fields, rather than a raw DynamoDB item.
+    return await this.getUserById(userId);
   }
 
   /**

@@ -1,6 +1,6 @@
 import IUserService from '../interfaces/IUserService.js';
 import db from '../../../models/database.js';
-import { toBoolean } from '../../../utils/coerce.js';
+import { toBoolean, toFlagInt } from '../../../utils/coerce.js';
 
 /**
  * Normalises a SQLite user row for callers.
@@ -117,8 +117,8 @@ export default class SQLiteUserService extends IUserService {
       lastName,
       favoriteTeamId || null,
       emailVerificationToken,
-      emailVerified ? 1 : 0,
-      isAdmin ? 1 : 0
+      toFlagInt(emailVerified),
+      toFlagInt(isAdmin)
     ]);
 
     return await this.getUserById(id);
@@ -153,7 +153,7 @@ export default class SQLiteUserService extends IUserService {
       UPDATE users 
       SET is_admin = ?, updated_at = datetime('now')
       WHERE id = ?
-    `, [isAdmin ? 1 : 0, userId]);
+    `, [toFlagInt(isAdmin), userId]);
   }
 
   /**
@@ -167,7 +167,7 @@ export default class SQLiteUserService extends IUserService {
       UPDATE users
       SET email_verified = ?, updated_at = datetime('now')
       WHERE id = ?
-    `, [emailVerified ? 1 : 0, userId]);
+    `, [toFlagInt(emailVerified), userId]);
   }
 
   /**
@@ -309,6 +309,18 @@ export default class SQLiteUserService extends IUserService {
       updateFields.push('favorite_team_id = ?');
       values.push(updates.favoriteTeamId || null);
     }
+    // Mirrors the DynamoDB twin: routes/auth.js promotes a user via
+    // updateUserDynamic(id, { isAdmin: true }) when redeeming an admin
+    // invitation, and without these branches the method threw
+    // 'No valid fields to update'.
+    if (updates.isAdmin !== undefined) {
+      updateFields.push('is_admin = ?');
+      values.push(toFlagInt(updates.isAdmin));
+    }
+    if (updates.emailVerified !== undefined) {
+      updateFields.push('email_verified = ?');
+      values.push(toFlagInt(updates.emailVerified));
+    }
 
     if (updateFields.length === 0) {
       throw new Error('No valid fields to update');
@@ -323,8 +335,10 @@ export default class SQLiteUserService extends IUserService {
       values
     );
 
-    // Return updated user data
-    return await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    // Return through getUserById: normalised booleans, joined team fields, and
+    // no password hash in the payload (this value is sent to the client by
+    // routes/auth.js).
+    return await this.getUserById(userId);
   }
 
   /**

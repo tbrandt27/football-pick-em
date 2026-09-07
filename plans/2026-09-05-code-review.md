@@ -345,14 +345,46 @@ reads all three encodings correctly (§1.1).
    `test/server/userService.normalise.test.js` covers all encodings
    including the exact mixed-type shape production was in.
 
+#### Write path **[done]**
+
+The encoding is now produced in exactly one place per provider.
+`server/utils/coerce.js` gained `toFlagString()` (DynamoDB `"true"`/`"false"`)
+and `toFlagInt()` (SQLite `1`/`0`), both deriving from `toBoolean`, so they
+accept whatever a caller already holds. Every write site in
+`DynamoDBUserService`, `SQLiteUserService`, and `databaseInitializer` routes
+through them; no ad-hoc `? 'true' : 'false'` or `? 1 : 0` remains.
+
+Fixing this surfaced a **third, unrelated bug**. `routes/auth.js` redeems an
+admin invitation with:
+
+```js
+await userService.updateUserDynamic(userId, { isAdmin: true });
+```
+
+Neither provider's `updateUserDynamic` handled `isAdmin` — it recognised only
+`firstName`, `lastName`, and `favoriteTeamId`. With no other field present
+the update object stayed empty and the method threw
+`'No valid fields to update'`. `auth.js` catches that inside its
+per-invitation `try`, logs, and continues — so registration **succeeded**,
+the response said *"You've been granted admin privileges"* and returned
+`isAdmin: true`, and the row was never touched. The user then saw admin UI
+while every admin endpoint returned 403.
+
+Both providers now handle `isAdmin` and `emailVerified` in
+`updateUserDynamic`, and both return through `getUserById` so callers get
+normalised booleans (and, on SQLite, no password hash — that method
+previously returned `SELECT *`).
+
+Covered by `test/server/userService.write.test.js` (14 tests), including a
+regression guard that `updateUserDynamic(id, { isAdmin: true })` no longer
+throws and does write the flag.
+
 #### Still open
 
-The write path is the root cause and is unfixed. `DynamoDBUserService`
-writes `is_admin: isAdmin ? 'true' : 'false'` while older rows hold `BOOL`,
-and nothing enforces either. Pick one encoding and enforce it at the write
-boundary, or the drift returns. A native `BOOL` is the better target
-long-term — but note that changing it means recreating the GSI with
-`AttributeType` to match, since a GSI key type cannot be altered in place.
+If the encoding is ever migrated to a native `BOOL`, the `is_admin-index`
+GSI must be **recreated** rather than altered — a GSI key's `AttributeType`
+cannot be changed in place. Not worth doing on its own; fold it into any
+future table rebuild.
 
 ### 2.3 `getGameBySlug` reads the entire games table
 
