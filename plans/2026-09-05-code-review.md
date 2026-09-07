@@ -23,7 +23,7 @@ worth more than the diff alone. Everything else is still open.
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
 | 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
-| 7 | npm advisories — 38 remaining, but see §7 for which actually apply. The Express family and `jws` are cleared. `axios` is the one worth taking; `nodemailer`, `uuid`, and `sqlite3` are non-applicable or dev-only |
+| 7 | npm advisories — 35 remaining, but see §7 for which actually apply. Express family, `jws`, and `axios` are cleared. `nodemailer` and `uuid` were verified non-applicable, `sqlite3` is dev-only; the AWS SDK moderates are the only real ones left |
 | 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
 
 Delete this file once the open items are closed or moved.
@@ -925,13 +925,14 @@ Ordered by risk covered per unit of effort:
 
 ## 7. Dependency health
 
-Re-assessed 2026-09-07 after the Express 5 migration. **38 advisories remain
+Re-assessed 2026-09-07 after the Express 5 migration. **35 advisories remain
 in production dependencies, but the raw count substantially overstates real
 exposure** — each was checked against how this codebase actually uses the
 package.
 
 ### Cleared
 
+- **`axios`** — see below.
 - **The whole Express family** — `express`, `path-to-regexp` (ReDoS),
   `body-parser`, `send`, `serve-static`, `cookie`, `qs` — all clean after the
   v5 migration (§3).
@@ -953,15 +954,21 @@ package.
   passing `algorithms: ['HS256']` explicitly is still worth doing as defence
   in depth.
 
-### Worth taking
-
-- **`axios` 1.11.0 → 1.20.0 (high, 29 advisories).** Far behind, and the
-  single biggest reduction available. Mostly prototype-pollution gadgets,
-  SSRF, and proxy-credential leaks — all of which need attacker-influenced
-  request construction. Here `axios` is used only by `espnApi.js` against the
+- **`axios` 1.11.0 → 1.20.0 (was high, 29 advisories) — done.** The single
+  biggest reduction available. Mostly prototype-pollution gadgets, SSRF, and
+  proxy-credential leaks, all needing attacker-influenced request
+  construction; here `axios` is used only by `espnApi.js` against the
   hardcoded `https://site.api.espn.com/...` base URL, with no proxy
-  configuration and no user input reaching the URL, so live exposure is low.
-  It is a same-major bump, so the risk of taking it is also low.
+  configuration and no user input reaching the URL, so live exposure was low
+  either way.
+
+  `espnApi.js` is the only consumer and uses just `axios.create()`,
+  `instance.get()`, and `instance.defaults.http(s)Agent` — all stable across
+  1.x. Verified against the **live** ESPN API after the bump:
+  `fetchCurrentSeason` → `{year: "2026", type: 2}`, `getCurrentSeasonStatus`
+  → Regular Season week 1, `fetchWeeklyGames(1, 2, 2025)` → 16 games with
+  competitors intact, response cache working, and `/api/seasons/status`
+  returning 200 through the running app with no connection errors.
 
 ### Checked and not applicable
 
