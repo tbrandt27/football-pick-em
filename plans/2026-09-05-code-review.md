@@ -279,11 +279,26 @@ deployed state.
 **11 of 12 GSIs the code queries were already deployed.** The one gap was
 `is_admin-index` on `users`, since created and now `ACTIVE`.
 
-Two indexes are deployed that no code path queries — `is_current-index` on
-`seasons` and `commissioner_id-index` on `pickem_games`. Every write to
-those tables pays to maintain them. `is_current-index` is the one the old
-notes flip-flopped over: it was created by hand, then the current-season
-lookup was reworked so it was no longer needed. Safe to delete both.
+Two indexes were deployed that no code path queries — **both since deleted**
+(2026-09-07), along with their definitions in
+`infrastructure/dynamodb-tables-optimized.yml` and
+`scripts/dev/setup-localstack.js` so a redeploy cannot resurrect them:
+
+- `is_current-index` on `seasons` — declared its key as `S` while the app
+  writes `is_current` as a native `BOOL`, so it indexed **0 of 1** items. It
+  never worked. This is the index the old notes flip-flopped over: created by
+  hand from console instructions, then the current-season lookup was reworked
+  so it was not needed. The type mismatch means it could not have helped
+  either way.
+- `commissioner_id-index` on `pickem_games` — functional (5 of 5 items
+  indexed) but queried by nothing.
+
+Removing them also required dropping the now-orphaned `is_current` and
+`commissioner_id` entries from `AttributeDefinitions`: CloudFormation rejects
+a table whose attribute definitions are not referenced by some key schema.
+
+**Production and code are now exactly aligned — 12 GSIs required, 12
+deployed, none missing, none unused.**
 
 #### What creating the index exposed
 

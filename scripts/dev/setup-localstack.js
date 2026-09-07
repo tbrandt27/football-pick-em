@@ -102,18 +102,9 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'commissioner_id', AttributeType: 'S' },
       { AttributeName: 'season_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
-      {
-        IndexName: 'commissioner_id-index',
-        KeySchema: [
-          { AttributeName: 'commissioner_id', KeyType: 'HASH' }
-        ],
-        Projection: { ProjectionType: 'ALL' },
-        BillingMode: 'PAY_PER_REQUEST'
-      },
       {
         IndexName: 'season_id-index',
         KeySchema: [

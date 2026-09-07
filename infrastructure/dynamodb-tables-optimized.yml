@@ -93,21 +93,12 @@ Resources:
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
-        - AttributeName: commissioner_id
-          AttributeType: S
         - AttributeName: season_id
           AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
       GlobalSecondaryIndexes:
-        # GSI for commissioner lookups
-        - IndexName: commissioner_id-index
-          KeySchema:
-            - AttributeName: commissioner_id
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
         # GSI for season-based queries
         - IndexName: season_id-index
           KeySchema:
@@ -178,8 +169,6 @@ Resources:
           AttributeType: S
         - AttributeName: season
           AttributeType: S
-        - AttributeName: is_current
-          AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
@@ -188,13 +177,6 @@ Resources:
         - IndexName: season-index
           KeySchema:
             - AttributeName: season
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-        # GSI for current season queries - CRITICAL for getCurrentSeason()
-        - IndexName: is_current-index
-          KeySchema:
-            - AttributeName: is_current
               KeyType: HASH
           Projection:
             ProjectionType: ALL
