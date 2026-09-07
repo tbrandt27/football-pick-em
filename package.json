@@ -42,9 +42,9 @@
   "dependencies": {
     "@astrojs/node": "^11.1.5",
     "@astrojs/react": "^6.0.5",
-    "@aws-sdk/client-dynamodb": "^3.873.0",
-    "@aws-sdk/client-secrets-manager": "^3.873.0",
-    "@aws-sdk/lib-dynamodb": "^3.873.0",
+    "@aws-sdk/client-dynamodb": "^3.1127.0",
+    "@aws-sdk/client-secrets-manager": "^3.1127.0",
+    "@aws-sdk/lib-dynamodb": "^3.1127.0",
     "@heroicons/react": "^2.2.0",
     "@nanostores/react": "^1.0.0",
     "@tailwindcss/vite": "^4.3.3",

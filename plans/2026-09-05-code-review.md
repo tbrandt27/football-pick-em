@@ -23,7 +23,7 @@ worth more than the diff alone. Everything else is still open.
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
 | 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
-| 7 | npm advisories — 35 remaining, but see §7 for which actually apply. Express family, `jws`, and `axios` are cleared. `nodemailer` and `uuid` were verified non-applicable, `sqlite3` is dev-only; the AWS SDK moderates are the only real ones left |
+| 7 | npm advisories — **15 remaining, down from 67**. Express family, `jws`, `axios`, and the AWS SDK are cleared. 13 of the 15 left are `sqlite3`'s build toolchain (dev-only, incl. the last critical); `nodemailer` and `uuid` were verified non-applicable. See §7 |
 | 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
 
 Delete this file once the open items are closed or moved.
@@ -925,14 +925,14 @@ Ordered by risk covered per unit of effort:
 
 ## 7. Dependency health
 
-Re-assessed 2026-09-07 after the Express 5 migration. **35 advisories remain
-in production dependencies, but the raw count substantially overstates real
-exposure** — each was checked against how this codebase actually uses the
+Re-assessed 2026-09-07 after the Express 5 migration. **15 advisories remain
+in production dependencies (down from 67 at the start of this work), and the
+raw count substantially overstates real exposure** — each was checked against how this codebase actually uses the
 package.
 
 ### Cleared
 
-- **`axios`** — see below.
+- **AWS SDK** and **`axios`** — see below.
 - **The whole Express family** — `express`, `path-to-regexp` (ReDoS),
   `body-parser`, `send`, `serve-static`, `cookie`, `qs` — all clean after the
   v5 migration (§3).
@@ -981,10 +981,35 @@ package.
 - **`uuid` (moderate).** The advisory is a missing buffer bounds check in
   v3/v5/v6 when a `buf` argument is supplied. All 32 call sites here are bare
   `uuidv4()`. Not affected.
-- **`sqlite3` (high).** Local development only — production runs DynamoDB
-  (`DATABASE_TYPE: auto`). Major bump, low priority.
-- **AWS SDK (moderate ×3, via `fast-xml-parser`).** 3.873 → 3.1127 is a large
-  minor jump but v3 minors are routine. Worth doing on its own.
+- **`sqlite3` (high) — the entire remaining tail.** 13 of the 15 advisories
+  left are `sqlite3`'s native-build toolchain:
+  `sqlite3@5.1.7 → node-gyp@8.4.1 → make-fetch-happen → cacache → tar`
+  (plus `minimatch`, `brace-expansion`, `ip-address`, `socks`,
+  `http-proxy-agent`, `@tootallnate/once`, `tar-fs`, `picomatch`). That
+  includes the only remaining **critical** (`tar`).
+
+  These are build-time dependencies of a package used **only in local
+  development** — production runs DynamoDB via `DATABASE_TYPE: auto`. Bumping
+  `sqlite3` to 6.x is a major and would very likely clear all 13, leaving just
+  `nodemailer` and `uuid`, both already verified non-applicable. Worth doing,
+  but it is a dev-tooling change, not a production exposure.
+- **AWS SDK — done.** `client-dynamodb`, `lib-dynamodb`, and
+  `client-secrets-manager` moved together 3.873/3.876 → **3.1127.0**
+  (they share `@aws-sdk/core`, which deduped to a single copy afterwards).
+  This cleared **20** advisories, the whole `fast-xml-parser` chain included.
+
+  Verified against **live** DynamoDB in `us-east-1`: `GetCommand`,
+  paginated `Scan`, and a `Query` on `is_admin-index` all correct, with
+  `lib-dynamodb` still unmarshalling to native types (strings as strings,
+  `week` as a number, nested lists intact) rather than `{S: …}` wrappers.
+  Writes were exercised on LocalStack against a throwaway table —
+  `CreateTable` with a GSI, `Put`, `Get`, `Update`, `Query`, `Delete`, then
+  cleanup — since production writes were not worth risking for a version bump.
+
+  > Incidental confirmation of §2.1: scanning the real `picks` table reported
+  > `itemCount: 2959, pages: 2`. The table genuinely spans two Scan pages, so
+  > before the pagination fix every standings query was returning page one and
+  > silently discarding the rest. That was live data loss, not a future risk.
 
 > Do **not** run `npm audit fix` unexamined here — the dry run reports
 > "removed 506 packages", which is not a change to apply without reading it.
