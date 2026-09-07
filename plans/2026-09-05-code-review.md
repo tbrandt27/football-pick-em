@@ -16,9 +16,9 @@ worth more than the diff alone. Everything else is still open.
 |---|---|
 | 1.2 | **Rotate the committed secrets.** The code fix is not sufficient; the values remain in git history. |
 | 1.6 | Rate limiting, password-reset email, JWT in `localStorage`, request validation, cross-player pick disclosure |
-| 2.2 | Hot-path DynamoDB scans that should use the GSIs already defined in `infrastructure/` — the top open engineering item |
+| ~~2.2~~ | **Closed — was already resolved.** Measured against production: every hot path already queries a GSI, zero scans. The remaining scans are correct (unfiltered reads, delete cascades that need consistency, or filters no GSI covers). See §2.2 |
 | ~~2.2a~~ | **Closed.** GSI audit, unused-index cleanup, and write-boundary encoding all shipped. Zero admin invitations were ever issued in production, so the promotion bug affected no real user. |
-| 2.3 | `getGameBySlug` reads the entire games table |
+| 2.3 | `getGameBySlug` reads the entire games table — **SQLite only**; the DynamoDB path is bounded via `user_id-index`, and SQLite is dev-only. Low priority. Slug collisions remain the real issue |
 | 2.5 | `/api/teams/records` is unreachable (route shadowing) |
 | 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
 | 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
@@ -219,7 +219,7 @@ expressions surviving onto continuation pages, `ScannedCount` summing,
 ordering across page boundaries, an all-filtered-out page that still has
 more to scan, mid-scan error propagation, and the ceiling warning.
 
-### 2.2 Scans on hot paths where GSIs already exist — now the top open item
+### 2.2 Scans on hot paths where GSIs already exist **[done — was already resolved]**
 
 > **Which CloudFormation template is authoritative.** Recovered from
 > `support_docs/` before those notes were deleted, and re-verified against
@@ -257,18 +257,51 @@ more to scan, mid-scan error propagation, and the ceiling warning.
 
 
 
-`infrastructure/dynamodb-tables-optimized.yml` defines `email-index`,
-`game_id-index`, `season_id-index`, `is_admin-index` and more. The
-provider has `_dynamoQueryGSI` and uses it in a few places — but
-`getUserByEmail` (called on **every login**) still does
-`_dynamoScan('users', { email })`. Route the hot paths through the
-existing indexes; the cost and latency win is large and needs no infra
-change.
+**This section was wrong.** It claimed `getUserByEmail` scans the users
+table on every login. It does not — it calls `_getByEmailGSI` first and only
+scans if that throws. The original reading came from grepping for
+`_dynamoScan` without checking whether each hit sat inside a `catch`.
 
-Related: `is_admin-index` is queried with the string `'true'`
-(`DynamoDBUserService.js:374`), which matches how the value is stored —
-correct, but it's the same string-boolean encoding behind §1.1. Consider
-migrating the attribute to a native boolean and updating the GSI.
+Measured on 2026-09-07 by wrapping the provider's access primitives and
+exercising the real service methods against production:
+
+| Hot path | Access pattern | Scans |
+|---|---|---|
+| `getSeasonGames` | `season_id-index` | 0 |
+| `getSeasonGameCount` | `season_id-index` | 0 |
+| `getUserGames` | `user_id-index` | 0 |
+| `getUserByEmail` | `email-index` | 0 |
+| `getFirstAdminUser` | `is_admin-index` | 0 |
+| `getGamePicksSummary` | `game_id-index` | 0 |
+| `getGameBySlug` | `user_id-index`, then bounded to the user's own games | 0 |
+
+**Every hot path already queries a GSI.** The one genuinely missing index was
+`is_admin-index`, added in §2.2a; with all 12 required indexes deployed the
+scan fallbacks are unreachable.
+
+Of the 67 `_dynamoScan` call sites, 29 look "fixable" against a deployed GSI,
+but on inspection they are all one of:
+
+- **GSI fallbacks** inside a `catch` — correct safety nets, now unreachable.
+- **Unfiltered scans** (`getAllUsers`, `getAllSeasons`, `getAllGames`) — a
+  Scan *is* the right operation for "fetch everything"; no GSI helps.
+- **Delete cascades** (`deleteGame` sweeping picks, standings, invitations,
+  participants). These must **stay** scans: a GSI is eventually consistent and
+  cannot use `ConsistentRead`, so a Query could miss a just-written row and
+  orphan it. This is the reason a blanket scan→Query rewrite would be a bug,
+  not an optimisation.
+- **Filters with no covering GSI** — `favorite_team_id`, `home_team_id` /
+  `away_team_id`, `team_conference`, `category`, `password_reset_token`,
+  `is_current`, `commissioner_id`. All on tables of 1–33 rows, where a GSI
+  would cost more in write amplification than it saves.
+
+`getSeasonByYear` also scans deliberately: `seasons` holds one row, so a Scan
+is cheaper than a Query, and the code says so.
+
+Nothing to change. **The lesson worth keeping is the measurement technique** —
+counting `_dynamoScan` occurrences statically overstated the problem by
+roughly 29 sites; wrapping the provider and running the real code paths gave
+the answer in minutes.
 
 ### 2.2a Production GSI audit and the mixed-type `is_admin` bug **[done]**
 
