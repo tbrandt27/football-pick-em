@@ -151,9 +151,17 @@ export default class DynamoDBNFLDataService extends INFLDataService {
       throw new Error('Football game not found');
     }
 
-    const updateData = {
-      ...updates
-    };
+    // Drop null/undefined so an update means "change these fields", never
+    // "clear the rest". This matters for the betting-line columns: ESPN removes
+    // the odds once a game completes, so a post-kickoff score sync arrives with
+    // spread: null and must not wipe the line the game was played against.
+    const updateData = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== null && v !== undefined)
+    );
+
+    if (Object.keys(updateData).length === 0) {
+      return existingGameResult.Item;
+    }
 
     await this.db._dynamoUpdate('football_games', { id: gameId }, updateData);
 

@@ -331,6 +331,10 @@ export interface User {
   favoriteTeamId?: string;
   isAdmin: boolean;
   emailVerified: boolean;
+  /** Opts the user out of non-essential mail, e.g. weekly pick reminders. */
+  disableEmails?: boolean;
+  /** IANA identifier. Null/absent means the league default (Eastern). */
+  timezone?: string | null;
 }
 
 export interface RegisterData {
@@ -416,6 +420,17 @@ export interface NFLGame {
   id: string;
   season_id: string;
   week: number;
+  /**
+   * Betting line, captured when the game was synced. ESPN only publishes odds
+   * while a game is upcoming, so these are persisted at sync time and are null
+   * for games that were already complete the first time they were seen.
+   * `spread` is negative and relative to `favorite_team_id`.
+   */
+  spread?: number | null;
+  over_under?: number | null;
+  favorite_team_id?: string | null;
+  odds_provider?: string | null;
+  odds_updated_at?: string | null;
   home_team_id: string;
   away_team_id: string;
   home_score: number;

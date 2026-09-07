@@ -159,27 +159,38 @@ export default class SQLiteNFLDataService extends INFLDataService {
       throw new Error('Football game not found');
     }
 
-    const {
-      home_score, away_score, status, game_date, start_time, season_type, scores_updated_at
-    } = updates;
+    // Columns this method is allowed to write. Anything outside the list used
+    // to be destructured away silently, which is how the betting-line fields
+    // were accepted by callers and then dropped on the floor.
+    const WRITABLE = [
+      'home_score', 'away_score', 'status', 'game_date', 'start_time', 'season_type',
+      'spread', 'over_under', 'favorite_team_id', 'odds_provider', 'odds_updated_at',
+    ];
 
-    await db.run(`
-      UPDATE football_games
-      SET home_score = ?, away_score = ?, status = ?,
-          game_date = ?, start_time = ?, season_type = ?, updated_at = datetime('now'), scores_updated_at = datetime('now')
-      WHERE id = ?
-    `, [
-      home_score || existingGame.home_score,
-      away_score || existingGame.away_score,
-      status || existingGame.status,
-      game_date || existingGame.game_date,
-      start_time || existingGame.start_time,
-      season_type || existingGame.season_type,
-      gameId
-    ]);
+    const sets = [];
+    const values = [];
+    for (const col of WRITABLE) {
+      // Absent or null means "leave alone", never "clear". That matters for the
+      // odds columns: ESPN removes the line once a game completes, and a sync
+      // after kickoff must not wipe the spread the game was played against.
+      if (updates[col] === undefined || updates[col] === null) continue;
+      sets.push(`${col} = ?`);
+      values.push(updates[col]);
+    }
+
+    sets.push("updated_at = datetime('now')");
+    if (updates.scores_updated_at !== undefined) {
+      sets.push("scores_updated_at = datetime('now')");
+    }
+
+    if (!sets.length) return existingGame;
+
+    values.push(gameId);
+    await db.run(`UPDATE football_games SET ${sets.join(', ')} WHERE id = ?`, values);
 
     return await db.get('SELECT * FROM football_games WHERE id = ?', [gameId]);
   }
+
 
   /**
    * Get current season (from seasons table)

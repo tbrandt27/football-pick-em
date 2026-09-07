@@ -725,6 +725,33 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
     return favoriteTeam || defaultTeam;
   };
 
+  /**
+   * Formats the stored betting line the way it is normally read: the favourite's
+   * code with its spread, e.g. "KC -3.5", plus the over/under.
+   *
+   * Returns null when no line was captured -- ESPN only publishes odds while a
+   * game is upcoming, so games already complete on first sync have none and
+   * nothing should render for them.
+   */
+  const formatLine = (footballGame: NFLGame): string | null => {
+    const { spread, over_under: total } = footballGame;
+    if (spread === null || spread === undefined) return null;
+
+    const favouriteCode =
+      footballGame.favorite_team_id === footballGame.home_team_id
+        ? footballGame.home_team_code
+        : footballGame.favorite_team_id === footballGame.away_team_id
+          ? footballGame.away_team_code
+          : null;
+
+    // A true pick'em has no favourite to name.
+    const spreadText =
+      spread === 0 ? 'EVEN' : `${favouriteCode ? favouriteCode + ' ' : ''}${spread}`;
+    const totalText = total === null || total === undefined ? '' : ` \u00b7 O/U ${total}`;
+    return `${spreadText}${totalText}`;
+  };
+
+
   // Render team with error handling
   const renderTeam = (footballGame: NFLGame, isHome: boolean) => {
     try {
@@ -1153,6 +1180,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
+                          {formatLine(footballGame) && (
+                            <span
+                              className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-semibold"
+                              title={`Betting line${footballGame.odds_provider ? ` (${footballGame.odds_provider})` : ''}, captured when the game was synced`}
+                            >
+                              {formatLine(footballGame)}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm">
                           {pickResult === 'correct' && (
@@ -1364,10 +1399,11 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                         </div>
                         {tiebreakerGame === footballGame.id && (
                           <div className="ml-6">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label htmlFor={`tiebreaker-points-${footballGame.id}`} className="block text-sm font-medium text-gray-700 mb-1">
                               Total Points
                             </label>
                             <input
+                              id={`tiebreaker-points-${footballGame.id}`}
                               type="number"
                               min="0"
                               max="200"

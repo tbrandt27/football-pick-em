@@ -439,10 +439,10 @@ const SeasonsManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Create New Season</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="seasonsmanager-season-year">
                     Season Year
                   </label>
-                  <input
+                  <input id="seasonsmanager-season-year"
                     type="number"
                     value={newSeasonYear}
                     onChange={(e) => setNewSeasonYear(parseInt(e.target.value))}
@@ -468,7 +468,7 @@ const SeasonsManager: React.FC = () => {
                 </button>
                 <button
                   onClick={createSeason}
-                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning transition-colors"
+                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning-ink transition-colors"
                 >
                   Create Season
                 </button>
@@ -525,7 +525,7 @@ const SeasonsManager: React.FC = () => {
                 <button
                   onClick={confirmDelete}
                   disabled={deleting || seasonToDelete.game_count > 0}
-                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? (
                     <span className="flex items-center space-x-2">

@@ -494,7 +494,7 @@ const AdminDashboard: React.FC = () => {
                 <button
                   onClick={handleUpdateScores}
                   disabled={syncLoading}
-                  className="bg-success text-white px-4 py-2 rounded-lg hover:bg-success disabled:opacity-50 transition-colors"
+                  className="bg-success text-white px-4 py-2 rounded-lg hover:bg-success-ink disabled:opacity-50 transition-colors"
                 >
                   {syncLoading ? 'Updating...' : 'Update Scores'}
                 </button>
@@ -517,14 +517,14 @@ const AdminDashboard: React.FC = () => {
                       <button
                         onClick={() => handleSyncESPN(currentSeason.id)}
                         disabled={syncLoading}
-                        className="block w-full bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand disabled:opacity-50 transition-colors"
+                        className="block w-full bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-hover disabled:opacity-50 transition-colors"
                       >
                         {syncLoading ? 'Syncing...' : 'Sync Full Schedule'}
                       </button>
                       <button
                         onClick={() => handleCalculatePicks(currentSeason.id)}
                         disabled={syncLoading}
-                        className="block w-full bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning disabled:opacity-50 transition-colors"
+                        className="block w-full bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning-ink disabled:opacity-50 transition-colors"
                       >
                         {syncLoading ? 'Calculating...' : 'Calculate All Picks'}
                       </button>
@@ -541,7 +541,7 @@ const AdminDashboard: React.FC = () => {
                             <button
                               onClick={() => handleSyncESPN(currentSeason.id, week)}
                               disabled={syncLoading}
-                              className="flex-1 bg-brand text-white px-1 py-1 rounded text-xs hover:bg-brand disabled:opacity-50"
+                              className="flex-1 bg-brand text-white px-1 py-1 rounded text-xs hover:bg-brand-hover disabled:opacity-50"
                               title="Sync Week"
                             >
                               S
@@ -549,7 +549,7 @@ const AdminDashboard: React.FC = () => {
                             <button
                               onClick={() => handleCalculatePicks(currentSeason.id, week)}
                               disabled={syncLoading}
-                              className="flex-1 bg-success text-white px-1 py-1 rounded text-xs hover:bg-success disabled:opacity-50"
+                              className="flex-1 bg-success text-white px-1 py-1 rounded text-xs hover:bg-success-ink disabled:opacity-50"
                               title="Calculate Picks"
                             >
                               C

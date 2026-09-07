@@ -7,6 +7,7 @@ import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 import db from '../models/database.js';
 import { toBoolean } from '../utils/coerce.js';
+import { isValidTimeZone } from '../utils/timezone.js';
 import emailService from '../services/emailService.js';
 import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimit.js';
 
@@ -274,7 +275,9 @@ router.post('/login', loginLimiter, async (req, res) => {
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
         isAdmin: toBoolean(user.is_admin),
-        emailVerified: toBoolean(user.email_verified)
+        emailVerified: toBoolean(user.email_verified),
+        disableEmails: toBoolean(user.disable_emails),
+        timezone: user.timezone ?? null
       }
     });
 
@@ -297,7 +300,9 @@ router.get('/me', authenticateToken, async (req, res) => {
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
         isAdmin: toBoolean(user.is_admin),
-        emailVerified: toBoolean(user.email_verified)
+        emailVerified: toBoolean(user.email_verified),
+        disableEmails: toBoolean(user.disable_emails),
+        timezone: user.timezone ?? null
       }
     });
   } catch (error) {
@@ -309,11 +314,23 @@ router.get('/me', authenticateToken, async (req, res) => {
 // Update user profile
 router.put('/update', authenticateToken, async (req, res) => {
   try {
-    const { favoriteTeamId, firstName, lastName } = req.body;
+    const { favoriteTeamId, firstName, lastName, disableEmails, timezone } = req.body;
     const userId = req.user.id;
 
+    // An unrecognised IANA zone makes Intl throw wherever it is later used, so
+    // reject it here rather than storing a value that breaks the reminder job.
+    if (timezone !== undefined && timezone !== null && timezone !== '' && !isValidTimeZone(timezone)) {
+      return res.status(400).json({ error: 'Unrecognised timezone' });
+    }
+
     const userService = DatabaseServiceFactory.getUserService();
-    const updatedUser = await userService.updateUserDynamic(userId, { firstName, lastName, favoriteTeamId });
+    const updatedUser = await userService.updateUserDynamic(userId, {
+      firstName,
+      lastName,
+      favoriteTeamId,
+      disableEmails,
+      timezone: timezone === '' ? null : timezone,
+    });
 
     res.json({
       message: 'User updated successfully',
@@ -324,7 +341,9 @@ router.put('/update', authenticateToken, async (req, res) => {
         lastName: updatedUser.last_name,
         favoriteTeamId: updatedUser.favorite_team_id,
         isAdmin: toBoolean(updatedUser.is_admin),
-        emailVerified: toBoolean(updatedUser.email_verified)
+        emailVerified: toBoolean(updatedUser.email_verified),
+        disableEmails: toBoolean(updatedUser.disable_emails),
+        timezone: updatedUser.timezone ?? null
       }
     });
 

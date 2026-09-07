@@ -86,6 +86,11 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
         password_reset_token TEXT,
         password_reset_expires DATETIME,
         last_login DATETIME,
+        -- Email preferences. disable_emails opts a user out of non-essential
+        -- mail (pick reminders); timezone is an IANA identifier used to decide
+        -- when 6am local is for that user.
+        disable_emails BOOLEAN DEFAULT 0,
+        timezone TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (favorite_team_id) REFERENCES football_teams (id)
@@ -187,6 +192,14 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
         season_type INTEGER DEFAULT 2,
         quarter INTEGER,
         time_remaining INTEGER,
+        -- Betting line, captured at sync time. ESPN only exposes odds for
+        -- upcoming games and drops them once a game completes, so these must
+        -- be persisted when seen or historical weeks show nothing.
+        spread REAL,
+        over_under REAL,
+        favorite_team_id TEXT,
+        odds_provider TEXT,
+        odds_updated_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (season_id) REFERENCES seasons (id),
@@ -194,6 +207,26 @@ export default class SQLiteProvider extends BaseDatabaseProvider {
         FOREIGN KEY (away_team_id) REFERENCES football_teams (id)
       )
     `);
+
+    // Email-preference columns, for databases created before they existed.
+    for (const col of ['disable_emails BOOLEAN DEFAULT 0', 'timezone TEXT']) {
+      try {
+        await this.run(`ALTER TABLE users ADD COLUMN ${col}`);
+      } catch (e) { rethrowUnlessDuplicateColumn(e); }
+    }
+
+    // Betting-line columns, for databases created before they existed.
+    for (const col of [
+      'spread REAL',
+      'over_under REAL',
+      'favorite_team_id TEXT',
+      'odds_provider TEXT',
+      'odds_updated_at DATETIME',
+    ]) {
+      try {
+        await this.run(`ALTER TABLE football_games ADD COLUMN ${col}`);
+      } catch (e) { rethrowUnlessDuplicateColumn(e); }
+    }
 
     // Add season_type column to existing football_games table if it doesn't exist
     try {

@@ -418,10 +418,10 @@ const TeamsManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Edit Team</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-team-code">
                     Team Code
                   </label>
-                  <input
+                  <input id="teamsmanager-team-code"
                     type="text"
                     value={editingTeam.team_code}
                     readOnly
@@ -430,10 +430,10 @@ const TeamsManager: React.FC = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-city">
                     City
                   </label>
-                  <input
+                  <input id="teamsmanager-city"
                     type="text"
                     value={editingTeam.team_city}
                     onChange={(e) => setEditingTeam({...editingTeam, team_city: e.target.value})}
@@ -442,10 +442,10 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-team-name">
                     Team Name
                   </label>
-                  <input
+                  <input id="teamsmanager-team-name"
                     type="text"
                     value={editingTeam.team_name}
                     onChange={(e) => setEditingTeam({...editingTeam, team_name: e.target.value})}
@@ -454,11 +454,11 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-primary color">
                     Primary Color
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
+                    <input id="teamsmanager-primary color"
                       type="color"
                       value={editingTeam.team_primary_color || '#000000'}
                       onChange={(e) => setEditingTeam({...editingTeam, team_primary_color: e.target.value})}
@@ -475,11 +475,11 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-secondary color">
                     Secondary Color
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
+                    <input id="teamsmanager-secondary color"
                       type="color"
                       value={editingTeam.team_secondary_color || '#ffffff'}
                       onChange={(e) => setEditingTeam({...editingTeam, team_secondary_color: e.target.value})}
@@ -496,7 +496,7 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-team logo">
                     Team Logo
                   </label>
                   <div className="border border-line-strong rounded-md p-3">
@@ -542,7 +542,7 @@ const TeamsManager: React.FC = () => {
                           </button>
                           <div className="mt-3 text-sm text-ink-muted">
                             Or manually enter logo path:
-                            <input
+                            <input id="teamsmanager-team logo"
                               type="text"
                               placeholder="/logos/TEAM.svg"
                               className="block w-full mt-1 px-2 py-1 border border-line-strong rounded text-sm"
@@ -596,7 +596,7 @@ const TeamsManager: React.FC = () => {
                 </button>
                 <button
                   onClick={() => saveTeam(editingTeam)}
-                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand transition-colors"
+                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-hover transition-colors"
                 >
                   Save Changes
                 </button>
@@ -616,11 +616,11 @@ const TeamsManager: React.FC = () => {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-default primary color">
                     Default Primary Color
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
+                    <input id="teamsmanager-default primary color"
                       type="color"
                       value={defaultPrimaryColor}
                       onChange={(e) => setDefaultPrimaryColor(e.target.value)}
@@ -633,11 +633,11 @@ const TeamsManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="teamsmanager-default secondary color">
                     Default Secondary Color
                   </label>
                   <div className="flex items-center space-x-2">
-                    <input
+                    <input id="teamsmanager-default secondary color"
                       type="color"
                       value={defaultSecondaryColor}
                       onChange={(e) => setDefaultSecondaryColor(e.target.value)}
@@ -668,7 +668,7 @@ const TeamsManager: React.FC = () => {
                 </button>
                 <button
                   onClick={saveDefaultColors}
-                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand transition-colors"
+                  className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-hover transition-colors"
                 >
                   Save Defaults
                 </button>

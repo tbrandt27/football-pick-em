@@ -259,7 +259,7 @@ const AdminSettings: React.FC = () => {
                 <button
                   onClick={saveSettings}
                   disabled={saving}
-                  className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -267,7 +267,7 @@ const AdminSettings: React.FC = () => {
                 <button
                   onClick={testSmtpConnection}
                   disabled={testing || !smtpSettings.every(s => s.value.trim())}
-                  className="bg-success text-white px-6 py-2 rounded-lg hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="bg-success text-white px-6 py-2 rounded-lg hover:bg-success-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {testing ? 'Testing...' : 'Test Connection'}
                 </button>

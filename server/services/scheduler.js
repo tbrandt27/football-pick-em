@@ -4,6 +4,8 @@ import pickCalculator from './pickCalculator.js';
 import onDemandUpdates from './onDemandUpdates.js';
 import DatabaseServiceFactory from './database/DatabaseServiceFactory.js';
 import logger from '../utils/logger.js';
+import { zonedParts, LEAGUE_TIMEZONE } from '../utils/timezone.js';
+import { runPickReminders } from './pickReminders.js';
 
 class SchedulerService {
   constructor() {
@@ -22,9 +24,10 @@ class SchedulerService {
    * - Saturday (late season/playoffs)
    */
   isGameDay() {
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const month = today.getMonth() + 1; // 1-12
+    // Read the day in Eastern time, not server-local. NFL scheduling is quoted
+    // in ET, and on a UTC host a Sunday-night kickoff has already rolled over
+    // to Monday -- which used to disagree with isActiveGameTime() below.
+    const { weekday: dayOfWeek, month } = zonedParts(new Date(), LEAGUE_TIMEZONE);
     
     // NFL season runs roughly September through February
     const isNFLSeason = (month >= 9 && month <= 12) || (month >= 1 && month <= 2);
@@ -84,9 +87,8 @@ class SchedulerService {
    * NFL games typically run from 1 PM ET to 11 PM ET on game days
    */
   isActiveGameTime() {
-    const now = new Date();
-    const easternTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const hour = easternTime.getHours();
+    // Previously re-parsed a localised string, which is implementation-defined.
+    const { hour } = zonedParts(new Date(), LEAGUE_TIMEZONE);
     
     // Active between 1 PM and 11 PM ET
     return hour >= 13 && hour <= 23;
@@ -371,6 +373,24 @@ class SchedulerService {
     });
 
     // Extended check every 6 hours during off-hours on game days with actual games
+    // Pick reminders, hourly.
+    //
+    // Deliberately hourly rather than a single 06:00 job: each player picks
+    // their own timezone, so 6am is a different instant per user. The job
+    // selects whoever is currently at 6am locally, so one schedule covers
+    // every zone. runPickReminders() also checks it is the day of the week's
+    // first kickoff and de-duplicates per user/game/week.
+    const pickReminderTask = cron.schedule('0 * * * *', async () => {
+      try {
+        await runPickReminders();
+      } catch (error) {
+        logger.error('[Scheduler] Pick reminder run failed:', error);
+      }
+    }, {
+      scheduled: false,
+      timezone: LEAGUE_TIMEZONE
+    });
+
     const offHoursCheckTask = cron.schedule('0 */6 * * *', async () => {
       try {
         // Only check if it's a potential game day AND outside active hours
@@ -424,6 +444,9 @@ class SchedulerService {
     try {
       offHoursCheckTask.start();
       this.currentTasks.set('offHoursCheck', offHoursCheckTask);
+
+      pickReminderTask.start();
+      this.currentTasks.set('pickReminder', pickReminderTask);
     } catch (error) {
       logger.error('[Scheduler] Failed to start off-hours check task:', error);
     }

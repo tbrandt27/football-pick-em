@@ -6,6 +6,26 @@ import api from '../utils/api';
 import FavoriteTeamSelector from './FavoriteTeamSelector';
 import { ArrowLeftStartOnRectangleIcon, HomeIcon } from '@heroicons/react/24/outline';
 
+/**
+ * Timezone choices offered on the profile.
+ *
+ * Curated rather than enumerated from `Intl.supportedValuesOf('timeZone')`:
+ * that returns hundreds of entries, and a US-facing pick'em pool needs a
+ * handful. The server accepts any valid IANA identifier, so this list can grow
+ * without a backend change.
+ */
+const TIMEZONE_OPTIONS = [
+  { value: 'America/New_York', label: 'Eastern (New York)' },
+  { value: 'America/Chicago', label: 'Central (Chicago)' },
+  { value: 'America/Denver', label: 'Mountain (Denver)' },
+  { value: 'America/Phoenix', label: 'Mountain, no DST (Phoenix)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (Los Angeles)' },
+  { value: 'America/Anchorage', label: 'Alaska (Anchorage)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii (Honolulu)' },
+  { value: 'Europe/London', label: 'London' },
+  { value: 'Europe/Berlin', label: 'Central Europe (Berlin)' },
+];
+
 const UserProfile: React.FC = () => {
   const user = useStore($user);
   const isAuthenticated = useStore($isAuthenticated);
@@ -16,6 +36,10 @@ const UserProfile: React.FC = () => {
   const [email, setEmail] = useState('');
   const [favoriteTeamId, setFavoriteTeamId] = useState('');
   const [favoriteTeam, setFavoriteTeam] = useState<NFLTeam | null>(null);
+  const [disableEmails, setDisableEmails] = useState(false);
+  // IANA identifier. Empty means "use the league default" (Eastern), which is
+  // how NFL kickoff times are quoted.
+  const [timezone, setTimezone] = useState('');
   const [defaultTeam, setDefaultTeam] = useState<NFLTeam | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,6 +67,8 @@ const UserProfile: React.FC = () => {
       setLastName(user?.lastName || '');
       setEmail(user?.email || '');
       setFavoriteTeamId(user?.favoriteTeamId || '');
+      setDisableEmails(Boolean(user?.disableEmails));
+      setTimezone(user?.timezone || '');
 
       // Always load the default team for fallback
       await loadDefaultTeam();
@@ -93,7 +119,9 @@ const UserProfile: React.FC = () => {
       const updateData = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        favoriteTeamId: favoriteTeamId === '' ? undefined : favoriteTeamId
+        favoriteTeamId: favoriteTeamId === '' ? undefined : favoriteTeamId,
+        disableEmails,
+        timezone: timezone || null
       };
       
       const response = await api.updateUser(updateData);
@@ -274,11 +302,57 @@ const UserProfile: React.FC = () => {
                 <p className="text-sm text-gray-500 mt-1">Email cannot be changed. Contact support if needed.</p>
               </div>
 
+              {/* Email preferences */}
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Email Preferences</h3>
+
+                <div className="flex items-start space-x-3 mb-4">
+                  <input
+                    id="profile-disable-emails"
+                    type="checkbox"
+                    checked={disableEmails}
+                    onChange={(e) => setDisableEmails(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 focus-visible:ring-2 focus-visible:ring-blue-600"
+                  />
+                  <label htmlFor="profile-disable-emails" className="text-sm text-gray-700">
+                    Don&apos;t send me emails
+                    <span className="block text-gray-500">
+                      Turns off weekly reminders to make your picks. Account emails such as
+                      password resets are still sent.
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label htmlFor="profile-timezone" className="block text-sm font-medium text-gray-700 mb-1">
+                    Timezone
+                  </label>
+                  <select
+                    id="profile-timezone"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    disabled={disableEmails}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-gray-50 disabled:text-gray-500"
+                  >
+                    <option value="">Eastern (league default)</option>
+                    {TIMEZONE_OPTIONS.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Reminder emails are sent at 6am in this timezone.
+                  </p>
+                </div>
+              </div>
+
+
               {/* Favorite Team */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <p className="block text-sm font-medium text-gray-700 mb-1">
                   Favorite Team
-                </label>
+                </p>
                 <div className="flex items-center space-x-4">
                   <FavoriteTeamSelector
                     currentFavoriteId={favoriteTeamId}

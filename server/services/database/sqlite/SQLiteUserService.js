@@ -20,6 +20,7 @@ function normaliseUser(user) {
     ...user,
     is_admin: toBoolean(user.is_admin),
     email_verified: toBoolean(user.email_verified),
+    disable_emails: toBoolean(user.disable_emails),
   };
 }
 
@@ -42,6 +43,8 @@ export default class SQLiteUserService extends IUserService {
         u.is_admin,
         u.email_verified,
         u.last_login,
+        u.disable_emails,
+        u.timezone,
         u.created_at,
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
@@ -75,6 +78,8 @@ export default class SQLiteUserService extends IUserService {
         u.is_admin,
         u.email_verified,
         u.last_login,
+        u.disable_emails,
+        u.timezone,
         u.created_at,
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city,
@@ -104,6 +109,8 @@ export default class SQLiteUserService extends IUserService {
         u.is_admin,
         u.email_verified,
         u.last_login,
+        u.disable_emails,
+        u.timezone,
         u.created_at,
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
@@ -356,6 +363,14 @@ export default class SQLiteUserService extends IUserService {
     if (updates.emailVerified !== undefined) {
       updateFields.push('email_verified = ?');
       values.push(toFlagInt(updates.emailVerified));
+    }
+    if (updates.disableEmails !== undefined) {
+      updateFields.push('disable_emails = ?');
+      values.push(toFlagInt(updates.disableEmails));
+    }
+    if (updates.timezone !== undefined) {
+      updateFields.push('timezone = ?');
+      values.push(updates.timezone || null);
     }
 
     if (updateFields.length === 0) {

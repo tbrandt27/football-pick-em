@@ -784,10 +784,10 @@ const UsersManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Invite User to Game</h3>
               <form onSubmit={handleInviteUser} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-email-address">
                     Email Address
                   </label>
-                  <input
+                  <input id="usersmanager-email-address"
                     type="email"
                     value={inviteFormData.email}
                     onChange={(e) => setInviteFormData({...inviteFormData, email: e.target.value})}
@@ -798,10 +798,10 @@ const UsersManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-assign-to-game">
                     Assign to Game
                   </label>
-                  <select
+                  <select id="usersmanager-assign-to-game"
                     value={inviteFormData.gameId}
                     onChange={(e) => setInviteFormData({...inviteFormData, gameId: e.target.value})}
                     required
@@ -848,10 +848,10 @@ const UsersManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Invite Admin User</h3>
               <form onSubmit={handleInviteAdmin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-email-address-2">
                     Email Address
                   </label>
-                  <input
+                  <input id="usersmanager-email-address-2"
                     type="email"
                     value={adminInviteEmail}
                     onChange={(e) => setAdminInviteEmail(e.target.value)}
@@ -894,7 +894,7 @@ const UsersManager: React.FC = () => {
                   <button
                     type="submit"
                     disabled={invitingAdmin}
-                    className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {invitingAdmin ? 'Sending...' : 'Send Admin Invitation'}
                   </button>
@@ -915,10 +915,10 @@ const UsersManager: React.FC = () => {
               
               <form onSubmit={confirmInvitation} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-first-name">
                     First Name
                   </label>
-                  <input
+                  <input id="usersmanager-first-name"
                     type="text"
                     value={confirmInviteData.firstName}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, firstName: e.target.value})}
@@ -929,10 +929,10 @@ const UsersManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-last-name">
                     Last Name
                   </label>
-                  <input
+                  <input id="usersmanager-last-name"
                     type="text"
                     value={confirmInviteData.lastName}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, lastName: e.target.value})}
@@ -943,10 +943,10 @@ const UsersManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-temporary-password">
                     Temporary Password
                   </label>
-                  <input
+                  <input id="usersmanager-temporary-password"
                     type="text"
                     value={confirmInviteData.tempPassword}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, tempPassword: e.target.value})}
@@ -998,7 +998,7 @@ const UsersManager: React.FC = () => {
                   <button
                     type="submit"
                     disabled={confirmingInvitation}
-                    className="bg-success text-white px-4 py-2 rounded-lg hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-success text-white px-4 py-2 rounded-lg hover:bg-success-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {confirmingInvitation ? 'Creating Account...' : 'Create Account'}
                   </button>
@@ -1038,7 +1038,7 @@ const UsersManager: React.FC = () => {
                     setShowResetPasswordModal(false);
                     setResetPasswordData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning transition-colors"
+                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning-ink transition-colors"
                 >
                   Send Reset Email
                 </button>
@@ -1097,7 +1097,7 @@ const UsersManager: React.FC = () => {
                     setShowDeleteUserModal(false);
                     setDeleteUserData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger transition-colors"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink transition-colors"
                 >
                   Delete User
                 </button>

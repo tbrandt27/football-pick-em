@@ -174,7 +174,7 @@ const SeasonSchedule: React.FC = () => {
       <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
           <p className="text-ink-muted mb-4">Season not found</p>
-          <a href="/admin/seasons" className="bg-warning text-white px-6 py-2 rounded-lg hover:bg-warning transition-colors">
+          <a href="/admin/seasons" className="bg-warning text-white px-6 py-2 rounded-lg hover:bg-warning-ink transition-colors">
             Back to Seasons
           </a>
         </div>
@@ -257,7 +257,7 @@ const SeasonSchedule: React.FC = () => {
                               <div className="flex space-x-2 mt-2">
                                 <button
                                   onClick={() => updateGameDateTime(game.id, editDateTime)}
-                                  className="bg-success text-white px-2 py-1 rounded text-xs hover:bg-success"
+                                  className="bg-success text-white px-2 py-1 rounded text-xs hover:bg-success-ink"
                                 >
                                   Save
                                 </button>

@@ -400,6 +400,77 @@ class EmailService {
    *   initiated a password reset" when they clicked the link themselves reads
    *   like an account compromise.
    */
+  /**
+   * Reminds a player that they still have picks outstanding for the week.
+   *
+   * @param {string} toEmail
+   * @param {string} userName
+   * @param {{gameName: string, week: number, missing: number, gameSlug?: string, kickoff?: string}} details
+   */
+  async sendPickReminder(toEmail, userName, details) {
+    await this.initializeTransporter();
+
+    const { gameName, week, missing, gameSlug, kickoff } = details;
+    const baseUrl = resolveBaseUrl();
+    const link = gameSlug ? `${baseUrl}/game/${gameSlug}` : `${baseUrl}/dashboard`;
+    const kickoffText = kickoff
+      ? new Date(kickoff).toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          weekday: 'long',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        })
+      : null;
+
+    const fromEmail =
+      this.smtpSettings && this.smtpSettings.from
+        ? this.smtpSettings.from
+        : process.env.FROM_EMAIL || 'noreply@footballpickem.app';
+
+    const plural = missing === 1 ? 'pick' : 'picks';
+    const subject = `Week ${week}: ${missing} ${plural} still needed for ${gameName}`;
+
+    const mailOptions = {
+      from: fromEmail,
+      to: toEmail,
+      subject,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><h2 style="color: #1d4ed8;">Week ${week} picks are still open</h2><p>Hi ${userName},</p><p>You have <strong>${missing} ${plural}</strong> left to make in <strong>${gameName}</strong>.${kickoffText ? ` The first game kicks off <strong>${kickoffText}</strong>.` : ''}</p><div style="text-align: center; margin: 30px 0;"><a href="${link}" style="background-color: #1d4ed8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Make Your Picks</a></div><p style="background-color: #f1f5f9; padding: 10px; border-radius: 4px; word-break: break-all;">${link}</p><hr style="margin: 30px 0; border: none; border-top: 1px solid #e2e8f0;"><p style="color: #475569; font-size: 14px;">Don't want these reminders? Turn them off under Email Preferences in your <a href="${baseUrl}/profile">profile</a>.</p></div>`,
+      text: `Week ${week} picks are still open\n\nHi ${userName},\n\nYou have ${missing} ${plural} left to make in ${gameName}.${kickoffText ? ` The first game kicks off ${kickoffText}.` : ''}\n\nMake your picks: ${link}\n\nDon't want these reminders? Turn them off under Email Preferences in your profile: ${baseUrl}/profile`,
+      encoding: 'utf8',
+    };
+
+    try {
+      if (process.env.NODE_ENV === 'production') {
+        if (!this.transporter) {
+          console.error('Cannot send pick reminder: SMTP not configured in production');
+          return { success: false, error: 'SMTP not configured' };
+        }
+        const result = await this.transporter.sendMail(mailOptions);
+        return { success: true, messageId: result.messageId };
+      }
+
+      if (this.transporter && this.transporter.options && !this.transporter.options.streamTransport) {
+        try {
+          const result = await this.transporter.sendMail(mailOptions);
+          return { success: true, messageId: result.messageId };
+        } catch (smtpError) {
+          console.error('SMTP failed, falling back to console log:', smtpError.message);
+        }
+      }
+
+      console.log('\n=== PICK REMINDER EMAIL (Development Mode - Console Only) ===');
+      console.log('To:', toEmail);
+      console.log('Subject:', subject);
+      console.log('Link:', link);
+      console.log('=== END ===\n');
+      return { success: true, messageId: 'console-log' };
+    } catch (error) {
+      console.error('Failed to send pick reminder:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   async sendPasswordReset(toEmail, userName, resetToken, options = {}) {
     const { selfInitiated = false } = options;
     // Ensure transporter is initialized before sending

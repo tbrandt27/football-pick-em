@@ -339,8 +339,8 @@ const GamesManager: React.FC = () => {
             <h2 className="text-xl font-bold text-ink mb-4">Filters</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-ink-muted mb-2">Season</label>
-                <select
+                <label className="block text-sm font-medium text-ink-muted mb-2" htmlFor="gamesmanager-season">Season</label>
+                <select id="gamesmanager-season"
                   value={selectedSeason}
                   onChange={(e) => setSelectedSeason(e.target.value)}
                   className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -355,8 +355,8 @@ const GamesManager: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-ink-muted mb-2">Game Type</label>
-                <select
+                <label className="block text-sm font-medium text-ink-muted mb-2" htmlFor="gamesmanager-game-type">Game Type</label>
+                <select id="gamesmanager-game-type"
                   value={selectedType}
                   onChange={(e) => setSelectedType(e.target.value)}
                   className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -524,10 +524,10 @@ const GamesManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Create New Game</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="gamesmanager-game-name">
                     Game Name
                   </label>
-                  <input
+                  <input id="gamesmanager-game-name"
                     type="text"
                     value={newGame.name}
                     onChange={(e) => setNewGame({...newGame, name: e.target.value})}
@@ -537,10 +537,10 @@ const GamesManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="gamesmanager-game-type-2">
                     Game Type
                   </label>
-                  <select
+                  <select id="gamesmanager-game-type-2"
                     value={newGame.type}
                     onChange={(e) => setNewGame({...newGame, type: e.target.value as 'weekly' | 'survivor'})}
                     className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -580,9 +580,9 @@ const GamesManager: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Edit Game: {editingGame.name}</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <p className="block text-sm font-medium text-ink-muted mb-1">
                     Current Season
-                  </label>
+                  </p>
                   <p className="text-sm text-ink-muted mb-2">
                     Currently: {editingGame.season_year || 'No Season Assigned'}
                     {Boolean(editingGame.season_is_current) && (
@@ -594,10 +594,10 @@ const GamesManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-muted mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="gamesmanager-change-season-to">
                     Change Season To
                   </label>
-                  <select
+                  <select id="gamesmanager-change-season-to"
                     defaultValue={editingGame.season_id}
                     onChange={(e) => {
                       if (e.target.value && e.target.value !== editingGame.season_id) {
@@ -688,7 +688,7 @@ const GamesManager: React.FC = () => {
                 <button
                   onClick={confirmDelete}
                   disabled={deleting}
-                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? (
                     <span className="flex items-center space-x-2">

@@ -20,6 +20,7 @@ function normaliseUser(user) {
     ...user,
     is_admin: toBoolean(user.is_admin),
     email_verified: toBoolean(user.email_verified),
+    disable_emails: toBoolean(user.disable_emails),
   };
 }
 
@@ -472,6 +473,12 @@ export default class DynamoDBUserService extends IUserService {
     }
     if (updates.emailVerified !== undefined) {
       updateItem.email_verified = toFlagString(updates.emailVerified);
+    }
+    if (updates.disableEmails !== undefined) {
+      updateItem.disable_emails = toFlagString(updates.disableEmails);
+    }
+    if (updates.timezone !== undefined) {
+      updateItem.timezone = updates.timezone || null;
     }
 
     if (Object.keys(updateItem).length === 0) {
