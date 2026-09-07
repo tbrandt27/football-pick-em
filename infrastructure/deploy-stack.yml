@@ -1,0 +1,365 @@
+# CloudFormation stack for the deployment pipeline and its IAM roles.
+#
+# Deliberately SEPARATE from football-pickem-dynamodb rather than added to
+# it. That stack owns ten tables of production data and carries no
+# DeletionPolicy on any of them, so a failed UPDATE_ROLLBACK there is a data
+# risk. Pipeline plumbing changes often; tables should not change at all.
+# Keeping them apart means a bad IAM edit can only roll back IAM.
+#
+# Supersedes the hand-applied JSON in infrastructure/iam/, which remains as
+# documentation of *why* each condition exists. This template is what should
+# actually be deployed.
+#
+#   aws cloudformation deploy \
+#     --template-file infrastructure/deploy-stack.yml \
+#     --stack-name football-pickem-deploy \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides JwtSecretArn=<full-arn-with-suffix>
+#
+# CAPABILITY_NAMED_IAM is required because the roles use fixed RoleNames;
+# .github/workflows/deploy.yml references them by name.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECR repository, GitHub OIDC deploy role, and ECS Express task roles for Football Pick em'
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: 'tbrandt27'
+    Description: 'GitHub account that owns the repository'
+
+  GitHubRepo:
+    Type: String
+    Default: 'football-pick-em'
+    Description: 'Repository name'
+
+  GitHubEnvironment:
+    Type: String
+    Default: 'production'
+    Description: >-
+      GitHub Environment whose deployments may assume the deploy role. The
+      OIDC subject is pinned to this, so the environment MUST exist in
+      repository settings or the role can never be assumed.
+
+  EcrRepositoryName:
+    Type: String
+    Default: 'football-pickem'
+
+  ServiceName:
+    Type: String
+    Default: 'football-pickem'
+    Description: 'ECS Express service and cluster name'
+
+  TablePrefix:
+    Type: String
+    Default: 'football_pickem_'
+    Description: 'Must match the DynamoDB stack'
+
+  JwtSecretArn:
+    Type: String
+    Description: >-
+      Full Secrets Manager ARN including the random suffix, e.g.
+      arn:aws:secretsmanager:us-east-1:137830278828:secret:football-pickem/jwt-secret-vkSzBv
+      The suffix changes if the secret is deleted and recreated, so update
+      the value in place when rotating.
+    AllowedPattern: '^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$'
+
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      The GitHub OIDC provider is account-wide, so only one can exist. Set
+      false if another stack already created it.
+
+  ImageRetentionCount:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    Description: 'Tagged images to keep before expiry'
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  # ---------------------------------------------------------------------
+  # Container registry
+  # ---------------------------------------------------------------------
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    # Retain on delete: the images are the only record of what shipped.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Ref EcrRepositoryName
+      # The workflow tags by commit SHA, so a tag must never be reassigned.
+      # Immutability is what makes "which commit is running" answerable.
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images after 1 day",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 1
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep the most recent ${ImageRetentionCount} images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": ${ImageRetentionCount}
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Application
+          Value: FootballPickem
+
+  # ---------------------------------------------------------------------
+  # GitHub OIDC federation
+  # ---------------------------------------------------------------------
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: 'https://token.actions.githubusercontent.com'
+      ClientIdList:
+        - 'sts.amazonaws.com'
+      # AWS validates GitHub's certificate against a trusted root CA and no
+      # longer checks this value, but the API still requires it.
+      ThumbprintList:
+        - '6938fd4d98bab03faadb97b34396831e3780aea1'
+      Tags:
+        - Key: Application
+          Value: FootballPickem
+
+  # The deploy role. This is the only identity GitHub Actions ever holds,
+  # and the repository is public, so its trust policy is the security
+  # boundary for the whole account.
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ServiceName}-github-deploy'
+      Description: 'Assumed by GitHub Actions via OIDC to build and deploy'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: GitHubActionsNamedEnvironmentOnly
+            Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              # StringEquals, never StringLike. A wildcard subject such as
+              # repo:owner/name:* is not a scope -- it matches every branch,
+              # tag and pull-request context in a public repository.
+              #
+              # Binding to environment: rather than ref: puts the GitHub
+              # Environment's own rules (required reviewer, branch limited
+              # to main) in charge of whether a token is minted at all.
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com'
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOwner}/${GitHubRepo}:environment:${GitHubEnvironment}'
+      Policies:
+        - PolicyName: BuildAndDeploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EcrAuthTokenIsAccountWide
+                Effect: Allow
+                Action: 'ecr:GetAuthorizationToken'
+                Resource: '*'
+
+              - Sid: PushOnlyToThisRepository
+                Effect: Allow
+                Action:
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:InitiateLayerUpload'
+                  - 'ecr:UploadLayerPart'
+                  - 'ecr:CompleteLayerUpload'
+                  - 'ecr:PutImage'
+                Resource: !GetAtt EcrRepository.Arn
+
+              - Sid: DeployExpressService
+                Effect: Allow
+                Action:
+                  - 'ecs:CreateService'
+                  - 'ecs:UpdateService'
+                  - 'ecs:DescribeServices'
+                  - 'ecs:RegisterTaskDefinition'
+                  - 'ecs:DescribeTaskDefinition'
+                  - 'ecs:TagResource'
+                Resource: '*'
+
+              # Unrestricted PassRole would let this role register a task
+              # definition running ANY role in the account and read that
+              # role's credentials from the container -- turning "can deploy
+              # this app" into "administers this account". Pinned to the
+              # three roles below, and only toward ECS.
+              - Sid: PassRolePinnedToTheseThreeOnly
+                Effect: Allow
+                Action: 'iam:PassRole'
+                Resource:
+                  - !GetAtt EcsExecutionRole.Arn
+                  - !GetAtt EcsTaskRole.Arn
+                  - !GetAtt EcsInfrastructureRole.Arn
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': 'ecs-tasks.amazonaws.com'
+
+  # ---------------------------------------------------------------------
+  # ECS runtime roles. App Runner had one instance role; ECS splits the job
+  # three ways, and conflating them is a privilege-escalation bug rather
+  # than untidiness.
+  # ---------------------------------------------------------------------
+
+  # Used by the ECS agent, not by application code: pulls the image, writes
+  # logs, and reads JWT_SECRET in order to place it in the container
+  # environment.
+  EcsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ServiceName}-ecs-execution'
+      Description: 'ECS agent: image pull, logs, secret injection'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - PolicyName: InjectSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadJwtSecretForInjection
+                Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !Ref JwtSecretArn
+
+  # Assumed by application code. This is what the DynamoDB providers and
+  # secretsManager.js use at runtime. CI holds none of it.
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ServiceName}-ecs-task'
+      Description: 'Application runtime: DynamoDB and Secrets Manager'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+      Policies:
+        - PolicyName: ApplicationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: TablesAndIndexes
+                Effect: Allow
+                Action:
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:BatchGetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*/index/*'
+
+              # secretsManager.js reads SMTP settings at runtime; the
+              # prefix covers those without granting the whole account.
+              - Sid: ApplicationSecrets
+                Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:football-pickem/*'
+
+  # Assumed by ECS Express Mode itself to create and manage the load
+  # balancer, target groups, security groups, autoscaling and alarms.
+  EcsInfrastructureRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ServiceName}-ecs-infrastructure'
+      Description: 'ECS Express Mode: manages ALB, autoscaling, alarms'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs.amazonaws.com'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+      # Express-Mode-specific, and the right one here: it carries the
+      # application-autoscaling and CloudWatch-alarm permissions that
+      # AmazonECSInfrastructureRolePolicyForLoadBalancers does not.
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices'
+
+Outputs:
+  EcrRepositoryUri:
+    Description: 'Push target for the deploy workflow'
+    Value: !GetAtt EcrRepository.RepositoryUri
+    Export:
+      Name: !Sub '${AWS::StackName}-EcrRepositoryUri'
+
+  GitHubDeployRoleArn:
+    Description: 'role-to-assume in .github/workflows/deploy.yml'
+    Value: !GetAtt GitHubDeployRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubDeployRoleArn'
+
+  EcsExecutionRoleArn:
+    Description: 'execution-role-arn input'
+    Value: !GetAtt EcsExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsExecutionRoleArn'
+
+  EcsTaskRoleArn:
+    Description: 'task-role-arn input'
+    Value: !GetAtt EcsTaskRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsTaskRoleArn'
+
+  EcsInfrastructureRoleArn:
+    Description: 'infrastructure-role-arn input'
+    Value: !GetAtt EcsInfrastructureRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsInfrastructureRoleArn'
+
+  OidcSubjectClaim:
+    Description: 'The only OIDC subject permitted to assume the deploy role'
+    Value: !Sub 'repo:${GitHubOwner}/${GitHubRepo}:environment:${GitHubEnvironment}'

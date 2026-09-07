@@ -1,0 +1,145 @@
+name: Deploy
+
+# Push-to-deploy for ECS Express Mode, replacing App Runner's built-in
+# GitHub source deployment.
+#
+# SECURITY — this is the only workflow in the repository that can reach the
+# AWS account, and the repository is PUBLIC. Four rules keep that safe:
+#
+#  1. `push` to main only. Never add `pull_request`, and never convert this
+#     to `pull_request_target` or `workflow_run`. Those two run in the base
+#     repository's context *with* credentials available; combined with a
+#     checkout of the pull-request head they execute a stranger's code
+#     against this role. A plain `pull_request` from a fork gets no secrets
+#     and a read-only token, which is why CI lives in ci.yml instead.
+#  2. `environment: production` is what mints the OIDC token. The IAM trust
+#     policy pins `sub` to
+#     `repo:tbrandt27/football-pick-em:environment:production`, so the
+#     environment's own rules (required reviewer, branch restricted to main)
+#     gate credential issuance rather than merely gating the deploy step.
+#  3. Every third-party action is pinned to a full commit SHA. A mutable tag
+#     in a job that holds AWS access is equivalent to account access.
+#  4. No stored AWS keys. Credentials are federated per run and expire.
+#
+# See infrastructure/iam/README.md for the roles this expects.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only by default; the deploy job adds id-token below.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: football-pickem
+  ECS_SERVICE: football-pickem
+  ECS_CLUSTER: football-pickem
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write # required to request the OIDC token; nothing more
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Assume deploy role via OIDC
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/football-pickem-github-deploy
+          role-session-name: gha-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
+
+      - name: Build and push image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          # Tag by commit SHA, never :latest — Express Mode needs a changed
+          # image reference to roll out, and an immutable tag makes it
+          # possible to say which commit is actually running.
+          IMAGE="$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to ECS Express Mode
+        id: express
+        uses: aws-actions/amazon-ecs-deploy-express-service@7c48a2de16441d528a3c89829831968dc1455010 # v1.2.2
+        with:
+          service-name: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          image: ${{ steps.image.outputs.uri }}
+
+          # Three distinct roles. Conflating them is the mistake the
+          # migration plan calls out: App Runner had one instance role.
+          execution-role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/football-pickem-ecs-execution
+          task-role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/football-pickem-ecs-task
+          infrastructure-role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/football-pickem-ecs-infrastructure
+
+          # 512/1024 maps exactly onto apprunner.yaml's 0.5 vCPU / 1 GB.
+          cpu: "512"
+          memory: "1024"
+
+          # Dockerfile EXPOSEs 8080 and sets ENV PORT=8080.
+          container-port: "8080"
+
+          # /health is ungated, does no database work, and always returns
+          # 200. Express Mode defaults to /ping, which this app does not
+          # serve — leaving the default would fail every health check.
+          health-check-path: /health
+
+          environment-variables: |
+            [
+              {"name":"NODE_ENV","value":"production"},
+              {"name":"DATABASE_TYPE","value":"auto"},
+              {"name":"DYNAMODB_TABLE_PREFIX","value":"football_pickem_"},
+              {"name":"AWS_REGION","value":"us-east-1"},
+              {"name":"LOGOS_PATH","value":"/var/app/current/public/logos"},
+              {"name":"APP_ROOT","value":"/var/app/current"}
+            ]
+
+          # Injected by the ECS agent using the EXECUTION role, so the
+          # values never appear in this file, in the task definition, or in
+          # the workflow log.
+          # The -vkSzBv tail is Secrets Manager's random suffix and is part
+          # of the ARN; ECS requires the full ARN here, not the name.
+          secrets: |
+            [
+              {"name":"JWT_SECRET","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/jwt-secret-vkSzBv"}
+            ]
+
+          min-task-count: "1"
+          max-task-count: "4"
+          auto-scaling-metric: AVERAGE_CPU
+          auto-scaling-target-value: "60"
+
+      - name: Summarise
+        run: |
+          {
+            echo "### Deployed"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Image | \`${{ steps.image.outputs.uri }}\` |"
+            echo "| Service | \`${{ steps.express.outputs.service-arn }}\` |"
+            echo "| Endpoint | ${{ steps.express.outputs.endpoint }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

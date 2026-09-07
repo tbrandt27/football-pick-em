@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, develop]
 
+# No AWS access in this workflow, and none should ever be added: it runs on
+# pull requests, including from forks. Deployment credentials live in
+# deploy.yml, which is push-to-main only. See infrastructure/iam/README.md.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
