@@ -32,7 +32,7 @@ class Database {
 
   async _performInitialization() {
     try {
-      this.provider = DatabaseProviderFactory.createProvider();
+      this.provider = await DatabaseProviderFactory.createProvider();
       await this.provider.initialize();
       console.log(`Database initialized with provider: ${this.provider.getType()}`);
       
