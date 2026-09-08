@@ -24,8 +24,30 @@ name: Deploy
 # See infrastructure/iam/README.md for the roles this expects.
 
 on:
-  push:
-    branches: [main]
+  # Push-to-deploy is DISABLED until the ECS cutover is ready. Re-enabling it
+  # now would make the next merge to main stand up an Express service that
+  # boots wrong: this workflow injects JWT_SECRET but not
+  # SETTINGS_ENCRYPTION_KEY, ADMIN_EMAIL, ADMIN_PASSWORD or FRONTEND_URL,
+  # all of which the App Runner service sets today. Without the encryption
+  # key configService falls into degraded mode and mints an ephemeral
+  # JWT_SECRET, invalidating every session; without FRONTEND_URL the CORS
+  # origin falls back to http://localhost:4321 and the browser blocks every
+  # API call. The Dockerfile also still runs scripts/start.sh, which step 2
+  # of plans/2026-09-06-ecs-express-migration.md replaces.
+  #
+  # Until then App Runner remains the deployment path, and it has
+  # AutoDeploymentsEnabled: false -- so a merge to main deploys nothing and
+  # production is updated with `aws apprunner start-deployment`.
+  #
+  # To re-enable: wire the four missing variables into the deploy step
+  # (three need Secrets Manager entries plus a grant on the execution role,
+  # whose policy is pinned to the jwt-secret ARN alone), then uncomment.
+  #
+  # push:
+  #   branches: [main]
+
+  # Manual runs stay available for validating Express Mode on its own URL
+  # alongside App Runner, per step 4 of the migration plan.
   workflow_dispatch:
 
 # Read-only by default; the deploy job adds id-token below.
