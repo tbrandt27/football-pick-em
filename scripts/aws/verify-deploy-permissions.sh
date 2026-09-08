@@ -111,9 +111,48 @@ neg iam:PassRole "arn:aws:iam::${ACCOUNT}:role/apprunner_footballpickem" \
 neg dynamodb:DeleteTable "arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/football_pickem_picks" \
     "CI cannot touch application data"
 
+# The RUNTIME role. Verifying only the deploy role is what let a missing
+# dynamodb permission through: CI deployed cleanly and the container then died
+# on startup with AccessDeniedException. The deploy role and the task role fail
+# at completely different times, so both need checking.
+#
+# NOTE: this does not cover the execution role's secret-injection grants. A
+# local tooling guard blocks scripting that action name, so check those by hand:
+#   aws iam simulate-principal-policy \
+#     --policy-source-arn arn:aws:iam::ACCT:role/football-pickem-ecs-execution \
+#     --action-names 'secretsmanager:GetSecretValue' --resource-arns <secret-arn>
+echo
+echo "Task role (application runtime)"
+TASK="arn:aws:iam::${ACCOUNT}:role/${SERVICE}-ecs-task"
+TBL="arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/football_pickem_users"
+for a in GetItem BatchGetItem Query Scan PutItem UpdateItem DeleteItem BatchWriteItem DescribeTable; do
+  out=$(aws iam simulate-principal-policy --policy-source-arn "$TASK" \
+    --action-names "dynamodb:$a" --resource-arns "$TBL" \
+    --query 'EvaluationResults[0].EvalDecision' --output text --profile "$PROFILE" 2>&1)
+  if [ "$out" = "allowed" ]; then printf '  \033[32mallow\033[0m  dynamodb:%s\n' "$a"
+  else printf '  \033[31mDENY \033[0m  dynamodb:%-38s (%s)\n' "$a" "$out"; fails=$((fails+1)); fi
+done
+
+# GSI reads are a separate resource ARN from the table itself. Every hot path
+# queries an index, so a policy covering only table/* would fail at runtime.
+out=$(aws iam simulate-principal-policy --policy-source-arn "$TASK" \
+  --action-names dynamodb:Query \
+  --resource-arns "${TBL}/index/is_admin-index" \
+  --query 'EvaluationResults[0].EvalDecision' --output text --profile "$PROFILE" 2>&1)
+if [ "$out" = "allowed" ]; then printf '  \033[32mallow\033[0m  dynamodb:Query on a GSI\n'
+else printf '  \033[31mDENY \033[0m  dynamodb:Query on a GSI (%s)\n' "$out"; fails=$((fails+1)); fi
+
+# ListTables is intentionally NOT granted: it cannot be resource-scoped, so it
+# would let this role enumerate every table in the account.
+# DynamoDBProvider._testConnection uses DescribeTable instead.
+neg dynamodb:ListTables "arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/*" \
+    "task role cannot list all tables"
+neg dynamodb:DeleteTable "arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/football_pickem_picks" \
+    "task role cannot drop tables"
+
 echo
 if [ "$fails" -eq 0 ]; then
-  echo "PASS — the deploy role has everything it needs and nothing it should not."
+  echo "PASS — deploy and task roles both have what they need."
   exit 0
 fi
 echo "FAIL — $fails problem(s). Fix infrastructure/deploy-stack.yml and redeploy the"

@@ -391,6 +391,11 @@ Resources:
                   - 'dynamodb:UpdateItem'
                   - 'dynamodb:DeleteItem'
                   - 'dynamodb:BatchWriteItem'
+                  # DescribeTable backs the startup connection check in
+                  # DynamoDBProvider._testConnection. It deliberately replaced
+                  # ListTables, which cannot be resource-scoped and would have
+                  # let this role enumerate every table in the account.
+                  - 'dynamodb:DescribeTable'
                 Resource:
                   - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*'
                   - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*/index/*'

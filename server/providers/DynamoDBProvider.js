@@ -746,16 +746,28 @@ export default class DynamoDBProvider extends BaseDatabaseProvider {
     }
   }
 
-  // Helper method to test DynamoDB connection
+  // Helper method to test DynamoDB connection.
+  //
+  // Uses DescribeTable on a table this application actually owns, not
+  // ListTables. Two reasons:
+  //
+  //  1. dynamodb:ListTables does not support resource-level permissions --
+  //     it can only be granted on table/*, so requiring it means the task
+  //     role can enumerate every table in the account. DescribeTable is
+  //     grantable on the football_pickem_* prefix alone.
+  //  2. ListTables answers a weaker question. It succeeds whenever
+  //     credentials work, even if none of our tables exist; DescribeTable on
+  //     the users table confirms the table we are about to read is really
+  //     there, which is what a startup check should establish.
   async _testConnection() {
+    const tableName = this.tables.users;
     try {
-      const { ListTablesCommand } = await import("@aws-sdk/client-dynamodb");
-      const command = new ListTablesCommand({});
-      const response = await this.client.send(command);
-      console.log(`[DynamoDB] Connection test successful. Found ${response.TableNames?.length || 0} tables.`);
+      const { DescribeTableCommand } = await import("@aws-sdk/client-dynamodb");
+      const response = await this.client.send(new DescribeTableCommand({ TableName: tableName }));
+      console.log(`[DynamoDB] Connection test successful. ${tableName} is ${response.Table?.TableStatus}.`);
       return true;
     } catch (error) {
-      console.error("[DynamoDB] Connection test failed:", error.message);
+      console.error(`[DynamoDB] Connection test failed on ${tableName}:`, error.message);
       throw error;
     }
   }
