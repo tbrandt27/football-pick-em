@@ -221,7 +221,12 @@ Resources:
                 Action: 'ecr:GetAuthorizationToken'
                 Resource: '*'
 
-              - Sid: PushOnlyToThisRepository
+              # Matches AWS's published GitHub Actions policy for Express Mode.
+              # BatchGetImage and GetDownloadUrlForLayer are pull permissions,
+              # included because AWS lists them and because a layer-cached
+              # build reads existing layers back. Still confined to this one
+              # repository.
+              - Sid: PushAndPullOnlyThisRepository
                 Effect: Allow
                 Action:
                   - 'ecr:BatchCheckLayerAvailability'
@@ -229,37 +234,42 @@ Resources:
                   - 'ecr:UploadLayerPart'
                   - 'ecr:CompleteLayerUpload'
                   - 'ecr:PutImage'
+                  - 'ecr:BatchGetImage'
+                  - 'ecr:GetDownloadUrlForLayer'
                 Resource: !GetAtt EcrRepository.Arn
 
-              # Express Mode has its OWN IAM action names -- granting the
-              # standard ecs:CreateService family is not enough and fails
-              # with "not authorized to perform ecs:CreateExpressGatewayService".
+              # AWS's documented required set for an Express Mode caller,
+              # from the ECS docs and the "Automated deployments with GitHub
+              # Actions for Amazon ECS Express Mode" blog post -- NOT inferred
+              # from the action's SDK calls, which is how this was got wrong
+              # three times running. Express Mode uses its own action names, so
+              # the standard ecs:CreateService family is not enough, and the
+              # server-side work it does on your behalf (registering the task
+              # definition, reading the cluster) runs under the CALLER's
+              # permissions, not the infrastructure role's.
               #
-              # This is exactly the set aws-actions/amazon-ecs-deploy-express-service
-              # calls, read from its source: Create/Describe/UpdateExpressGatewayService,
-              # DescribeServices, List/DescribeServiceDeployments, and
-              # Tag/UntagResource. RegisterTaskDefinition is deliberately absent
-              # -- Express Mode registers the task definition server-side, and
-              # the action never calls it.
-              - Sid: DeployExpressServiceScopedToThisService
+              # Resource is '*' to match AWS's published policy. Tightening it
+              # is worthwhile but should follow a first successful deploy --
+              # scoping while still discovering the requirement is what turned
+              # this into three failed runs. Verify any change with
+              # scripts/verify-deploy-permissions.sh before dispatching.
+              #
+              # ecs:CreateCluster is in AWS's list even though the cluster is
+              # CloudFormation-managed here and already exists.
+              #
+              # Tag/UntagResource are not in AWS's list but the action does
+              # construct them, so they are granted to avoid a fourth round.
+              - Sid: DeployExpressService
                 Effect: Allow
                 Action:
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DescribeClusters'
+                  - 'ecs:RegisterTaskDefinition'
                   - 'ecs:CreateExpressGatewayService'
                   - 'ecs:UpdateExpressGatewayService'
                   - 'ecs:DescribeExpressGatewayService'
                   - 'ecs:DescribeServices'
-                Resource: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ServiceName}/${ServiceName}'
-
-              # Service-deployment ARNs are a different resource type from the
-              # service itself and are derived at run time, so these stay
-              # unscoped. List/Describe are read-only. Tag/UntagResource are
-              # writes and are only exercised when the tags input is set,
-              # which it is not -- they are granted so enabling tags later
-              # does not mean another failed deploy. Narrow them to specific
-              # resource ARNs if tagging is ever turned on.
-              - Sid: DeploymentStatusAndTagging
-                Effect: Allow
-                Action:
+                  - 'ecs:UpdateService'
                   - 'ecs:ListServiceDeployments'
                   - 'ecs:DescribeServiceDeployments'
                   - 'ecs:TagResource'
