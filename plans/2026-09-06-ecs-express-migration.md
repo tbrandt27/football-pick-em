@@ -187,13 +187,35 @@ is a valid combination. No re-tuning needed.
 
 ## Cutover
 
-AWS recommends weighted DNS: run both services, shift Route 53 weights
+**Correction (2026-09-08): the custom domain already exists.** An earlier
+draft of this section assumed only the default `*.awsapprunner.com`
+hostname and concluded that validate-then-switch was the only option.
+`describe-custom-domains` shows `pickem.bisforbrandt.com` **active** on the
+App Runner service, and both `CLIENT_URL` and `FRONTEND_URL` are set to it,
+so users never touch the AWS-generated hostname. That is the shared
+hostname a cutover needs.
+
+AWS recommends weighted DNS: run both services and shift weights
 10 → 25 → 50 → 75 → 100, then delete the App Runner service.
 
-**This requires a custom domain.** With only the default
-`*.awsapprunner.com` URL there is no shared hostname to weight, so the
-only option is validate-then-switch. Adding a custom domain *before*
-migrating is what buys the gradual, reversible path.
+**But there is no Route 53 hosted zone in this account** — DNS for
+`bisforbrandt.com` is managed externally. So weighted routing is only
+available if that provider supports weighted records, which most
+registrars' basic DNS does not. Two realistic options:
+
+| Approach | Cutover | Rollback |
+|---|---|---|
+| Repoint the CNAME at the ALB | single DNS edit | edit it back; bounded by TTL |
+| Delegate the subdomain to Route 53 first | enables true weighted shifting | weight back to 0 |
+
+Lower the record's TTL to 60s *a day before* either one — a 3600s TTL
+turns a rollback into an hour of split traffic. Check the current TTL at
+the provider, since it is not visible from AWS.
+
+Note the ECS Express service must serve the same hostname for CORS to keep
+working: `FRONTEND_URL` has to be `https://pickem.bisforbrandt.com`, and
+the ALB needs an ACM certificate for it. The infrastructure role's managed
+policy already grants the ACM permissions for this.
 
 ## Order
 
