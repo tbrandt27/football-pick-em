@@ -20,6 +20,10 @@ Resources:
   # Users table - OPTIMIZED
   UsersTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}users'
       BillingMode: PAY_PER_REQUEST
@@ -59,6 +63,10 @@ Resources:
   # Football Teams table - OPTIMIZED
   FootballTeamsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}football_teams'
       BillingMode: PAY_PER_REQUEST
@@ -87,6 +95,10 @@ Resources:
   # Pick'em Games table - OPTIMIZED
   PickemGamesTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}pickem_games'
       BillingMode: PAY_PER_REQUEST
@@ -115,6 +127,10 @@ Resources:
   # Game Participants table - HEAVILY OPTIMIZED
   GameParticipantsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}game_participants'
       BillingMode: PAY_PER_REQUEST
@@ -161,6 +177,10 @@ Resources:
   # Seasons table - OPTIMIZED
   SeasonsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}seasons'
       BillingMode: PAY_PER_REQUEST
@@ -189,6 +209,10 @@ Resources:
   # Football Games table - HEAVILY OPTIMIZED
   FootballGamesTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}football_games'
       BillingMode: PAY_PER_REQUEST
@@ -255,6 +279,10 @@ Resources:
   # System Settings table - OPTIMIZED
   SystemSettingsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}system_settings'
       BillingMode: PAY_PER_REQUEST
@@ -283,6 +311,10 @@ Resources:
   # Picks table - HEAVILY OPTIMIZED
   PicksTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}picks'
       BillingMode: PAY_PER_REQUEST
@@ -394,6 +426,10 @@ Resources:
   # Weekly Standings table - OPTIMIZED
   WeeklyStandingsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}weekly_standings'
       BillingMode: PAY_PER_REQUEST
@@ -469,6 +505,10 @@ Resources:
   # Game Invitations table - HEAVILY OPTIMIZED
   GameInvitationsTable:
     Type: AWS::DynamoDB::Table
+    # Production data: retain on stack delete and on any change that would
+    # force replacement, so a failed UPDATE_ROLLBACK cannot drop user rows.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}game_invitations'
       BillingMode: PAY_PER_REQUEST
