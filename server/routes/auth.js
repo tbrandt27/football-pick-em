@@ -6,11 +6,15 @@ import { authenticateToken } from '../middleware/auth.js';
 import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
 import db from '../models/database.js';
+import { toBoolean } from '../utils/coerce.js';
+import { isValidTimeZone } from '../utils/timezone.js';
+import emailService from '../services/emailService.js';
+import { loginLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
 // Register new user
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const { email, password, firstName, lastName, favoriteTeamId } = req.body;
 
@@ -133,7 +137,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Register user with invitation token
-router.post('/register-invite', async (req, res) => {
+router.post('/register-invite', registerLimiter, async (req, res) => {
   try {
     const { email, password, firstName, lastName, favoriteTeamId, inviteToken } = req.body;
 
@@ -230,7 +234,7 @@ router.post('/register-invite', async (req, res) => {
 });
 
 // Login user
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -270,8 +274,10 @@ router.post('/login', async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
-        isAdmin: Boolean(user.is_admin),
-        emailVerified: Boolean(user.email_verified)
+        isAdmin: toBoolean(user.is_admin),
+        emailVerified: toBoolean(user.email_verified),
+        disableEmails: toBoolean(user.disable_emails),
+        timezone: user.timezone ?? null
       }
     });
 
@@ -293,8 +299,10 @@ router.get('/me', authenticateToken, async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         favoriteTeamId: user.favorite_team_id,
-        isAdmin: Boolean(user.is_admin),
-        emailVerified: Boolean(user.email_verified)
+        isAdmin: toBoolean(user.is_admin),
+        emailVerified: toBoolean(user.email_verified),
+        disableEmails: toBoolean(user.disable_emails),
+        timezone: user.timezone ?? null
       }
     });
   } catch (error) {
@@ -306,11 +314,23 @@ router.get('/me', authenticateToken, async (req, res) => {
 // Update user profile
 router.put('/update', authenticateToken, async (req, res) => {
   try {
-    const { favoriteTeamId, firstName, lastName } = req.body;
+    const { favoriteTeamId, firstName, lastName, disableEmails, timezone } = req.body;
     const userId = req.user.id;
 
+    // An unrecognised IANA zone makes Intl throw wherever it is later used, so
+    // reject it here rather than storing a value that breaks the reminder job.
+    if (timezone !== undefined && timezone !== null && timezone !== '' && !isValidTimeZone(timezone)) {
+      return res.status(400).json({ error: 'Unrecognised timezone' });
+    }
+
     const userService = DatabaseServiceFactory.getUserService();
-    const updatedUser = await userService.updateUserDynamic(userId, { firstName, lastName, favoriteTeamId });
+    const updatedUser = await userService.updateUserDynamic(userId, {
+      firstName,
+      lastName,
+      favoriteTeamId,
+      disableEmails,
+      timezone: timezone === '' ? null : timezone,
+    });
 
     res.json({
       message: 'User updated successfully',
@@ -320,8 +340,10 @@ router.put('/update', authenticateToken, async (req, res) => {
         firstName: updatedUser.first_name,
         lastName: updatedUser.last_name,
         favoriteTeamId: updatedUser.favorite_team_id,
-        isAdmin: Boolean(updatedUser.is_admin),
-        emailVerified: Boolean(updatedUser.email_verified)
+        isAdmin: toBoolean(updatedUser.is_admin),
+        emailVerified: toBoolean(updatedUser.email_verified),
+        disableEmails: toBoolean(updatedUser.disable_emails),
+        timezone: updatedUser.timezone ?? null
       }
     });
 
@@ -332,7 +354,7 @@ router.put('/update', authenticateToken, async (req, res) => {
 });
 
 // Request password reset
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -352,8 +374,20 @@ router.post('/forgot-password', async (req, res) => {
 
     await userService.setPasswordResetToken(user.id, resetToken, resetExpires);
 
-    // TODO: Send reset email
-    console.log(`Password reset requested for ${email}. Reset token: ${resetToken}`);
+    // Never log the token -- it is a bearer credential for the account, and
+    // these logs ship to CloudWatch. Send it, and report only success/failure.
+    const emailResult = await emailService.sendPasswordReset(
+      user.email,
+      `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
+      resetToken,
+      { selfInitiated: true }
+    );
+
+    if (!emailResult.success) {
+      // Log for operators, but keep the client response identical so this
+      // endpoint cannot be used to probe which addresses are registered.
+      console.error(`Failed to send password reset email to ${user.email}:`, emailResult.error);
+    }
 
     res.json({ message: 'If an account exists, a reset email has been sent' });
 
@@ -364,7 +398,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // Reset password
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', passwordResetLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 

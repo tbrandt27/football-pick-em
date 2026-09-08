@@ -1,5 +1,25 @@
-# CloudFormation template for DynamoDB tables
-# This template creates all the DynamoDB tables needed for the Football Pick'em application
+# CloudFormation template for the Football Pick'em DynamoDB tables.
+#
+# THIS FILE MUST MATCH THE DEPLOYED STACK football-pickem-dynamodb.
+# Verify with:  aws cloudformation detect-stack-drift --stack-name football-pickem-dynamodb
+#
+# It supersedes three earlier templates. dynamodb-tables-simple.yml was what
+# production was actually built from, but 5e1f636 deleted it as redundant,
+# leaving the live stack described by no file in the repository.
+# dynamodb-tables.yml and dynamodb-tables-optimized.yml both described
+# aspirations rather than reality -- the latter declared 36 GSIs against the
+# 18 that exist. Qualified names ('simple', 'optimized') are what allowed the
+# repo and the account to drift apart, so there is now exactly one, plainly
+# named, and it is authoritative.
+#
+# Reconciled against live state on 2026-09-08: added is_admin-index,
+# game_id-user_id-index, football_game_id-index, user_game_football-index and
+# game_email-index, all of which existed on the tables but in no template;
+# dropped commissioner_id-index, which was declared here but never deployed
+# and is referenced nowhere in the code.
+#
+# Every table carries DeletionPolicy/UpdateReplacePolicy: Retain. Do not
+# remove them: without them a failed UPDATE_ROLLBACK destroys user data.
 
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'DynamoDB tables for Football Pick em application'
@@ -19,6 +39,8 @@ Resources:
   # Users table
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}users'
       BillingMode: PAY_PER_REQUEST
@@ -26,6 +48,8 @@ Resources:
         - AttributeName: id
           AttributeType: S
         - AttributeName: email
+          AttributeType: S
+        - AttributeName: is_admin
           AttributeType: S
       KeySchema:
         - AttributeName: id
@@ -37,10 +61,12 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        - IndexName: is_admin-index
+          KeySchema:
+            - AttributeName: is_admin
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -48,6 +74,8 @@ Resources:
   # Football Teams table
   FootballTeamsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}football_teams'
       BillingMode: PAY_PER_REQUEST
@@ -66,8 +94,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -75,13 +101,13 @@ Resources:
   # Pick'em Games table
   PickemGamesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}pickem_games'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
-          AttributeType: S
-        - AttributeName: commissioner_id
           AttributeType: S
         - AttributeName: season_id
           AttributeType: S
@@ -89,20 +115,12 @@ Resources:
         - AttributeName: id
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: commissioner_id-index
-          KeySchema:
-            - AttributeName: commissioner_id
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
         - IndexName: season_id-index
           KeySchema:
             - AttributeName: season_id
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -110,6 +128,8 @@ Resources:
   # Game Participants table
   GameParticipantsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}game_participants'
       BillingMode: PAY_PER_REQUEST
@@ -119,6 +139,8 @@ Resources:
         - AttributeName: game_id
           AttributeType: S
         - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: game_id_user_id
           AttributeType: S
       KeySchema:
         - AttributeName: id
@@ -138,14 +160,10 @@ Resources:
             ProjectionType: ALL
         - IndexName: game_id-user_id-index
           KeySchema:
-            - AttributeName: game_id
+            - AttributeName: game_id_user_id
               KeyType: HASH
-            - AttributeName: user_id
-              KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -153,6 +171,8 @@ Resources:
   # Seasons table
   SeasonsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}seasons'
       BillingMode: PAY_PER_REQUEST
@@ -171,8 +191,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -180,6 +198,8 @@ Resources:
   # Football Games table
   FootballGamesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}football_games'
       BillingMode: PAY_PER_REQUEST
@@ -187,10 +207,6 @@ Resources:
         - AttributeName: id
           AttributeType: S
         - AttributeName: season_id
-          AttributeType: S
-        - AttributeName: week
-          AttributeType: N
-        - AttributeName: season_id_week
           AttributeType: S
       KeySchema:
         - AttributeName: id
@@ -202,14 +218,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-        - IndexName: season_id-week-index
-          KeySchema:
-            - AttributeName: season_id_week
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -217,26 +225,17 @@ Resources:
   # System Settings table
   SystemSettingsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}system_settings'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
-        - AttributeName: category_key
-          AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: category_key-index
-          KeySchema:
-            - AttributeName: category_key
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -244,6 +243,8 @@ Resources:
   # Picks table
   PicksTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}picks'
       BillingMode: PAY_PER_REQUEST
@@ -254,7 +255,7 @@ Resources:
           AttributeType: S
         - AttributeName: game_id
           AttributeType: S
-        - AttributeName: season_id_week
+        - AttributeName: football_game_id
           AttributeType: S
         - AttributeName: user_game_football
           AttributeType: S
@@ -274,9 +275,9 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-        - IndexName: season_id_week-index
+        - IndexName: football_game_id-index
           KeySchema:
-            - AttributeName: season_id_week
+            - AttributeName: football_game_id
               KeyType: HASH
           Projection:
             ProjectionType: ALL
@@ -286,8 +287,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -295,6 +294,8 @@ Resources:
   # Weekly Standings table
   WeeklyStandingsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}weekly_standings'
       BillingMode: PAY_PER_REQUEST
@@ -304,10 +305,6 @@ Resources:
         - AttributeName: user_id
           AttributeType: S
         - AttributeName: game_id
-          AttributeType: S
-        - AttributeName: season_id_week
-          AttributeType: S
-        - AttributeName: game_season_week
           AttributeType: S
       KeySchema:
         - AttributeName: id
@@ -325,20 +322,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-        - IndexName: season_id_week-index
-          KeySchema:
-            - AttributeName: season_id_week
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-        - IndexName: game_season_week-index
-          KeySchema:
-            - AttributeName: game_season_week
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -346,6 +329,8 @@ Resources:
   # Game Invitations table
   GameInvitationsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${TablePrefix}game_invitations'
       BillingMode: PAY_PER_REQUEST
@@ -380,8 +365,6 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -446,3 +429,4 @@ Outputs:
     Value: !Ref GameInvitationsTable
     Export:
       Name: !Sub '${AWS::StackName}-GameInvitationsTable'
+

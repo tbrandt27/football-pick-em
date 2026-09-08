@@ -6,16 +6,9 @@ interface ApiResponse<T> {
   error?: string;
 }
 
-// Utility function to create URL-friendly slugs
-export function createGameSlug(gameName: string): string {
-  return gameName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-    .trim()
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-}
+// Re-exported so existing `import api, { createGameSlug } from '../utils/api'`
+// call sites keep working. The implementation lives in src/lib/slug.ts.
+export { createGameSlug } from '../lib/slug';
 
 class ApiClient {
   private baseUrl: string;
@@ -160,12 +153,22 @@ class ApiClient {
     return this.request<{ teams: NFLTeam[] }>('/teams');
   }
 
-  async getTeamRecords() {
+  /**
+   * Team win/loss records, as of the given week.
+   *
+   * ESPN reports each competitor's record at the time of that game, so passing
+   * a past week returns the standings then rather than today's.
+   */
+  async getTeamRecords(params: { week?: number; season?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.week !== undefined) q.set('week', String(params.week));
+    if (params.season) q.set('season', params.season);
+    const suffix = q.toString() ? `?${q}` : '';
     return this.request<{
       records: Record<string, string>;
       week: number;
       season: string;
-    }>('/teams/records');
+    }>(`/teams/records${suffix}`);
   }
 
   // Games endpoints
@@ -328,6 +331,10 @@ export interface User {
   favoriteTeamId?: string;
   isAdmin: boolean;
   emailVerified: boolean;
+  /** Opts the user out of non-essential mail, e.g. weekly pick reminders. */
+  disableEmails?: boolean;
+  /** IANA identifier. Null/absent means the league default (Eastern). */
+  timezone?: string | null;
 }
 
 export interface RegisterData {
@@ -354,6 +361,13 @@ export interface PickemGame {
   id: string;
   game_name: string;
   type: 'week' | 'weekly' | 'survivor';
+  /**
+   * Legacy alias for `type`. Every game service returns both fields (SQLite via
+   * `g.type as game_type`, DynamoDB via an explicit mapping), and parts of the UI
+   * read this one. Prefer `type` in new code; see the analysis notes on collapsing
+   * the two into a single field.
+   */
+  game_type?: 'week' | 'weekly' | 'survivor';
   created_at: string;
   updated_at: string;
   player_count: number;
@@ -406,6 +420,17 @@ export interface NFLGame {
   id: string;
   season_id: string;
   week: number;
+  /**
+   * Betting line, captured when the game was synced. ESPN only publishes odds
+   * while a game is upcoming, so these are persisted at sync time and are null
+   * for games that were already complete the first time they were seen.
+   * `spread` is negative and relative to `favorite_team_id`.
+   */
+  spread?: number | null;
+  over_under?: number | null;
+  favorite_team_id?: string | null;
+  odds_provider?: string | null;
+  odds_updated_at?: string | null;
   home_team_id: string;
   away_team_id: string;
   home_score: number;

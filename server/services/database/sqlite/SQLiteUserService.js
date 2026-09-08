@@ -1,5 +1,28 @@
 import IUserService from '../interfaces/IUserService.js';
 import db from '../../../models/database.js';
+import { toBoolean, toFlagInt } from '../../../utils/coerce.js';
+
+/**
+ * Normalises a SQLite user row for callers.
+ *
+ * SQLite stores booleans as 0/1. Those happen to be falsy/truthy in JS, so
+ * this is less dangerous than the DynamoDB string encoding -- but the service
+ * interface promises real booleans, and both providers must agree or callers
+ * end up provider-aware. See the DynamoDB twin in
+ * services/database/dynamodb/DynamoDBUserService.js.
+ *
+ * @param {Object|null|undefined} user
+ * @returns {Object|null}
+ */
+function normaliseUser(user) {
+  if (!user) return null;
+  return {
+    ...user,
+    is_admin: toBoolean(user.is_admin),
+    email_verified: toBoolean(user.email_verified),
+    disable_emails: toBoolean(user.disable_emails),
+  };
+}
 
 /**
  * SQLite User Service Implementation
@@ -10,7 +33,7 @@ export default class SQLiteUserService extends IUserService {
    * @returns {Promise<Array>} Users with team info
    */
   async getAllUsers() {
-    return await db.all(`
+    const rows = await db.all(`
       SELECT 
         u.id,
         u.email,
@@ -20,6 +43,8 @@ export default class SQLiteUserService extends IUserService {
         u.is_admin,
         u.email_verified,
         u.last_login,
+        u.disable_emails,
+        u.timezone,
         u.created_at,
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
@@ -27,6 +52,45 @@ export default class SQLiteUserService extends IUserService {
       LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       ORDER BY u.created_at DESC
     `);
+    return (rows || []).map(normaliseUser);
+  }
+
+  /**
+   * Get all users with a participation count.
+   *
+   * Used by GET /api/admin/users. This method was called by that route but
+   * never implemented on either provider, so the SQLite path threw
+   * `TypeError: ... is not a function` and the admin Users tab showed
+   * "Failed to load users".
+   *
+   * Counts in one LEFT JOIN rather than a query per user.
+   *
+   * @returns {Promise<Array>} Users with numeric game_count
+   */
+  async getAllUsersWithGameCount() {
+    const rows = await db.all(`
+      SELECT
+        u.id,
+        u.email,
+        u.first_name,
+        u.last_name,
+        u.favorite_team_id,
+        u.is_admin,
+        u.email_verified,
+        u.last_login,
+        u.disable_emails,
+        u.timezone,
+        u.created_at,
+        t.team_name as favorite_team_name,
+        t.team_city as favorite_team_city,
+        COUNT(DISTINCT gp.game_id) as game_count
+      FROM users u
+      LEFT JOIN football_teams t ON u.favorite_team_id = t.id
+      LEFT JOIN game_participants gp ON gp.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `);
+    return (rows || []).map((r) => ({ ...normaliseUser(r), game_count: Number(r.game_count) || 0 }));
   }
 
   /**
@@ -35,7 +99,7 @@ export default class SQLiteUserService extends IUserService {
    * @returns {Promise<Object|null>} User with team info
    */
   async getUserById(userId) {
-    return await db.get(`
+    return normaliseUser(await db.get(`
       SELECT 
         u.id,
         u.email,
@@ -45,13 +109,15 @@ export default class SQLiteUserService extends IUserService {
         u.is_admin,
         u.email_verified,
         u.last_login,
+        u.disable_emails,
+        u.timezone,
         u.created_at,
         t.team_name as favorite_team_name,
         t.team_city as favorite_team_city
       FROM users u
       LEFT JOIN football_teams t ON u.favorite_team_id = t.id
       WHERE u.id = ?
-    `, [userId]);
+    `, [userId]));
   }
 
   /**
@@ -94,8 +160,8 @@ export default class SQLiteUserService extends IUserService {
       lastName,
       favoriteTeamId || null,
       emailVerificationToken,
-      emailVerified ? 1 : 0,
-      isAdmin ? 1 : 0
+      toFlagInt(emailVerified),
+      toFlagInt(isAdmin)
     ]);
 
     return await this.getUserById(id);
@@ -130,7 +196,7 @@ export default class SQLiteUserService extends IUserService {
       UPDATE users 
       SET is_admin = ?, updated_at = datetime('now')
       WHERE id = ?
-    `, [isAdmin ? 1 : 0, userId]);
+    `, [toFlagInt(isAdmin), userId]);
   }
 
   /**
@@ -144,7 +210,7 @@ export default class SQLiteUserService extends IUserService {
       UPDATE users
       SET email_verified = ?, updated_at = datetime('now')
       WHERE id = ?
-    `, [emailVerified ? 1 : 0, userId]);
+    `, [toFlagInt(emailVerified), userId]);
   }
 
   /**
@@ -282,9 +348,29 @@ export default class SQLiteUserService extends IUserService {
       updateFields.push('last_name = ?');
       values.push(updates.lastName);
     }
-    if (updates.hasOwnProperty('favoriteTeamId')) {
+    if (Object.hasOwn(updates, 'favoriteTeamId')) {
       updateFields.push('favorite_team_id = ?');
       values.push(updates.favoriteTeamId || null);
+    }
+    // Mirrors the DynamoDB twin: routes/auth.js promotes a user via
+    // updateUserDynamic(id, { isAdmin: true }) when redeeming an admin
+    // invitation, and without these branches the method threw
+    // 'No valid fields to update'.
+    if (updates.isAdmin !== undefined) {
+      updateFields.push('is_admin = ?');
+      values.push(toFlagInt(updates.isAdmin));
+    }
+    if (updates.emailVerified !== undefined) {
+      updateFields.push('email_verified = ?');
+      values.push(toFlagInt(updates.emailVerified));
+    }
+    if (updates.disableEmails !== undefined) {
+      updateFields.push('disable_emails = ?');
+      values.push(toFlagInt(updates.disableEmails));
+    }
+    if (updates.timezone !== undefined) {
+      updateFields.push('timezone = ?');
+      values.push(updates.timezone || null);
     }
 
     if (updateFields.length === 0) {
@@ -300,8 +386,10 @@ export default class SQLiteUserService extends IUserService {
       values
     );
 
-    // Return updated user data
-    return await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    // Return through getUserById: normalised booleans, joined team fields, and
+    // no password hash in the payload (this value is sent to the client by
+    // routes/auth.js).
+    return await this.getUserById(userId);
   }
 
   /**

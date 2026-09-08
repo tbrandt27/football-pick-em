@@ -1,1 +1,76 @@
 @import "tailwindcss";
+
+/**
+ * Semantic design tokens.
+ *
+ * Tailwind v4 is CSS-first, so this @theme block is the config -- there is no
+ * `tailwind.config.js` in play (that file exists but is inert without an
+ * `@config` directive).
+ *
+ * Colors are named by *role*, not hue. The admin panel previously used eight
+ * competing hues (gray, red, green, blue, yellow, purple, orange, indigo) with
+ * no rule about which meant what, so "purple" and "indigo" and "blue" all
+ * appeared as accents and red/orange/yellow all appeared as warnings. Naming by
+ * role means a palette change is one edit here, and it stops two colors
+ * carrying the same signal.
+ *
+ * Every foreground/background pair below is verified at WCAG AA (>= 4.5:1):
+ *   ink/surface 17.85  ink-muted/surface 7.58  ink-subtle/surface 4.76
+ *   white/brand 6.70   white/success 5.48      white/danger 6.29
+ *   white/warning 5.02 and each *-ink on its matching *-soft >= 6.8
+ *
+ * Each role has three background tiers: solid (white text), -soft (tinted
+ * chip), and -soft-hover (one step darker for hover, still >= 6.3:1 against
+ * the matching -ink text). A soft chip must never hover to its solid tier --
+ * that made the label invisible.
+ */
+@theme {
+  /* Surfaces and text: one cool neutral ramp (slate) so it sits with the brand blue */
+  --color-surface: #ffffff;
+  --color-surface-sunk: #f8fafc;
+  --color-surface-alt: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-subtle: #64748b;
+
+  /* Brand: actions, links, selected state */
+  --color-brand: #1d4ed8;
+  --color-brand-hover: #1e3f8f;
+  --color-brand-soft: #eff6ff;
+  --color-brand-soft-hover: #dbeafe;
+  --color-brand-ink: #1e3a8a;
+
+  /* Status: exactly one hue per meaning */
+  --color-success: #047857;
+  --color-success-soft: #ecfdf5;
+  --color-success-soft-hover: #d1fae5;
+  --color-success-ink: #065f46;
+
+  --color-danger: #be123c;
+  --color-danger-soft: #fff1f2;
+  --color-danger-soft-hover: #ffe4e6;
+  --color-danger-ink: #9f1239;
+
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-warning-soft-hover: #fef3c7;
+  --color-warning-ink: #92400e;
+
+  /* Motion: one duration so transitions feel like one system */
+  --default-transition-duration: 150ms;
+}
+
+/* Honour the OS reduced-motion preference across every animation and
+   transition, including Tailwind's own utilities. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

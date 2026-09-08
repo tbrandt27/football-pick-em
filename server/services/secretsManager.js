@@ -86,14 +86,16 @@ class SecretsManagerService {
           }
           console.log(`✅ Successfully extracted value for key '${key}'`);
         } catch (parseError) {
+          // Never log secretValue itself -- this is a secret and these logs are
+          // shipped to CloudWatch. The length is enough to diagnose truncation.
           console.error(`❌ Failed to parse secret as JSON:`, parseError.message);
-          console.error(`❌ Raw secret value:`, secretValue);
-          throw new Error(`Failed to parse secret as JSON: ${parseError.message}`);
+          console.error(`❌ Secret payload length:`, typeof secretValue === 'string' ? secretValue.length : 'n/a');
+          throw new Error(`Failed to parse secret as JSON: ${parseError.message}`, { cause: parseError });
         }
       }
       
       // Cache the result
-      console.log(`💾 Caching result for ${cacheKey}:`, typeof secretValue === 'string' ? `"${secretValue.substring(0, 50)}${secretValue.length > 50 ? '...' : ''}"` : secretValue);
+      console.log(`💾 Caching result for ${cacheKey} (${typeof secretValue}, length ${typeof secretValue === 'string' ? secretValue.length : 'n/a'})`);
       this.cache.set(cacheKey, {
         value: secretValue,
         timestamp: Date.now()

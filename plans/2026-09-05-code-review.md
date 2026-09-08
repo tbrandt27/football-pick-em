@@ -1,0 +1,1233 @@
+# Code review & upgrade notes
+
+**Status:** In progress — the `[done]` items shipped, the rest is open.
+
+Reviewed at `801311e` on 2026-09-05. Scope: full repo (~31k lines across
+`server/`, `src/`, `scripts/`, `infrastructure/`).
+
+Sections marked **[done]** shipped in
+[#6](https://github.com/tbrandt27/football-pick-em/pull/6) and are kept
+here for the evidence trail — the reproduction steps and reasoning are
+worth more than the diff alone. Everything else is still open.
+
+## Still open
+
+| § | Item |
+|---|---|
+| 1.2 | **Rotate the committed secrets.** The code fix is not sufficient; the values remain in git history. |
+| 1.6 | Rate limiting, password-reset email, JWT in `localStorage`, request validation, cross-player pick disclosure |
+| ~~2.2~~ | **Closed — was already resolved.** Measured against production: every hot path already queries a GSI, zero scans. The remaining scans are correct (unfiltered reads, delete cascades that need consistency, or filters no GSI covers). See §2.2 |
+| ~~2.2a~~ | **Closed.** GSI audit, unused-index cleanup, and write-boundary encoding all shipped. Zero admin invitations were ever issued in production, so the promotion bug affected no real user. |
+| 2.3 | `getGameBySlug` reads the entire games table — **SQLite only**; the DynamoDB path is bounded via `user_id-index`, and SQLite is dev-only. Low priority. Slug collisions remain the real issue |
+| 2.5 | `/api/teams/records` is unreachable (route shadowing) |
+| 2.8–2.10 | Timezone handling, interval-in-state, `type` vs `game_type` |
+| 4 | Astro SSR buys nothing today; duplicated app chrome; 735 raw `console.*` calls; dead files |
+| 5 | Design system, contrast, accessibility, mobile — tracked in [`2026-09-06-product-backlog.md`](2026-09-06-product-backlog.md) |
+| ~~7~~ | **Largely closed.** npm advisories: **67 → 4, no criticals, none in the request path.** Express family, `jws`, `axios`, AWS SDK, and `sqlite3` all cleared. The 4 left are `nodemailer` and `uuid` (both verified not applicable) plus two build-time transitives. See §7 |
+| 8 | App Runner migration — split out into [`2026-09-06-ecs-express-migration.md`](2026-09-06-ecs-express-migration.md) |
+
+Delete this file once the open items are closed or moved.
+
+---
+
+## 1. Critical security findings
+
+### 1.1 Every authenticated user was an admin in production **[done]**
+
+The highest-severity finding in the repo.
+
+`DynamoDBUserService` persists the admin flag as a **string**:
+
+```js
+// server/services/database/dynamodb/DynamoDBUserService.js:144
+is_admin: isAdmin ? 'true' : 'false',
+```
+
+`requireAdmin` then tested it for truthiness:
+
+```js
+// server/middleware/auth.js (before)
+if (!req.user || !req.user.is_admin) { return res.status(403)... }
+```
+
+`!"false"` is `false`, so the guard passed for every non-admin. Because
+`apprunner.yaml` sets `DATABASE_TYPE: auto`, which resolves to DynamoDB in
+production, **this was live in production and not reproducible locally on
+SQLite** (which stores `0`/`1`).
+
+Blast radius: all 40+ `requireAdmin` routes in `server/routes/admin.js`,
+plus `requireGameOwner`'s admin override, plus `users.js` admin-status
+changes. Any logged-in player could delete seasons, reset other users'
+passwords, or promote themselves.
+
+Fix: added `server/utils/coerce.js#toBoolean`, applied it in
+`requireAdmin`, `requireGameOwner`, and once at the point `req.user` is
+built so downstream handlers see real booleans. The same
+`Boolean(user.is_admin)` bug in six spots in `server/routes/auth.js`
+(login / `/me` / `/update` responses) was leaking admin UI to the client
+and is fixed too.
+
+`test/server/auth.middleware.test.js` and `test/server/coerce.test.js`
+now pin this behaviour across both providers' encodings.
+
+> `is_admin_invitation` is stored as a real boolean, so the invitation
+> flow was not affected. Verified, not assumed.
+
+### 1.2 Production secrets committed to the repo **[done]**
+
+`apprunner.yaml` carried literal values in version control:
+
+```yaml
+- name: JWT_SECRET
+  value: "your-super-secret-jwt-key-change-this-in-production"
+- name: ADMIN_PASSWORD
+  value: "admin123"
+```
+
+Also `SETTINGS_ENCRYPTION_KEY` and `ADMIN_EMAIL`. Anyone with repo read
+access could forge a valid admin JWT.
+
+Fix: replaced with commented ARN placeholders plus a note that
+`configService` already resolves `arn:aws:secretsmanager:` values at
+runtime.
+
+**Action required from you — the code change is not sufficient:**
+
+1. **Rotate all four values now.** They are in git history (introduced
+   at `1e3d1a0`) and scrubbing the working tree does not remove them.
+2. Set them as App Runner service-level secrets or Secrets Manager ARNs.
+3. Consider `git filter-repo` to purge history, or treat the old values
+   as permanently burned.
+
+### 1.3 Hardcoded emergency JWT secret **[done]**
+
+`configService`'s degraded-mode path installed a *literal* fallback:
+
+```js
+// before
+this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'emergency-fallback-jwt-secret-change-immediately');
+```
+
+So any production boot where secret resolution failed silently switched
+to a secret published in this repo — a remote admin-forgery primitive
+triggered by a transient AWS error.
+
+Fix: degraded mode now generates `randomBytes(48)` per process. The
+intent of degraded mode (don't crash-loop; keep health checks answering)
+is preserved, but it now fails *safe*: existing sessions stop verifying
+and nobody can mint new ones. The `admin123` degraded-mode admin
+password fallback was removed entirely.
+
+### 1.4 Secret values written to CloudWatch **[done]**
+
+```js
+// server/services/configService.js (before)
+console.log(`🔍 ${key}: Resolved value preview: "${secretValue.substring(0, 100)}..."`);
+```
+
+`JWT_SECRET` is shorter than 100 characters, so this logged it in full on
+every boot. `server/services/secretsManager.js` did the same twice more
+(`Raw secret value:` on parse failure, and a 50-char prefix on every
+cache write).
+
+Fix: all three now log type and length only. Full ARN logging on every
+boot was also dropped.
+
+### 1.5 Arbitrary file read via the logo route **[done]**
+
+```js
+// server/index.js (before)
+app.get("/logos/:filename", (req, res) => {
+  const { filename } = req.params;
+  ... join(process.cwd(), "public/logos", filename) ... res.sendFile(logoPath)
+```
+
+Express percent-decodes route params, so `GET /logos/..%2f..%2fpackage.json`
+arrived as `filename = "../../package.json"`. `join()` normalises the
+`..` away, leaving a clean absolute path that `existsSync` accepts and
+`sendFile` serves. Unauthenticated arbitrary file read, bounded only by
+the 12 candidate base directories.
+
+Fix: filename is validated against `/^[A-Za-z0-9._-]+$/` before touching
+the filesystem. Verified against a running server:
+
+```
+GET /logos/..%2f..%2fpackage.json  ->  400 {"error":"Invalid logo filename"}
+GET /logos/NFL.svg                 ->  200
+```
+
+### 1.6 Still open — recommended, not changed
+
+| Finding | Where | Why it matters |
+|---|---|---|
+| **No rate limiting anywhere** | `server/routes/auth.js` | `/login`, `/register`, `/forgot-password` accept unlimited attempts. bcrypt cost 12 also makes `/login` a cheap CPU-exhaustion vector. Add `express-rate-limit` — strict on auth routes, loose globally. |
+| **Password reset is a stub** | `auth.js:335` | `// TODO: Send reset email` — the route logs the reset token to stdout and returns success. Users cannot reset passwords, and the token sits in CloudWatch. `emailService` already exists; wire it up. |
+| **JWT in `localStorage`** | `src/stores/auth.ts`, `src/utils/api.ts` | Any XSS yields a 7-day admin token. `httpOnly; Secure; SameSite=Lax` cookies fix this *and* unblock the SSR work in §4.1. |
+| **No request validation** | all routes | No zod/joi/express-validator. Bodies are destructured and trusted. Astro 7 ships zod v4 as a transitive dep already. |
+| **Cross-player pick disclosure** | `picks.js:9-29` | `GET /picks?gameId=X&userId=Y` lets any co-participant read another player's picks *before kickoff*. Competitive-integrity hole in a pick'em pool. Gate on game start time. |
+| **Timing-unsafe token compare** | `middleware/healthAuth.js:23` | `healthToken === process.env.HEALTH_CHECK_TOKEN`. Use `crypto.timingSafeEqual`. |
+| **`update-scores-on-demand` lacks `requireAdmin`** | `admin.js:1420` | Any authenticated user can trigger ESPN sync. May be deliberate; if so, rate-limit it. |
+| **Dead branch in `healthAuth`** | `healthAuth.js:10` | `req.path === '/health'` never matches inside a router mounted at `/api/health` — `req.path` is `/detailed` etc. Harmless today because `health.js:13` handles it, but misleading. |
+
+---
+
+## 2. Correctness bugs found
+
+### 2.1 DynamoDB scans were unpaginated — silent data loss **[done]**
+
+`_dynamoScan` issued exactly one `ScanCommand` and returned `result.Items`:
+
+```js
+// server/providers/DynamoDBProvider.js
+const command = new ScanCommand(scanParams);
+const result = await this.docClient.send(command);
+// ... no LastEvaluatedKey loop
+```
+
+DynamoDB caps a Scan response at 1 MB **before** `FilterExpression` is
+applied. Past that, results are truncated with no error. There are
+**77 scan call sites**. The dangerous ones:
+
+- `DynamoDBGameService.js:264` — `_dynamoScan('picks', { game_id })` for standings
+- `DynamoDBSeasonService.js:248,317` — `_dynamoScan('football_games', { season_id })`
+- `DynamoDBUserService.js:18,392,435` — full `users` scans
+
+`picks` grows as players × games × weeks.
+
+**This was already happening.** The live table measured **2,959 items /
+1.89 MB** on 2026-09-07 — past the 1 MB Scan page limit. Standings built
+from `_dynamoScan('picks', { game_id })` were silently dropping picks
+before the fix landed, not at some future threshold.
+
+Fixed: `_dynamoScan` now follows `LastEvaluatedKey` to exhaustion,
+accumulating into the same `{ Items, Count, ScannedCount }` shape the 115
+call sites already destructure — no caller changed. `ScannedCount` is
+summed across pages.
+
+A multi-page scan now logs a distinct warning (`Multi-page SCAN (N pages)
+-- consider a GSI-backed query`), so the call sites that have outgrown a
+scan and need §2.2's treatment announce themselves in production. A
+1000-page ceiling guards against a runaway loop; hitting it logs at
+`error` with `TRUNCATED` in the message, because silent truncation is the
+exact failure this replaces. Errors on a later page propagate rather than
+returning partial data — a short read must never be mistaken for a
+complete one.
+
+`test/server/dynamoScan.test.js` (10 tests) stubs the AWS SDK and covers
+multi-page accumulation, `ExclusiveStartKey` threading, filter
+expressions surviving onto continuation pages, `ScannedCount` summing,
+ordering across page boundaries, an all-filtered-out page that still has
+more to scan, mid-scan error propagation, and the ceiling warning.
+
+### 2.2 Scans on hot paths where GSIs already exist **[done — was already resolved]**
+
+> **Which CloudFormation template is authoritative.** Recovered from
+> `support_docs/` before those notes were deleted, and re-verified against
+> the code on 2026-09-06.
+>
+> The code queries **11** distinct GSIs. `infrastructure/` used to hold four
+> templates and only one defined all 11:
+>
+> | Template | GSIs defined | Missing (that the code queries) | Outcome |
+> |---|---|---|---|
+> | `dynamodb-tables-optimized.yml` | 25 | **none** | kept — authoritative |
+> | `dynamodb-tables.yml` | 15 | `football_game_id-index`, `is_admin-index` | deleted |
+> | `dynamodb-tables-simple.yml` | 8 | 4 | deleted |
+> | `dynamodb-stack-template.yml` | 0 directly | — | **kept**, repointed |
+>
+> Deploying an incomplete template leaves the app working while silently
+> falling back to full table scans — a cost and latency regression, not an
+> error.
+>
+> `dynamodb-stack-template.yml` showed zero GSIs only because it is a
+> nested-stack wrapper. It carries the `ApplicationDynamoDBRole` IAM role
+> (trust policy already covering `ecs-tasks.amazonaws.com`) and the SSM
+> parameters publishing the database config and role ARN — none of which
+> exist elsewhere. It was repointed from the deleted `-simple` template to
+> `-optimized`; parameter contract (`Environment`, `TablePrefix`) verified
+> compatible. Its vestigial SAM `Globals` block, which pinned the EOL Node
+> 18 Lambda runtime despite the template defining no functions, was
+> removed.
+>
+> Separately: `is_current-index` appears only in the optimized template and
+> **is not queried by any code path**. An earlier round of notes concluded it
+> was a critical missing index and wrote console instructions to create it;
+> a later note reversed that. The reversal was correct — current-season
+> lookup was reworked to not need it. Do not add it.
+
+**The template audit above was wrong about which file was authoritative**
+(corrected 2026-09-08). It reasoned about GSI *counts* without checking
+what was deployed. In fact:
+
+- The live stack `football-pickem-dynamodb` was created from
+  `dynamodb-tables-simple.yml` — the template this audit deleted. The
+  deployed template was byte-identical to it apart from a trailing newline.
+- `dynamodb-tables-optimized.yml`, marked "kept — authoritative", had never
+  been deployed and never was. It declared 36 GSIs against the 18 that
+  exist and the 12 the code queries.
+- `dynamodb-stack-template.yml`, marked "kept, repointed", had never been
+  deployed either. None of its three resources existed:
+  `football_pickem_application-role-prod` returned `NoSuchEntity` and both
+  SSM parameters returned `ParameterNotFound`. App Runner used a
+  hand-created `apprunner_footballpickem` role instead.
+
+So deleting the two "incomplete" templates removed the only file that
+described production, and for two days no committed file did. Both
+remaining templates were then deleted too and replaced with
+`infrastructure/dynamodb-tables.yml`, reconciled against live state and
+verified table-by-table against `describe-table`.
+
+The lesson generalises: GSI counts in a template say nothing about what is
+deployed. Compare against `get-template` and `describe-table`, not between
+files.
+
+
+
+**This section was wrong.** It claimed `getUserByEmail` scans the users
+table on every login. It does not — it calls `_getByEmailGSI` first and only
+scans if that throws. The original reading came from grepping for
+`_dynamoScan` without checking whether each hit sat inside a `catch`.
+
+Measured on 2026-09-07 by wrapping the provider's access primitives and
+exercising the real service methods against production:
+
+| Hot path | Access pattern | Scans |
+|---|---|---|
+| `getSeasonGames` | `season_id-index` | 0 |
+| `getSeasonGameCount` | `season_id-index` | 0 |
+| `getUserGames` | `user_id-index` | 0 |
+| `getUserByEmail` | `email-index` | 0 |
+| `getFirstAdminUser` | `is_admin-index` | 0 |
+| `getGamePicksSummary` | `game_id-index` | 0 |
+| `getGameBySlug` | `user_id-index`, then bounded to the user's own games | 0 |
+
+**Every hot path already queries a GSI.** The one genuinely missing index was
+`is_admin-index`, added in §2.2a; with all 12 required indexes deployed the
+scan fallbacks are unreachable.
+
+Of the 67 `_dynamoScan` call sites, 29 look "fixable" against a deployed GSI,
+but on inspection they are all one of:
+
+- **GSI fallbacks** inside a `catch` — correct safety nets, now unreachable.
+- **Unfiltered scans** (`getAllUsers`, `getAllSeasons`, `getAllGames`) — a
+  Scan *is* the right operation for "fetch everything"; no GSI helps.
+- **Delete cascades** (`deleteGame` sweeping picks, standings, invitations,
+  participants). These must **stay** scans: a GSI is eventually consistent and
+  cannot use `ConsistentRead`, so a Query could miss a just-written row and
+  orphan it. This is the reason a blanket scan→Query rewrite would be a bug,
+  not an optimisation.
+- **Filters with no covering GSI** — `favorite_team_id`, `home_team_id` /
+  `away_team_id`, `team_conference`, `category`, `password_reset_token`,
+  `is_current`, `commissioner_id`. All on tables of 1–33 rows, where a GSI
+  would cost more in write amplification than it saves.
+
+`getSeasonByYear` also scans deliberately: `seasons` holds one row, so a Scan
+is cheaper than a Query, and the code says so.
+
+Nothing to change. **The lesson worth keeping is the measurement technique** —
+counting `_dynamoScan` occurrences statically overstated the problem by
+roughly 29 sites; wrapping the provider and running the real code paths gave
+the answer in minutes.
+
+### 2.2a Production GSI audit and the mixed-type `is_admin` bug **[done]**
+
+Audited against the live tables in the production account (`us-east-1`) on
+2026-09-07. This replaces the earlier template-based inference with the
+deployed state.
+
+**11 of 12 GSIs the code queries were already deployed.** The one gap was
+`is_admin-index` on `users`, since created and now `ACTIVE`.
+
+Two indexes were deployed that no code path queries — **both since deleted**
+(2026-09-07), along with their definitions in
+`infrastructure/dynamodb-tables.yml` (then named
+`dynamodb-tables-optimized.yml`) and `scripts/dev/setup-localstack.js` so a
+redeploy cannot resurrect them:
+
+- `is_current-index` on `seasons` — declared its key as `S` while the app
+  writes `is_current` as a native `BOOL`, so it indexed **0 of 1** items. It
+  never worked. This is the index the old notes flip-flopped over: created by
+  hand from console instructions, then the current-season lookup was reworked
+  so it was not needed. The type mismatch means it could not have helped
+  either way.
+- `commissioner_id-index` on `pickem_games` — functional (5 of 5 items
+  indexed) but queried by nothing.
+
+Removing them also required dropping the now-orphaned `is_current` and
+`commissioner_id` entries from `AttributeDefinitions`: CloudFormation rejects
+a table whose attribute definitions are not referenced by some key schema.
+
+**Production and code are now exactly aligned — 12 GSIs required, 12
+deployed, none missing, none unused.**
+
+#### What creating the index exposed
+
+`is_admin` was stored in **three different types** in the same table:
+
+| Count | Stored as |
+|---|---|
+| 16 | `BOOL: false` |
+| 1 | `S: "false"` |
+| 1 | `BOOL: true` — the only real admin |
+
+A GSI only indexes items whose key attribute matches the declared type. The
+index declares `is_admin` as `S`, so it captured exactly one item — the
+`S:"false"` one — and the actual admin was absent. The query the code runs
+returned `Count: 0`.
+
+Creating the index did **not** cause this. The pre-existing scan fallback
+filtered on `S:"true"`, of which there were zero, so it returned `Count: 0`
+too — verified directly. `getFirstAdminUser()` had been returning `null` in
+production since these rows were written. The index made a silent bug
+visible.
+
+Blast radius was small: `getFirstAdminUser` is used only by an admin
+data-repair route that backfills a missing `commissioner_id`, and it already
+degrades to `getAnyUser()`. Authorization was never affected — `requireAdmin`
+does a direct `getUserById` and runs the value through `toBoolean`, which
+reads all three encodings correctly (§1.1).
+
+#### Fix applied
+
+1. **Data normalised** — all 18 rows now store `is_admin` as `S`
+   (`"true"`/`"false"`). The GSI query now returns the admin with
+   `ScannedCount: 1`, a true index hit.
+2. **Service layer normalises on read.** Normalising the data surfaced a
+   *second* bug: `/api/users` returned raw provider rows, and
+   `UsersManager.tsx` does `{userData.is_admin && …}`. With the value as the
+   string `"false"` — truthy — every user rendered an "Admin" badge and a
+   "Remove Admin" button. This was already broken for the one pre-existing
+   string row; normalising made it universal.
+
+   Both `DynamoDBUserService` and `SQLiteUserService` now run rows through a
+   `normaliseUser()` helper on every user-returning read, so the interface
+   contract is real booleans and no caller has to be provider-aware.
+   `test/server/userService.normalise.test.js` covers all encodings
+   including the exact mixed-type shape production was in.
+
+#### Write path **[done]**
+
+The encoding is now produced in exactly one place per provider.
+`server/utils/coerce.js` gained `toFlagString()` (DynamoDB `"true"`/`"false"`)
+and `toFlagInt()` (SQLite `1`/`0`), both deriving from `toBoolean`, so they
+accept whatever a caller already holds. Every write site in
+`DynamoDBUserService`, `SQLiteUserService`, and `databaseInitializer` routes
+through them; no ad-hoc `? 'true' : 'false'` or `? 1 : 0` remains.
+
+Fixing this surfaced a **third, unrelated bug**. `routes/auth.js` redeems an
+admin invitation with:
+
+```js
+await userService.updateUserDynamic(userId, { isAdmin: true });
+```
+
+Neither provider's `updateUserDynamic` handled `isAdmin` — it recognised only
+`firstName`, `lastName`, and `favoriteTeamId`. With no other field present
+the update object stayed empty and the method threw
+`'No valid fields to update'`. `auth.js` catches that inside its
+per-invitation `try`, logs, and continues — so registration **succeeded**,
+the response said *"You've been granted admin privileges"* and returned
+`isAdmin: true`, and the row was never touched. The user then saw admin UI
+while every admin endpoint returned 403.
+
+Both providers now handle `isAdmin` and `emailVerified` in
+`updateUserDynamic`, and both return through `getUserById` so callers get
+normalised booleans (and, on SQLite, no password hash — that method
+previously returned `SELECT *`).
+
+Covered by `test/server/userService.write.test.js` (14 tests), including a
+regression guard that `updateUserDynamic(id, { isAdmin: true })` no longer
+throws and does write the flag.
+
+#### Still open
+
+If the encoding is ever migrated to a native `BOOL`, the `is_admin-index`
+GSI must be **recreated** rather than altered — a GSI key's `AttributeType`
+cannot be changed in place. Not worth doing on its own; fold it into any
+future table rebuild.
+
+### 2.3 `getGameBySlug` reads the entire games table
+
+```js
+// server/services/database/sqlite/SQLiteGameService.js:51
+const game = games.find((g) => createGameSlug(g.game_name) === gameSlug);
+```
+
+Every game page view loads all games and slugifies each one in JS. The
+DynamoDB path scans. Store the slug as a column/attribute at write time
+and look it up directly.
+
+### 2.4 Four latent `ReferenceError`s — caught by the new linter **[done]**
+
+These are exactly what the linting task was worth:
+
+| File | Bug |
+|---|---|
+| `server/utils/seedTeams.js:87,177` | `` `with logo ${logoFilename}` `` — no such variable. Throws on the **success** path of team seeding. Variable in scope is `logoPath`. |
+| `server/routes/admin.js:1602` | `crypto.createHash('md5').update(ENCRYPTION_KEY)` — bare identifier; every sibling method uses `getEncryptionKey()`. Legacy settings-decryption fallback #3 always threw. |
+| `scripts/test-dynamodb-optimizations.js:172` | `totalDuration` declared inside an `if` block, read from the `return` outside it. |
+
+All fixed.
+
+### 2.5 `/api/teams/records` is unreachable (route shadowing)
+
+`server/routes/teams.js` registers `/:teamId` at line 45 and `/records`
+at line 359. Express matches in registration order, so `/records` is
+swallowed by `:teamId` and returns `404 {"error":"Team not found"}`.
+
+Currently latent: `api.getTeamRecords()` (`src/utils/api.ts:163`) is
+defined but never called. It breaks the moment someone wires it up. Move
+literal routes above parameterised ones.
+
+### 2.6 Error middleware was registered too early **[done]**
+
+`server/index.js` mounted the 500 handler *above* `app.get("*")`. Express
+only routes to an error handler registered **after** the middleware that
+threw, so errors from the API routes and the Astro SSR handler fell
+through to Express's default handler instead. Moved below the catch-all,
+with a `res.headersSent` guard.
+
+### 2.7 Health-check path 404s in production **[done]**
+
+The `Dockerfile` `HEALTHCHECK` probed `/api/health/live`. Everything under
+`/api/health` except the index passes through `requireHealthAccess`
+(`server/routes/health.js:13`), which returns **404** in production unless
+`ENABLE_DETAILED_HEALTH=true`. Verified against a production-mode boot:
+
+```
+NODE_ENV=production, ENABLE_DETAILED_HEALTH unset:
+  /health            -> 200
+  /api/health        -> 200
+  /api/health/live   -> 404   <-- what the Dockerfile probed
+  /api/health/ready  -> 404
+```
+
+Latent on App Runner today, because `apprunner.yaml` uses `path: "/health"`
+and the source-based runtime ignores the Docker `HEALTHCHECK`. It becomes
+load-bearing on ECS: an ALB target group pointed at `/api/health/live`
+marks every task unhealthy and the service never stabilises. Switched to
+`/health`, which `server/index.js` serves directly, ungated and with no
+database work. See §8.
+
+### 2.8 Timezone handling is inconsistent
+
+```js
+// server/services/scheduler.js:87
+const easternTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+```
+
+Re-parsing a localised string is implementation-defined. It happens to
+work for extracting an hour on a UTC host, but `isGameDay()`
+(`scheduler.js:25`) uses `today.getDay()` in **server-local** time while
+`isActiveGameTime()` uses ET. On a UTC host, a Sunday 8pm ET game reads
+as Monday. Use `Intl.DateTimeFormat` with an explicit `timeZone` and
+`hour12: false` for both.
+
+### 2.9 Interval stored in state, not a ref
+
+```js
+// src/components/WeeklyGameView.tsx:42
+const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+```
+
+The effect reads `autoRefreshInterval` but omits it from its dependency
+array, so the cleanup closure captures a stale handle and intervals can
+leak across re-renders. Use `useRef`. This is one of the 42
+`react-hooks/*` warnings the new lint config surfaces.
+
+### 2.10 `type` vs `game_type` duplication
+
+Every game service returns both (`SQLiteGameService`: `g.type as game_type`;
+`DynamoDBGameService`: an explicit mapping), and consumers check both:
+
+```js
+// server/routes/picks.js:91
+if (game && (game.type === 'survivor' || game.game_type === 'survivor'))
+```
+
+This was producing the only two pre-existing `astro check` errors. I
+added `game_type` to the `PickemGame` type so the codebase type-checks
+clean **[done]**, but the real fix is to pick one field and delete the
+other.
+
+---
+
+## 3. Astro 5.12.3 → 7.3.1 upgrade **[done]**
+
+Two major versions. The build, type-check, and a boot smoke test all
+pass on this branch.
+
+### What was actually breaking here
+
+Most of the v6/v7 breaking-change list doesn't touch this repo — there
+are no content collections, no `Astro.glob()`, no markdown pipeline, no
+`<ViewTransitions />`, no i18n, no Astro DB. The ones that mattered:
+
+| Change | Impact |
+|---|---|
+| **Node ≥ 22.12 required** (v6) | The blocker. Repo was on Node 18 in `package.json` engines, `Dockerfile`, and `apprunner.yaml`. Node 18 is also EOL. |
+| **Vite 6 → 7 → 8** | Transitively forced the dev-proxy config through two Vite majors. Also why Vitest couldn't be installed *before* the upgrade — Vitest 5 needs Vite ≥ 6.4 and Astro 5 pinned 6.3.5. |
+| **Rust compiler mandatory** (v7) | Unclosed tags and invalid HTML nesting are now errors, not silently corrected. This repo's `.astro` files compiled clean. |
+| **`compressHTML` default → `'jsx'`** (v7) | Whitespace is stripped with JSX rules. Worth a visual pass on text-heavy views. |
+| **Adapter API rewrite** (v6) | `NodeApp`, `createExports()`, `app.setManifestData()` all removed. **`mode: "middleware"` and the exported `handler` survive** — verified `dist/server/entry.mjs` still exports `handler`, so the Express integration in `server/index.js` needed no change. |
+
+### Changes made
+
+- `astro` 5.12.3 → **7.3.1**, `@astrojs/node` 9 → **11.1.5**,
+  `@astrojs/react` 4 → **6.0.5**
+- `tailwindcss` / `@tailwindcss/vite` → **4.3.3**, `react`/`react-dom` → **19.2.8**
+- `engines.node` → `>=22.12.0`; added `.nvmrc` (`22.12.0`)
+- `Dockerfile` → **multi-stage on `node:22-alpine`**. The old single-stage
+  build ran `npm ci --only=production` and *then* `npm run build`, which
+  only worked because every build tool was mis-declared as a runtime
+  dependency. Build tooling now lives in `devDependencies`, the build
+  happens in stage 1, and `npm prune --omit=dev` produces the runtime
+  `node_modules`. Runs as non-root `node`.
+- `apprunner.yaml` runtime → `nodejs22`
+- Moved `@astrojs/check`, `typescript`, `@types/react*`, `concurrently`
+  out of `dependencies`
+- Deleted `Dockerfile.backup` (the `docker:build` script was pointing at
+  it instead of the real `Dockerfile`)
+
+### TypeScript is deliberately pinned to 6.x, not 7.x
+
+`typescript@7.0.2` is published, but:
+
+- `@astrojs/check@0.9.10` peers `typescript: ^5.0.0 || ^6.0.0`
+- `typescript-eslint@8.69.0` peers `typescript: >=4.8.4 <6.1.0`
+
+So the ceiling is **TypeScript 6.0.3**. Revisit when those two publish
+TS 7 support.
+
+### Things to check before you deploy
+
+1. **App Runner `nodejs22` runtime availability** in `us-east-1` — I set
+   it in `apprunner.yaml` but could not verify it against your account.
+   You have a working Dockerfile; the container path is lower-risk.
+2. **`compressHTML: 'jsx'`** — quick visual diff on the scores and
+   weekly views.
+3. **Astro 7 enables filesystem-backed sessions** by default. The build
+   logs `[@astrojs/node] Enabling sessions with filesystem storage`.
+   Harmless here (nothing uses `Astro.session`), but on App Runner the
+   filesystem is ephemeral. If you ever adopt sessions, configure
+   `sessionDrivers` explicitly.
+4. **Local Node is v25.9.0**, which is neither of the current LTS lines.
+   `eslint-plugin-astro` warns `EBADENGINE` against it. Switch to 22 or
+   24 LTS (`nvm use` now reads `.nvmrc`).
+
+### Express 4 → 5 **[done]**
+
+Kept out of the Astro PR so a regression would be attributable; done
+separately on 2026-09-07. Express 4.21.2 → **5.2.1**.
+
+The migration surface turned out to be two path patterns:
+
+- `app.get("*")` → **`app.get("/{*splat}")`** (`server/index.js`). Note the
+  braces. path-to-regexp 8 requires a *named* wildcard, and the obvious
+  `"/*splat"` does **not** match `/` — it would have silently 404'd the
+  homepage. `test/server/express5.test.js` pins both forms so the trap is
+  documented rather than rediscovered.
+- `:tableName?` → **`{/:tableName}`** (`server/routes/health.js`). The `?`
+  suffix is gone; the optional segment, including its leading slash, goes in
+  braces.
+
+Audited and found clean: no `app.del`, `res.sendfile`, `req.param()`,
+`res.redirect('back')`, or two-argument `res.send(body, status)`; nothing
+writes to `req.query` (now a read-only getter); nothing depends on nested
+query syntax (the parser default changed from extended to simple); and
+`express.urlencoded({ extended: true })` was already explicit, so the
+default flipping to `false` is a non-event. The dynamic `res.status(...)`
+calls in `health.js` resolve to literal 200/503, inside the 100-999 range
+v5 now validates.
+
+**What this buys beyond the version bump:** rejected promises from handlers
+are now forwarded to error middleware automatically, so the try/catch in
+every route handler is no longer load-bearing. That only works because the
+500 handler was moved below the SSR catch-all (§2.6) — Express routes to
+error handlers declared *after* the throwing middleware. Both facts are
+covered by tests.
+
+It also cleared every advisory in the request path: `express`,
+`path-to-regexp` (ReDoS), `body-parser`, `send`, `serve-static`, `cookie`,
+and `qs` all report clean afterwards.
+
+---
+
+## 4. Architecture
+
+### 4.1 Astro's SSR is currently buying nothing
+
+Every page is a thin shell around one `client:load` island:
+
+```astro
+---
+import AdminDashboard from '../../components/AdminDashboard.tsx';
+---
+<Layout title="Admin Dashboard - NFL Pickem">
+	<AdminDashboard client:load />
+</Layout>
+```
+
+All 15 pages follow this shape. Consequences:
+
+- Zero server-rendered content. The SSR response is an empty shell; the
+  user waits for 179 KB of React plus a per-route chunk (`GameViewRouter`
+  is 49 KB) before seeing anything.
+- **16 of 20 components call `initAuth()` themselves**, each firing its
+  own `/auth/me` round-trip and its own `window.location.href = '/'`
+  redirect. That's the flicker-then-redirect behaviour.
+- No islands, no `client:visible` / `client:idle`, no partial hydration —
+  the three things Astro is for.
+
+Root cause: the JWT lives in `localStorage`, so the server cannot identify
+the user and *has* to defer everything to the client.
+
+Recommended sequence, in dependency order:
+
+1. Move the JWT to an `httpOnly` cookie (also fixes §1.6's XSS exposure).
+2. Add `src/middleware.ts` to resolve the user once per request and put it
+   on `Astro.locals`.
+3. Redirect unauthenticated users server-side — deleting 16 duplicated
+   client-side auth gates.
+4. Fetch page data in Astro frontmatter, pass it as props, and downgrade
+   directives to `client:idle` / `client:visible` where the component
+   isn't immediately interactive.
+
+If you'd rather not invest there, the honest alternative is
+`output: 'static'` for the shell plus a client-side router — cheaper to
+run and no worse than today. What isn't worth keeping is paying for Node
+SSR and getting none of its benefits.
+
+### 4.2 Duplicated app chrome
+
+`Dashboard`, `ScoresView`, `SurvivorGameView`, `GameManagement`, and
+`WeeklyGameView` each carry their own copy of:
+
+- the `hidden md:flex` desktop header / `md:hidden` mobile header pair
+- the `mobileMenuOpen` state and hamburger toggle (20 references)
+- `getHeaderStyle()` — the identical team-colour gradient function
+- the auth gate and the loading spinner (`animate-spin` appears 32 times
+  across 20 files)
+
+An `<AppShell>` + `<PageHeader>` + `<Spinner>` extraction removes most of
+it. This is the single largest source of accidental divergence in the
+frontend — the last three commits on `main` were all mobile-view fixes,
+which is what this duplication produces.
+
+### 4.3 Logging
+
+735 `console.*` calls in `server/` and `scripts/`. A perfectly good
+level-aware logger exists at `server/utils/logger.js` — and **3 files
+use it**. Consequences: no way to raise the level in production, high
+CloudWatch cost, and it's how §1.4's secret leak went unnoticed.
+
+Migrate `server/` to `logger`, and consider structured JSON output so
+CloudWatch Insights can query it. The emoji prefixes are fine in dev but
+add bytes to every production log line.
+
+### 4.4 Dead and duplicated code
+
+| Path | Lines | Status |
+|---|---|---|
+| `server/routes/games.js` | 420 | Superseded by `games_refactored.js`, which is what `server/index.js` mounts. Nothing imports it. |
+| `server/routes/databaseAdmin.js` | ~140 | Import commented out at `server/index.js:20`. |
+| `src/components/DatabaseSwitcher.tsx` | 387 | Both call sites are commented-out JSX ("Disabled due to flickering issues"). |
+
+I left all three in place — the comments read as parked work rather than
+abandoned code, so deleting them is your call. If `DatabaseSwitcher` is
+genuinely parked, `databaseAdmin.js` should stay with it.
+
+Also: `games_refactored.js` should be renamed to `games.js` once the old
+file goes. A filename that describes its refactor history rather than its
+contents ages badly.
+
+Removed on this branch **[done]**: `Dockerfile.backup`, and the tracked
+`database_current.sqlite` symlink (it pointed at a gitignored file, so it
+was dangling on every fresh clone).
+
+### 4.5 `tailwind.config.js` is inert
+
+Tailwind v4 is CSS-first. `src/styles/global.css` is just
+`@import "tailwindcss";` with no `@config` directive, so
+`tailwind.config.js` is **never read**. Delete it and move any theme
+work into `@theme` in `global.css` — see §5.1.
+
+---
+
+## 5. Web design recommendations
+
+### 5.1 There is no design system
+
+Raw palette utilities are scattered across the components — 12 distinct
+hues, with `text-gray-600` (110×), `text-gray-500` (84×), and
+`bg-blue-600` (73×) leading. Nothing is named, so "the primary button
+colour" is `bg-blue-600` in some files and `bg-blue-500` in others, and
+`bg-purple-600` (17×) appears with no evident rule.
+
+Define semantic tokens in `global.css` and use those instead:
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-brand:        oklch(0.48 0.18 258);
+  --color-brand-hover:  oklch(0.42 0.18 258);
+  --color-surface:      oklch(1    0    0);
+  --color-surface-muted:oklch(0.97 0.005 258);
+  --color-ink:          oklch(0.24 0.02 258);
+  --color-ink-muted:    oklch(0.52 0.02 258);
+  --color-win:          oklch(0.62 0.16 148);
+  --color-loss:         oklch(0.58 0.20  25);
+  --color-pending:      oklch(0.75 0.14  85);
+}
+```
+
+`bg-brand` / `text-ink-muted` / `text-win` then read as intent, and a
+palette change becomes one edit. This matters more than usual here
+because win/loss/pending state is the core visual language of the app and
+it's currently expressed with ad-hoc green/red/yellow pairs.
+
+### 5.2 Team-colour headers fail contrast
+
+```jsx
+// src/components/ScoresView.tsx:343
+<header className="bg-blue-600 text-white shadow-lg" style={getHeaderStyle()}>
+```
+
+`getHeaderStyle()` builds a gradient from arbitrary team colours while
+the text colour is hardcoded `text-white`. For teams with light
+primaries — Packers/Steelers/Vikings gold `#FFB612`, Rams gold — white
+on gold lands near **1.7:1**, far below the WCAG AA 4.5:1 minimum. This
+affects the five components that duplicate `getHeaderStyle()`.
+
+Fix: compute relative luminance from the team colour and pick
+black or white:
+
+```ts
+// Returns the accessible foreground for a given background.
+function readableInk(hex: string): "#000" | "#fff" {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return L > 0.45 ? "#000" : "#fff";
+}
+```
+
+Put it next to the extracted `<PageHeader>` from §4.2 so it's fixed once.
+
+### 5.3 Accessibility gaps
+
+Images are in good shape — all 25 `<img>` tags have real `alt` text, with
+sensible `onError` fallbacks. The gaps are elsewhere:
+
+- **23 unassociated labels** (`jsx-a11y/label-has-associated-control`).
+  Screen readers can't announce what these inputs are for. Add
+  `htmlFor`/`id` pairs.
+- **10 keyboard-inaccessible handlers** — `onClick` on `<div>`/`<span>`
+  with no `onKeyDown`, no `role`, no `tabIndex`. Those rows/cards are
+  unreachable without a mouse.
+- **Zero `focus-visible:` styles.** 38 `focus:` utilities, all of which
+  also fire on mouse click. Switch to `focus-visible:` for a clean
+  keyboard-only ring.
+- **No skip link and no landmarks.** `Layout.astro` renders a bare
+  `<slot />` into `<body>`. Add a skip-to-content link and make sure each
+  page has one `<main>`.
+- **36 sub-44px touch targets** (`py-1`/`py-1.5` buttons). Below the
+  iOS/Android minimum, on an app whose primary use is picking games on a
+  phone on Sunday morning.
+- **No `aria-live` region** for score updates. `ScoreUpdateBadge` changes
+  silently; a polite live region would announce refreshes.
+- **`prefers-reduced-motion` is unhandled** while `animate-spin` appears
+  32 times.
+
+### 5.4 Mobile
+
+Recent commit history is three consecutive mobile-view fixes, which
+tracks with what's in the code: 47 responsive-breakpoint uses across 20
+components, almost all of them `hidden md:*` / `md:hidden` pairs that
+render **two separate copies** of the same header. Every change has to be
+made twice — and the commit log shows that's exactly what's been
+happening.
+
+Concrete steps:
+
+1. Extract `<PageHeader>` once (§4.2) so there is one implementation with
+   internal responsive behaviour, not two parallel trees.
+2. Replace the four `<table>` elements (`UsersManager` ×2,
+   `GamesManager`, `ScoresView`, `SeasonsManager`) with a
+   card-list-below-`md` pattern. Tables don't degrade on a 375px screen.
+3. Move the primary pick action within thumb reach — a sticky bottom
+   action bar on the weekly view rather than a submit button below a long
+   scroll.
+4. Raise touch targets to 44px minimum (§5.3).
+
+### 5.5 Smaller wins
+
+- `Layout.astro` sets `font-family: system-ui, sans-serif` in a
+  `<style is:global>` block while Tailwind also owns typography. Pick
+  one — put the font stack in `@theme` as `--font-sans`.
+- No `<meta name="theme-color">`, no web manifest. Favicons are there;
+  this is nearly a decent installable PWA already.
+- `<meta name="description">` is identical on all 15 pages and lives in
+  `Layout.astro`. Make it a prop.
+- No dark mode. With semantic tokens from §5.1 it's a
+  `prefers-color-scheme` block, not a rewrite.
+- No empty states. Several views render a bare spinner and then nothing
+  when a list is empty, with no explanation or next action.
+- `transition-colors` (164×) with no consistent duration. Fold a
+  `--default-transition-duration` into `@theme`.
+
+---
+
+## 6. Linting and testing **[done]**
+
+### Linting
+
+ESLint 10 flat config (`eslint.config.js`) with per-area rules:
+
+- `server/**`, `scripts/**` — Node globals, ESM
+- `src/**/*.{ts,tsx}` — `typescript-eslint`, `jsx-a11y`, `react-hooks` v7
+- `*.astro` — `eslint-plugin-astro`
+- `test/**` — TS parser plus relaxed rules
+
+Prettier is wired in via `eslint-config-prettier` (last in the chain, so
+formatting rules lose to Prettier) and `prettier-plugin-astro`.
+
+One npm `override` was needed: `eslint-plugin-jsx-a11y@6.10.2` caps its
+`eslint` peer at 9, but `eslint-plugin-astro@3` requires ≥10. The plugin
+is rules-only and works fine under 10; the override is documented in
+`package.json` and keeps `npm ci` resolving in CI and Docker.
+
+**Baseline: 0 errors, 533 warnings.**
+
+I fixed every error (§2.4, §1.5, plus the stray empty template literal at
+`DynamoDBProvider.js:2`, `hasOwnProperty` → `Object.hasOwn`, and 15 empty
+`catch (e) {}` blocks in `SQLiteProvider.js` that were swallowing genuine
+migration failures alongside the expected duplicate-column error).
+
+The 533 warnings are a deliberate, visible backlog rather than a silenced
+one. Rules demoted to `warn` are annotated in `eslint.config.js` with
+their count and the reason. Promote each back to `error` as its category
+reaches zero:
+
+| Count | Rule | Notes |
+|---|---|---|
+| 219 | `no-unused-vars` (both plugins) | Mostly unused imports and dead locals. Largely auto-fixable. |
+| 145 | `react-hooks/error-boundaries` | New in react-hooks v7; fires on JSX inside `try`/`catch`. Mostly noise here. |
+| 67 | `no-return-await` | Cosmetic. |
+| 42 | `react-hooks/immutability`, `set-state-in-effect`, `exhaustive-deps` | **Read these.** They point at the render loops and leaked intervals in §2.9. |
+| 33 | `jsx-a11y/*` | §5.3. |
+| 15 | `@typescript-eslint/no-explicit-any` | 9 of 15 are in `WeeklyGameView.tsx`. |
+
+Start with `npm run lint:fix` — it clears a large share of the unused-var
+warnings mechanically.
+
+### Testing
+
+Vitest 5 with two projects (`vitest.config.ts`): a `node` pool for
+`server/` and a `jsdom` pool for the React/browser code, so backend specs
+don't pay for jsdom and `server/` never sees browser globals. V8
+coverage is configured.
+
+**73 tests across 5 files, all passing.** These target the code the audit
+flagged as risky, not easy wins:
+
+- `test/server/coerce.test.js` (9) — the `toBoolean` helper from §1.1,
+  including an explicit assertion that `Boolean("false") === true` (the
+  bug) while `toBoolean("false") === false` (the fix).
+- `test/server/auth.middleware.test.js` (20) — token rejection paths
+  (missing, malformed, wrong secret, expired, deleted user), the
+  `userId`→`email` fallback, `requireAdmin` across all four provider
+  encodings, and `requireGameOwner` including the admin override and the
+  fail-closed-on-DB-error path. Contains a named regression guard for the
+  §1.1 privilege escalation.
+- `test/server/slug.test.js` (25) — 11 slug cases, plus a
+  client/server-equivalence check (they're separate modules; if they ever
+  diverge, every game link 404s), idempotency, and a test documenting the
+  known punctuation-collision behaviour.
+- `test/server/dynamoScan.test.js` (10) — the §2.1 pagination fix,
+  against a stubbed AWS SDK.
+- `test/client/api.test.ts` (9) — `ApiClient` token persistence and
+  header injection, the `{success, data}` / `{success, error}` response
+  contract, status-code fallback, network-failure handling, and URL/query
+  construction.
+
+Note: two of the auth tests originally asserted the *buggy* behaviour
+(that's how §1.1 was confirmed). They were rewritten to assert the fix
+once it landed.
+
+### CI
+
+`.github/workflows/ci.yml` — there was no CI at all. Runs lint →
+type-check → test+coverage → build on `main`/`develop` and PRs, with a
+separate non-blocking `npm audit --omit=dev` job. Node comes from
+`.nvmrc` so CI, Docker, and local stay in sync.
+
+New scripts: `check`, `lint`, `lint:fix`, `format`, `format:check`,
+`test`, `test:watch`, `test:coverage`, and `verify` (lint + check + test).
+
+### Suggested next tests
+
+Ordered by risk covered per unit of effort:
+
+1. `pickCalculator.calculatePicks` — winner determination, and the tie
+   case (currently both picks are marked **incorrect**; most pools treat
+   a tie as a push — worth confirming that's intended).
+2. `POST /api/picks` — the kickoff cutoff and the survivor
+   already-picked-that-team rule. Highest-value business logic in the app
+   and completely untested.
+3. `scheduler.isGameDay` / `isActiveGameTime` with a frozen clock across
+   timezone boundaries (§2.8).
+4. Supertest coverage of the `requireAdmin` routes, so §1.1 can't recur
+   at the HTTP layer.
+
+---
+
+## 7. Dependency health
+
+Re-assessed 2026-09-07 after the Express 5 migration. **4 advisories remain in production
+dependencies, down from 67 at the start of this work, with no criticals and
+none in the request path.** — each was checked against how this codebase actually uses the
+package.
+
+### Cleared
+
+- **`sqlite3`**, **AWS SDK**, and **`axios`** — see below.
+- **The whole Express family** — `express`, `path-to-regexp` (ReDoS),
+  `body-parser`, `send`, `serve-static`, `cookie`, `qs` — all clean after the
+  v5 migration (§3).
+- **`jws` (high, CVE-2025-65945, "Improperly Verifies HMAC Signature").**
+  Bumped `jsonwebtoken` 9.0.2 → 9.0.3, which moves to `jws@4.0.1`.
+
+  Worth recording that this **never applied here.** The advisory affects only
+  callers of `jws.createVerify()` that derive the HMAC secret from
+  user-supplied data in the token header or payload. `jsonwebtoken` uses
+  `jws.verify()` (`verify.js:165`; `createVerify` appears nowhere in the
+  package), and this app passes a static secret from `configService`. The
+  advisory text excludes `jsonwebtoken` users explicitly. Patched to clear CI
+  noise, not to close a hole.
+
+  While in there, the auth path was tested directly: `alg:none` rejected
+  ("jwt signature is required"), wrong-secret rejected, expired token
+  rejected, valid token accepted. `jsonwebtoken` 9 restricts a string secret
+  to HMAC, so the missing `algorithms` option is not exploitable — though
+  passing `algorithms: ['HS256']` explicitly is still worth doing as defence
+  in depth.
+
+- **`axios` 1.11.0 → 1.20.0 (was high, 29 advisories) — done.** The single
+  biggest reduction available. Mostly prototype-pollution gadgets, SSRF, and
+  proxy-credential leaks, all needing attacker-influenced request
+  construction; here `axios` is used only by `espnApi.js` against the
+  hardcoded `https://site.api.espn.com/...` base URL, with no proxy
+  configuration and no user input reaching the URL, so live exposure was low
+  either way.
+
+  `espnApi.js` is the only consumer and uses just `axios.create()`,
+  `instance.get()`, and `instance.defaults.http(s)Agent` — all stable across
+  1.x. Verified against the **live** ESPN API after the bump:
+  `fetchCurrentSeason` → `{year: "2026", type: 2}`, `getCurrentSeasonStatus`
+  → Regular Season week 1, `fetchWeeklyGames(1, 2, 2025)` → 16 games with
+  competitors intact, response cache working, and `/api/seasons/status`
+  returning 200 through the running app with no connection errors.
+
+### All that remains
+
+| Package | Severity | Note |
+|---|---|---|
+| `nodemailer` | high | Verified not applicable — see below |
+| `uuid` | moderate | Verified not applicable — see below |
+| `picomatch` | high | Build-tool transitive |
+| `tar-fs` | high | Via `prebuild-install`, build-time only |
+
+### Checked and not applicable
+
+- **`nodemailer` 7.0.5 (high, 8 advisories).** The CRLF header-injection
+  surface looked real — `emailService.js:288` interpolates the user-supplied
+  `gameName` straight into the Subject header. Tested against a
+  `streamTransport` and the raw MIME shows the subject Q-encoded, with the
+  injected `Bcc:` and `X-Injected:` lines neutralised. Upgrading means three
+  majors (→ 10.x); not urgent on this evidence.
+- **`uuid` (moderate).** The advisory is a missing buffer bounds check in
+  v3/v5/v6 when a `buf` argument is supplied. All 32 call sites here are bare
+  `uuidv4()`. Not affected.
+- **`sqlite3` 5.1.7 → 6.0.1 — done.** This was the entire remaining tail:
+  13 of 15 advisories came from its native-build toolchain
+  (`node-gyp@8.4.1 → make-fetch-happen → cacache → tar`, plus `minimatch`,
+  `brace-expansion`, `ip-address`, `socks`, `http-proxy-agent`,
+  `@tootallnate/once`), including the last **critical** (`tar`).
+
+  v6 drops `node-gyp` as a dependency in favour of `prebuild-install` and
+  `tar@^7`, which is precisely why the chain collapses. It requires Node
+  ≥ 20.17, satisfied by the 22.12 floor. **101 packages removed, 11 added.**
+
+  Verified, because a major bump on a native module deserves it:
+
+  - Local: schema creation (10 tables), team seeding (32 teams),
+    register → login → authenticated `/auth/me` → game creation, zero SQLite
+    errors.
+  - **musl/Alpine prebuild exists** — the production image is
+    `node:22-alpine`, and without a prebuild `npm ci` would try to compile
+    with no toolchain in the image. Confirmed installing in ~3s with no
+    compile step.
+  - Full `docker build` succeeds, and the running container reports
+    `/health` 200, SSR 200, `/api/teams` → 32 teams, and a Docker
+    `HEALTHCHECK` status of **healthy** — which also validates the §2.7
+    health-path fix inside the real image.
+
+  > `prebuild-install@7.1.3` prints a deprecation notice ("No longer
+  > maintained"). It works, and it is a build-time dependency only, but it is
+  > worth watching for a successor.
+- **AWS SDK — done.** `client-dynamodb`, `lib-dynamodb`, and
+  `client-secrets-manager` moved together 3.873/3.876 → **3.1127.0**
+  (they share `@aws-sdk/core`, which deduped to a single copy afterwards).
+  This cleared **20** advisories, the whole `fast-xml-parser` chain included.
+
+  Verified against **live** DynamoDB in `us-east-1`: `GetCommand`,
+  paginated `Scan`, and a `Query` on `is_admin-index` all correct, with
+  `lib-dynamodb` still unmarshalling to native types (strings as strings,
+  `week` as a number, nested lists intact) rather than `{S: …}` wrappers.
+  Writes were exercised on LocalStack against a throwaway table —
+  `CreateTable` with a GSI, `Put`, `Get`, `Update`, `Query`, `Delete`, then
+  cleanup — since production writes were not worth risking for a version bump.
+
+  > Incidental confirmation of §2.1: scanning the real `picks` table reported
+  > `itemCount: 2959, pages: 2`. The table genuinely spans two Scan pages, so
+  > before the pagination fix every standings query was returning page one and
+  > silently discarding the rest. That was live data loss, not a future risk.
+
+> Do **not** run `npm audit fix` unexamined here — the dry run reports
+> "removed 506 packages", which is not a change to apply without reading it.
+> Upgrade the direct dependencies deliberately instead.
+
+## 8. App Runner → ECS Express Mode
+
+App Runner is **closed to new customers**. Per AWS's announcement, existing
+customers "can continue to use the service as normal, including creating
+new resources and services," and AWS continues investing in security and
+availability — but **no new features**. No end-of-life date has been
+announced.
+
+So: no fire drill, and your current deploy keeps working. But the service
+is terminal, and the migration has one real prerequisite that is worth
+knowing about now.
+
+### The prerequisite this PR happens to satisfy
+
+`apprunner.yaml` uses App Runner's **source-based** deployment —
+`runtime: nodejs22` plus `build.commands`. ECS Express Mode only deploys
+**container images**; AWS's guide calls this out as the one structural
+difference for source-based services.
+
+The multi-stage `Dockerfile` in this PR is exactly that missing piece.
+Before this branch, the Dockerfile was single-stage, ran
+`npm ci --only=production` *before* `npm run build`, and only worked
+because every build tool was mis-declared as a runtime dependency. It is
+now a clean, non-root, Node 22 image — a usable migration artifact rather
+than a liability.
+
+### Three repo-level things to fix before cutting over
+
+**1. `scripts/start.sh` must go.** It is a process supervisor: it
+background-launches Node, polls `/health` every 60s, watches RSS against
+`MEMORY_LIMIT_MB`, and restarts up to `MAX_RESTARTS`. That made sense on
+App Runner. On ECS it is actively harmful — the shell is PID 1, so when
+Node dies ECS still sees a **live** task and will not replace it. You lose
+the deployment circuit breaker, task-level restarts, and honest exit
+codes, and you get a task that looks healthy to ECS while serving
+nothing.
+
+Replace `CMD ["./scripts/start.sh"]` with `CMD ["node", "server/index.js"]`
+so Node is PID 1 and receives SIGTERM directly — `server/index.js` already
+has a proper `gracefulShutdown` handler. Let ECS do the supervising:
+`healthCheckGracePeriodSeconds`, circuit breaker with rollback, and
+auto-scaling replace every feature the script hand-rolled. The one thing
+to port is the SQLite init branch, which is dead in production anyway
+(`DATABASE_TYPE: auto` → DynamoDB).
+
+**2. Health check path.** See §2.7 — `/api/health/live` 404s in
+production. The ALB target-group health check must point at `/health`.
+Getting this wrong is the classic "service never stabilises" ECS failure.
+
+**3. IAM roles split in two.** App Runner has one instance role. ECS has
+two, and conflating them is the single most common migration bug:
+
+| Role | Used by | Needs |
+|---|---|---|
+| **Execution role** (`ecsTaskExecutionRole`) | the ECS agent | ECR pull, CloudWatch Logs, *injecting* secrets |
+| **Task role** | your application code | **DynamoDB**, Secrets Manager reads from `secretsManager.js` |
+
+DynamoDB permissions go on the **task role**. Putting them on the
+execution role produces `AccessDeniedException` at runtime with everything
+looking correctly configured. Express Mode also wants a third,
+`ecsInfrastructureRoleForExpressServices`, for provisioning.
+
+### Other things specific to this app
+
+- **Outbound internet is required.** `espnApi.js` calls the ESPN API on a
+  schedule. Public subnets need `assignPublicIp`; private subnets need a
+  NAT gateway. A task with no egress fails silently — scores just stop
+  updating.
+- **Sizing maps cleanly.** Your current `cpu: 0.5` / `memory: 1` is exactly
+  Fargate `512` / `1024`, which is a valid combination. No re-tuning needed.
+- **Secrets belong in the `secrets` field**, referencing Secrets Manager
+  ARNs — never `environment`, which is plaintext in the task definition.
+  This dovetails with the §1.2 rotation you already owe: rotate once, into
+  Secrets Manager, and wire the new ARNs straight into the Express Mode
+  service rather than doing it twice.
+- **`node-cron` runs in-process** (`scheduler.js`). Scaling past one task
+  means every task runs the scheduler, so score syncs and pick
+  calculations execute N times concurrently. App Runner's single instance
+  hid this. Set `minTaskCount: 1, maxTaskCount: 1` at first, or move the
+  scheduler to an EventBridge rule hitting an endpoint.
+- **No custom domain = no gradual cutover.** AWS's weighted-DNS migration
+  needs a shared hostname. If you are on the default
+  `*.awsapprunner.com` URL, there is nothing to weight — you validate the
+  Express Mode URL, then switch clients. Worth adding a custom domain
+  *before* migrating if you want the safe path.
+
+### Suggested order
+
+1. Merge this PR (gets you the container image and the Node 22 baseline).
+2. Add an ECR repo + a GitHub Actions build/push job — AWS publishes
+   `aws-actions/amazon-ecs-deploy-express-service` for the deploy step,
+   which restores App Runner's push-to-deploy behaviour.
+3. Switch `CMD` to run Node directly; drop `start.sh`.
+4. Stand up Express Mode alongside App Runner, validate on its own URL.
+5. Cut over (weighted DNS if you have a custom domain, otherwise a
+   straight switch), then `aws apprunner delete-service`.
+
+Steps 2–5 are their own piece of work and should not ride along with the
+Astro upgrade.
+
+---
+
+## Summary of changes on this branch
+
+**Security:** privilege escalation via string booleans · committed
+production secrets scrubbed · hardcoded emergency JWT secret replaced
+with per-process random · secret values no longer logged (3 sites) ·
+path traversal in `/logos`
+
+**Correctness:** unpaginated DynamoDB scans (silent truncation past 1 MB)
+· 4 `ReferenceError`s · Docker health check that 404s in production ·
+error middleware ordering · 15 empty catch blocks
+now rethrow real failures · `Object.hasOwn` · stray empty template
+literal
+
+**Upgrade:** Astro 5 → 7, Node 18 → 22, multi-stage Dockerfile,
+dependency split corrected, TypeScript pinned at the 6.x ceiling
+
+**Tooling:** ESLint 10 flat config (0 errors) · Prettier · Vitest with
+73 passing tests · GitHub Actions CI · `.nvmrc`
+
+**Cleanup:** `createGameSlug` deduplicated from 4 copies to 2 tested
+modules · `Dockerfile.backup` and a dangling tracked symlink removed
+
+Verified: `npm run build`, `npx astro check` (0 errors), `npx vitest run`
+(73/73), `npx eslint .` (0 errors), and a live boot test confirming SSR
+serves and the traversal fix holds.
+
+**Not verified by me:** App Runner `nodejs22` runtime availability in
+your account, and behaviour against real DynamoDB (the §1.1 fix is
+covered by unit tests against both encodings, but not against a live
+table).

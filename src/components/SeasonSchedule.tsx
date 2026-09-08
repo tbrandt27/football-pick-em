@@ -149,18 +149,18 @@ const SeasonSchedule: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-warning"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -171,10 +171,10 @@ const SeasonSchedule: React.FC = () => {
 
   if (!season) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Season not found</p>
-          <a href="/admin/seasons" className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition-colors">
+          <p className="text-ink-muted mb-4">Season not found</p>
+          <a href="/admin/seasons" className="bg-warning text-white px-6 py-2 rounded-lg hover:bg-warning-ink transition-colors">
             Back to Seasons
           </a>
         </div>
@@ -209,10 +209,10 @@ const SeasonSchedule: React.FC = () => {
 
   const getSeasonTypeColor = (seasonType: number) => {
     switch (seasonType) {
-      case 1: return 'bg-blue-600'; // Preseason - Blue
-      case 2: return 'bg-orange-600'; // Regular Season - Orange
-      case 3: return 'bg-purple-600'; // Postseason - Purple
-      default: return 'bg-gray-600';
+      case 1: return 'bg-brand'; // Preseason - Blue
+      case 2: return 'bg-warning'; // Regular Season - Orange
+      case 3: return 'bg-brand'; // Postseason - Purple
+      default: return 'bg-ink-muted';
     }
   };
 
@@ -233,9 +233,9 @@ const SeasonSchedule: React.FC = () => {
           {Object.entries(gamesGrouped)
             .sort(([a], [b]) => parseInt(a) - parseInt(b))
             .map(([week, weekGames]) => (
-              <div key={`${seasonType}-${week}`} className="bg-white rounded-lg shadow-md">
-                <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 rounded-t-lg">
-                  <h3 className="text-xl font-bold text-gray-800">
+              <div key={`${seasonType}-${week}`} className="bg-surface rounded-lg shadow-md">
+                <div className="bg-surface-sunk px-6 py-4 border-b border-line rounded-t-lg">
+                  <h3 className="text-xl font-bold text-ink">
                     Week {week} ({weekGames.length} games)
                   </h3>
                 </div>
@@ -252,12 +252,12 @@ const SeasonSchedule: React.FC = () => {
                                 type="datetime-local"
                                 value={editDateTime}
                                 onChange={(e) => setEditDateTime(e.target.value)}
-                                className="text-sm border border-orange-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                className="text-sm border border-warning rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
                               />
                               <div className="flex space-x-2 mt-2">
                                 <button
                                   onClick={() => updateGameDateTime(game.id, editDateTime)}
-                                  className="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600"
+                                  className="bg-success text-white px-2 py-1 rounded text-xs hover:bg-success-ink"
                                 >
                                   Save
                                 </button>
@@ -266,7 +266,7 @@ const SeasonSchedule: React.FC = () => {
                                     setEditingGame(null);
                                     setEditDateTime('');
                                   }}
-                                  className="bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600"
+                                  className="bg-surface-alt text-white px-2 py-1 rounded text-xs hover:bg-ink-muted"
                                 >
                                   Cancel
                                 </button>
@@ -274,13 +274,13 @@ const SeasonSchedule: React.FC = () => {
                             </div>
                           ) : (
                             <div
-                              className="cursor-pointer hover:bg-orange-50 p-1 rounded"
+                              className="cursor-pointer hover:bg-warning-soft p-1 rounded"
                               onClick={() => startEditing(game)}
                             >
-                              <div className="text-sm text-gray-600">
+                              <div className="text-sm text-ink-muted">
                                 {new Date(game.start_time).toLocaleDateString()}
                               </div>
-                              <div className="text-sm text-gray-600">
+                              <div className="text-sm text-ink-muted">
                                 {new Date(game.start_time).toLocaleTimeString([], {
                                   hour: '2-digit',
                                   minute: '2-digit'
@@ -304,8 +304,8 @@ const SeasonSchedule: React.FC = () => {
                                     const container = target.parentElement;
                                     if (container) {
                                       container.innerHTML = `
-                                        <div class="w-6 h-6 bg-gray-300 rounded flex items-center justify-center">
-                                          <span class="text-xs font-bold text-gray-600">${game.away_team_code}</span>
+                                        <div class="w-6 h-6 bg-line-strong rounded flex items-center justify-center">
+                                          <span class="text-xs font-bold text-ink-muted">${game.away_team_code}</span>
                                         </div>
                                       `;
                                     }
@@ -315,7 +315,7 @@ const SeasonSchedule: React.FC = () => {
                                   }}
                                 />
                               </div>
-                              <span className="text-xs bg-gray-200 px-2 py-1 rounded font-mono">
+                              <span className="text-xs bg-surface-alt px-2 py-1 rounded font-mono">
                                 {game.away_team_code}
                               </span>
                               <span className="text-sm">
@@ -340,8 +340,8 @@ const SeasonSchedule: React.FC = () => {
                                     const container = target.parentElement;
                                     if (container) {
                                       container.innerHTML = `
-                                        <div class="w-6 h-6 bg-gray-300 rounded flex items-center justify-center">
-                                          <span class="text-xs font-bold text-gray-600">${game.home_team_code}</span>
+                                        <div class="w-6 h-6 bg-line-strong rounded flex items-center justify-center">
+                                          <span class="text-xs font-bold text-ink-muted">${game.home_team_code}</span>
                                         </div>
                                       `;
                                     }
@@ -351,7 +351,7 @@ const SeasonSchedule: React.FC = () => {
                                   }}
                                 />
                               </div>
-                              <span className="text-xs bg-gray-200 px-2 py-1 rounded font-mono">
+                              <span className="text-xs bg-surface-alt px-2 py-1 rounded font-mono">
                                 {game.home_team_code}
                               </span>
                               <span className="text-sm">
@@ -367,10 +367,10 @@ const SeasonSchedule: React.FC = () => {
                         <div className="mt-3 pt-3 border-t">
                           <span className={`text-xs px-2 py-1 rounded font-medium ${
                             game.status === 'STATUS_FINAL'
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-success-soft text-success-ink'
                               : game.status === 'STATUS_IN_PROGRESS'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-gray-100 text-gray-800'
+                              ? 'bg-warning-soft text-warning-ink'
+                              : 'bg-surface-alt text-ink'
                           }`}>
                             {game.status?.replace('STATUS_', '') || 'SCHEDULED'}
                           </span>
@@ -387,9 +387,9 @@ const SeasonSchedule: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-orange-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -404,7 +404,7 @@ const SeasonSchedule: React.FC = () => {
             <div className="flex items-center space-x-4">
               <a
                 href="/admin/seasons"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Seasons
               </a>
@@ -415,7 +415,7 @@ const SeasonSchedule: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
@@ -432,11 +432,11 @@ const SeasonSchedule: React.FC = () => {
         </div>
 
         {games.length === 0 && (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <p className="text-gray-500 mb-4">No games found for this season.</p>
+          <div className="bg-surface rounded-lg shadow-md p-8 text-center">
+            <p className="text-ink-subtle mb-4">No games found for this season.</p>
             <a
               href="/admin/seasons"
-              className="text-orange-600 hover:text-orange-800 underline"
+              className="text-warning hover:text-warning-ink underline"
             >
               Try syncing NFL games first
             </a>

@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import configService from '../services/configService.js';
 import DatabaseServiceFactory from '../services/database/DatabaseServiceFactory.js';
+import { toBoolean } from '../utils/coerce.js';
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -27,7 +28,13 @@ export const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    req.user = user;
+    // Normalise provider-specific boolean encodings once, here, so every
+    // downstream handler and JSON response sees real booleans.
+    req.user = {
+      ...user,
+      is_admin: toBoolean(user.is_admin),
+      email_verified: toBoolean(user.email_verified),
+    };
     next();
   } catch (error) {
     return res.status(403).json({ error: 'Invalid or expired token' });
@@ -35,7 +42,10 @@ export const authenticateToken = async (req, res, next) => {
 };
 
 export const requireAdmin = async (req, res, next) => {
-  if (!req.user || !req.user.is_admin) {
+  // Must go through toBoolean: DynamoDB persists is_admin as the string
+  // "false", and `!"false"` is false -- a bare truthiness check granted admin
+  // access to every authenticated user on the DynamoDB (production) path.
+  if (!req.user || !toBoolean(req.user.is_admin)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
@@ -55,7 +65,7 @@ export const requireGameOwner = async (req, res, next) => {
     
     // Check if participant exists and has owner role
     const isOwner = participant && participant.role === 'owner';
-    if (!isOwner && !req.user.is_admin) {
+    if (!isOwner && !toBoolean(req.user.is_admin)) {
       return res.status(403).json({ error: 'Game owner access required' });
     }
 

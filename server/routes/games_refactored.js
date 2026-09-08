@@ -4,17 +4,6 @@ import DatabaseServiceFactory from "../services/database/DatabaseServiceFactory.
 import emailService from "../services/emailService.js";
 import crypto from "crypto";
 
-// Utility function to create URL-friendly slugs
-function createGameSlug(gameName) {
-  return gameName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "") // Remove special characters except spaces and hyphens
-    .replace(/\s+/g, "-") // Replace spaces with hyphens
-    .replace(/-+/g, "-") // Replace multiple hyphens with single hyphen
-    .trim()
-    .replace(/^-+|-+$/g, ""); // Remove leading/trailing hyphens
-}
-
 const router = express.Router();
 
 // Get all pickem games (users see only games they participate in)

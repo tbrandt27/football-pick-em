@@ -41,6 +41,10 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
     userWeekPoints: number;
   } | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  // Team W-L records for the displayed week, keyed by team code (e.g. { KC: '4-1' }).
+  // ESPN reports each competitor's record as of that game, so this reflects the
+  // standings at the week being viewed rather than today's.
+  const [teamRecords, setTeamRecords] = useState<Record<string, string>>({});
   
 
   useEffect(() => {
@@ -287,11 +291,21 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
   const loadWeekData = async (seasonId: string, week: number, currentGameId?: string, gameData?: PickemGame & { participants: GameParticipant[] }) => {
     try {
       
-      const [gamesResponse, picksResponse] = await Promise.all([
+      const [gamesResponse, picksResponse, recordsResponse] = await Promise.all([
         api.getSeasonGames(seasonId, week),
         // Use the passed gameId or fall back to the current game or provided gameId
-        api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week })
+        api.getUserPicks({ gameId: currentGameId || game?.id || gameId || '', seasonId, week }),
+        // Records come from ESPN, so a failure here must not block the picks UI.
+        api.getTeamRecords({ week })
       ]);
+
+      if (recordsResponse.success && recordsResponse.data) {
+        setTeamRecords(recordsResponse.data.records || {});
+      } else {
+        // Non-fatal: the badge is simply omitted when records are unavailable.
+        console.warn('[GameView] Team records unavailable:', recordsResponse.error);
+        setTeamRecords({});
+      }
 
 
       if (gamesResponse.success && gamesResponse.data) {
@@ -710,6 +724,33 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
   const getActiveTeam = () => {
     return favoriteTeam || defaultTeam;
   };
+
+  /**
+   * Formats the stored betting line the way it is normally read: the favourite's
+   * code with its spread, e.g. "KC -3.5", plus the over/under.
+   *
+   * Returns null when no line was captured -- ESPN only publishes odds while a
+   * game is upcoming, so games already complete on first sync have none and
+   * nothing should render for them.
+   */
+  const formatLine = (footballGame: NFLGame): string | null => {
+    const { spread, over_under: total } = footballGame;
+    if (spread === null || spread === undefined) return null;
+
+    const favouriteCode =
+      footballGame.favorite_team_id === footballGame.home_team_id
+        ? footballGame.home_team_code
+        : footballGame.favorite_team_id === footballGame.away_team_id
+          ? footballGame.away_team_code
+          : null;
+
+    // A true pick'em has no favourite to name.
+    const spreadText =
+      spread === 0 ? 'EVEN' : `${favouriteCode ? favouriteCode + ' ' : ''}${spread}`;
+    const totalText = total === null || total === undefined ? '' : ` \u00b7 O/U ${total}`;
+    return `${spreadText}${totalText}`;
+  };
+
 
   // Render team with error handling
   const renderTeam = (footballGame: NFLGame, isHome: boolean) => {
@@ -1139,6 +1180,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
+                          {formatLine(footballGame) && (
+                            <span
+                              className="ml-2 inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-semibold"
+                              title={`Betting line${footballGame.odds_provider ? ` (${footballGame.odds_provider})` : ''}, captured when the game was synced`}
+                            >
+                              {formatLine(footballGame)}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm">
                           {pickResult === 'correct' && (
@@ -1223,6 +1272,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                                       >
                                         Visitor
                                       </span>
+                                        {teamRecords[footballGame.away_team_code] && (
+                                          <span
+                                            className="text-xs font-semibold text-gray-600"
+                                            title="Win-loss record as of this week"
+                                          >
+                                            {teamRecords[footballGame.away_team_code]}
+                                          </span>
+                                        )}
                                     </div>
                                   </div>
                                 </div>
@@ -1296,6 +1353,14 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                                       >
                                         Home
                                       </span>
+                                        {teamRecords[footballGame.home_team_code] && (
+                                          <span
+                                            className="text-xs font-semibold text-gray-600"
+                                            title="Win-loss record as of this week"
+                                          >
+                                            {teamRecords[footballGame.home_team_code]}
+                                          </span>
+                                        )}
                                     </div>
                                   </div>
                                 </div>
@@ -1334,10 +1399,11 @@ const WeeklyGameView: React.FC<WeeklyGameViewProps> = ({ gameId, gameSlug }) => 
                         </div>
                         {tiebreakerGame === footballGame.id && (
                           <div className="ml-6">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label htmlFor={`tiebreaker-points-${footballGame.id}`} className="block text-sm font-medium text-gray-700 mb-1">
                               Total Points
                             </label>
                             <input
+                              id={`tiebreaker-points-${footballGame.id}`}
                               type="number"
                               min="0"
                               max="200"

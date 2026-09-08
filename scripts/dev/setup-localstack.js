@@ -15,6 +15,7 @@
 import { DynamoDBClient, CreateTableCommand, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { SecretsManagerClient, CreateSecretCommand, ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import dotenv from 'dotenv';
+import { getDevSecretData, DEV_SECRET_NAME } from './dev-secrets.js';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -102,18 +103,9 @@ const tableDefs = [
     ],
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'commissioner_id', AttributeType: 'S' },
       { AttributeName: 'season_id', AttributeType: 'S' }
     ],
     GlobalSecondaryIndexes: [
-      {
-        IndexName: 'commissioner_id-index',
-        KeySchema: [
-          { AttributeName: 'commissioner_id', KeyType: 'HASH' }
-        ],
-        Projection: { ProjectionType: 'ALL' },
-        BillingMode: 'PAY_PER_REQUEST'
-      },
       {
         IndexName: 'season_id-index',
         KeySchema: [
@@ -502,16 +494,13 @@ const tableDefs = [
   }
 ];
 
-// Secret definitions - single secret with all keys
+// Secret definitions - single secret with all keys.
+// Values come from dev-secrets.js so this and update-localstack-secrets.js
+// cannot drift; both write the same Secrets Manager entry.
 const secretDefs = [
   {
-    Name: 'football-pickem/dev/jwt-secret',
-    SecretString: JSON.stringify({
-      JWT_SECRET: 'local-development-jwt-secret-key-super-secure',
-      SETTINGS_ENCRYPTION_KEY: 'local-development-encryption-key-32',
-      ADMIN_EMAIL: 'admin@localhost',
-      ADMIN_PASSWORD: 'admin123'
-    }),
+    Name: DEV_SECRET_NAME,
+    SecretString: JSON.stringify(getDevSecretData()),
     Description: 'All application secrets for local development'
   }
 ];

@@ -40,3 +40,15 @@ localstack-data/
 .localstack-data/
 
 support_docs/
+# test coverage
+coverage/
+
+# vitest cache
+.vitest/
+
+# eslint cache
+.eslintcache
+database_current.sqlite
+
+# generated LocalStack dev secrets (never commit)
+.localstack-dev-secrets.json

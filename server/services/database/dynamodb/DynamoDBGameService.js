@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import IGameService from '../interfaces/IGameService.js';
 import db from '../../../models/database.js';
+import { createGameSlug } from '../../../utils/slug.js';
 
 /**
  * DynamoDB-specific Game Service
@@ -60,17 +61,6 @@ export default class DynamoDBGameService extends IGameService {
    * @returns {Promise<Object|null>} Game with participants
    */
   async getGameBySlug(gameSlug, userId) {
-    // Helper function to create URL-friendly slugs
-    const createGameSlug = (gameName) => {
-      return gameName
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-        .trim()
-        .replace(/^-+|-+$/g, "");
-    };
-
     // Use GSI user_id-index to check if user is a participant in any games
     const userParticipations = await this.db._getByUserIdGSI('game_participants', userId);
 

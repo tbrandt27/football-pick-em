@@ -9,6 +9,7 @@
 
 import { SecretsManagerClient, UpdateSecretCommand, CreateSecretCommand, ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import dotenv from 'dotenv';
+import { getDevSecretData, describeDevSecret } from './dev-secrets.js';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -97,21 +98,13 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length === 0) {
-    // Default secret data for LocalStack development
-    const defaultSecretData = {
-      JWT_SECRET: 'ee57f715bbe63996e58edeb81e2afb703291b77f0d8591ef3f47b0c7673b4ee7cbbb524d35c4333c9011e34b3935f066e8513e7153db53132fcbc46fb6da6eba',
-      SETTINGS_ENCRYPTION_KEY: 'local-development-encryption-key-32',
-      ADMIN_EMAIL: 'admin@nflpickem.com',
-      ADMIN_PASSWORD: 'admin123'
-    };
-    
-    console.log('\n📋 Using default secret values for LocalStack development...');
+    // Shared with setup-localstack.js so both scripts seed identical values.
+    const defaultSecretData = getDevSecretData();
+
+    console.log('\n📋 Using development secret values for LocalStack...');
     console.log('🔐 This emulates production Secret Manager behavior');
     console.log('📝 Secret values:');
-    console.log(`   - JWT_SECRET: [64-char secure key]`);
-    console.log(`   - SETTINGS_ENCRYPTION_KEY: ${defaultSecretData.SETTINGS_ENCRYPTION_KEY}`);
-    console.log(`   - ADMIN_EMAIL: ${defaultSecretData.ADMIN_EMAIL}`);
-    console.log(`   - ADMIN_PASSWORD: ${defaultSecretData.ADMIN_PASSWORD}`);
+    console.log(describeDevSecret(defaultSecretData));
     await listSecrets();
     await updateSecret(defaultSecretData);
     await listSecrets();

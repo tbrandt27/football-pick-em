@@ -242,18 +242,18 @@ const SeasonsManager: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -265,9 +265,9 @@ const SeasonsManager: React.FC = () => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-orange-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -280,13 +280,13 @@ const SeasonsManager: React.FC = () => {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+                className="bg-success hover:bg-success-ink text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Create Season
               </button>
               <a
                 href="/admin"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Admin
               </a>
@@ -297,74 +297,74 @@ const SeasonsManager: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+          <div className="bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6">
             {success}
           </div>
         )}
 
 
         {/* Seasons List */}
-        <div className="bg-white rounded-lg shadow-md">
+        <div className="bg-surface rounded-lg shadow-md">
           <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">All Seasons</h2>
-            <p className="text-gray-600">Manage NFL seasons and their game data</p>
+            <h2 className="text-2xl font-bold text-ink">All Seasons</h2>
+            <p className="text-ink-muted">Manage NFL seasons and their game data</p>
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-sunk">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Season
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Games
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Football Games
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-line">
                 {seasons.map((season) => (
-                  <tr key={season.id} className="hover:bg-gray-50">
+                  <tr key={season.id} className="hover:bg-surface-sunk">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-lg font-medium text-gray-900">{season.year}</div>
+                      <div className="text-lg font-medium text-ink">{season.year}</div>
                       {season.year === currentYear && (
-                        <div className="text-sm text-blue-600">Current Year</div>
+                        <div className="text-sm text-brand">Current Year</div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                         season.is_current
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-success-soft text-success-ink'
+                          : 'bg-surface-alt text-ink'
                       }`}>
                         {season.is_current ? 'Current' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink">
                       {season.game_count} pickem games
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink">
                       {season.football_games_count} football games
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-subtle">
                       {new Date(season.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -372,14 +372,14 @@ const SeasonsManager: React.FC = () => {
                        {season.is_current ? (
                          <button
                            onClick={() => unsetCurrentSeason(season.id)}
-                           className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                           className="bg-danger-soft text-danger-ink hover:bg-danger-soft px-3 py-1 rounded text-xs font-medium"
                          >
                            Unset as Current
                          </button>
                        ) : (
                          <button
                            onClick={() => setCurrentSeason(season.id)}
-                           className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
+                           className="bg-success-soft text-success-ink hover:bg-success-soft px-3 py-1 rounded text-xs font-medium"
                          >
                            Set as Current
                          </button>
@@ -389,8 +389,8 @@ const SeasonsManager: React.FC = () => {
                          disabled={syncingSeasonId === season.id}
                          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                            syncingSeasonId === season.id
-                             ? 'bg-yellow-100 text-yellow-700 cursor-not-allowed'
-                             : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                             ? 'bg-warning-soft text-warning-ink cursor-not-allowed'
+                             : 'bg-brand-soft text-brand hover:bg-brand-soft'
                          }`}
                        >
                          {syncingSeasonId === season.id ? (
@@ -407,13 +407,13 @@ const SeasonsManager: React.FC = () => {
                        </button>
                        <a
                          href={`/admin/seasons/${season.year}/schedule`}
-                         className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1 rounded text-xs font-medium inline-block"
+                         className="bg-brand-soft text-brand hover:bg-brand-soft-hover px-3 py-1 rounded text-xs font-medium inline-block"
                        >
                          View Schedule
                        </a>
                        <button
                          onClick={() => handleDeleteClick(season)}
-                         className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                         className="bg-danger-soft text-danger-ink hover:bg-danger-soft px-3 py-1 rounded text-xs font-medium"
                        >
                          Delete Season
                        </button>
@@ -426,7 +426,7 @@ const SeasonsManager: React.FC = () => {
           </div>
 
           {seasons.length === 0 && (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-ink-subtle">
               No seasons found. Create your first season to get started.
             </div>
           )}
@@ -435,22 +435,22 @@ const SeasonsManager: React.FC = () => {
         {/* Create Season Modal */}
         {showCreateForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Create New Season</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="seasonsmanager-season-year">
                     Season Year
                   </label>
-                  <input
+                  <input id="seasonsmanager-season-year"
                     type="number"
                     value={newSeasonYear}
                     onChange={(e) => setNewSeasonYear(parseInt(e.target.value))}
                     min="2020"
                     max="2030"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-ink-subtle mt-1">
                     Enter the year for the NFL season (e.g., 2024 for the 2024-25 season)
                   </p>
                 </div>
@@ -462,13 +462,13 @@ const SeasonsManager: React.FC = () => {
                     setShowCreateForm(false);
                     setError('');
                   }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={createSeason}
-                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning-ink transition-colors"
                 >
                   Create Season
                 </button>
@@ -480,32 +480,32 @@ const SeasonsManager: React.FC = () => {
         {/* Delete Season Modal */}
         {showDeleteModal && seasonToDelete && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-red-600">Delete Season {seasonToDelete.year}</h3>
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-danger">Delete Season {seasonToDelete.year}</h3>
               
               <div className="mb-6">
-                <p className="text-gray-700 mb-4">
+                <p className="text-ink-muted mb-4">
                   Are you sure you want to delete season {seasonToDelete.year}?
                 </p>
                 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-yellow-800 mb-2">This will permanently delete:</h4>
-                  <ul className="text-yellow-700 text-sm space-y-1">
+                <div className="bg-warning-soft border border-warning rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-warning-ink mb-2">This will permanently delete:</h4>
+                  <ul className="text-warning-ink text-sm space-y-1">
                     <li>• The season record</li>
                     <li>• All {seasonToDelete.football_games_count} football games for this season</li>
                   </ul>
                 </div>
 
                 {seasonToDelete.game_count > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                    <p className="text-red-700 text-sm font-semibold">
+                  <div className="bg-danger-soft border border-danger rounded-lg p-4 mb-4">
+                    <p className="text-danger-ink text-sm font-semibold">
                       ⚠️ Warning: This season has {seasonToDelete.game_count} associated pick'em games.
                       You must delete those games first before deleting the season.
                     </p>
                   </div>
                 )}
                 
-                <p className="text-gray-600 text-sm font-semibold">
+                <p className="text-ink-muted text-sm font-semibold">
                   This action cannot be undone.
                 </p>
               </div>
@@ -518,14 +518,14 @@ const SeasonsManager: React.FC = () => {
                     setError('');
                   }}
                   disabled={deleting}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
                   disabled={deleting || seasonToDelete.game_count > 0}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? (
                     <span className="flex items-center space-x-2">

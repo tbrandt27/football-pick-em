@@ -1,781 +1,344 @@
-# NFL Pick'em Application
+# NFL Pick'em
 
-A full-stack web application for managing NFL pick'em games with friends, colleagues, or leagues. Built with Astro, React, Node.js, and SQLite.
+A web app for running NFL pick'em pools — weekly-picks and survivor formats,
+automatic scoring from the ESPN API, leaderboards, and email invitations.
 
-## 🏈 Features
+Astro 7 + React 19 on the front, Express 5 on the back, with a pluggable
+database layer that runs SQLite locally and DynamoDB in production.
 
-### User Features
+---
 
-- **User Registration & Authentication** - Secure login system with JWT tokens
-- **Game Creation** - Create weekly or survivor-style pick'em games
-- **Pick Management** - Make picks for each NFL game with tiebreaker support
-- **Real-time Scoring** - Automatic score updates from ESPN API
-- **Leaderboards** - Track performance across weeks and seasons
-- **Copy Picks** - Duplicate picks across multiple games
-- **Responsive Design** - Works on desktop and mobile devices
+## Quick start
 
-### Admin Features
+**Requires Node ≥ 22.12** (Astro 7's floor). `.nvmrc` pins 22.12.0, so
+`nvm use` picks it up.
 
-- **Admin Dashboard** - Comprehensive management interface
-- **User Management** - Manage user accounts and permissions
-- **Game Management** - Oversee all pick'em games and participants
-- **Season Management** - Create and manage NFL seasons
-- **SMTP Configuration** - Configure email settings for invitations
-- **ESPN Integration** - Sync NFL schedules and scores
-- **Automated Scheduler** - Automatic score updates during game days
-
-### Technical Features
-
-- **RESTful API** - Express.js backend with organized routes
-- **Database** - SQLite with automated migrations
-- **Email System** - Invitation emails with SMTP configuration
-- **Cron Jobs** - Automated score updates and pick calculations
-- **Security** - Encrypted sensitive data, input validation, CORS protection
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-
-### Installation
-
-1. **Clone the repository**
-
-   ```bash
-   git clone <repository-url>
-   cd football-pickem
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up the database and create admin user**
-
-   ```bash
-   npm run setup
-   ```
-
-   This will:
-
-   - Create SQLite database with all tables
-   - Seed NFL teams data
-   - Create the current season
-   - Create an admin user (credentials will be displayed)
-
-4. **Start the development server**
-
-   ```bash
-   npm run dev
-   ```
-
-   This starts both frontend (port 4321) and backend (port 3001) servers.
-
-5. **Access the application**
-   - Frontend: http://localhost:4321
-   - Backend API: http://localhost:3001/api
-
-## 📁 Project Structure
-
-```
-football-pickem/
-├── src/                          # Frontend (Astro + React)
-│   ├── components/              # React components
-│   │   ├── AdminDashboard.tsx   # Admin management interface
-│   │   ├── Dashboard.tsx        # User dashboard
-│   │   ├── GameViewRouter.tsx   # Routes between Weekly and Survivor game views
-│   │   ├── WeeklyGameView.tsx   # Weekly pick game interface
-│   │   ├── SurvivorGameView.tsx # Survivor game interface
-│   │   ├── GamesManager.tsx     # Admin game management
-│   │   └── ...
-│   ├── layouts/                 # Astro layouts
-│   ├── pages/                   # Astro pages/routes
-│   ├── stores/                  # Nanostores for state management
-│   └── utils/                   # Utilities and API client
-├── server/                      # Backend (Node.js + Express)
-│   ├── routes/                  # API route handlers
-│   │   ├── admin.js            # Admin-only endpoints
-│   │   ├── auth.js             # Authentication
-│   │   ├── games.js            # Game management
-│   │   ├── picks.js            # Pick management
-│   │   └── ...
-│   ├── services/               # Business logic services
-│   │   ├── espnApi.js          # ESPN API integration
-│   │   ├── emailService.js     # Email functionality
-│   │   ├── scheduler.js        # Automated tasks
-│   │   └── ...
-│   ├── models/                 # Database models
-│   ├── middleware/             # Express middleware
-│   └── utils/                  # Utility functions
-├── public/                     # Static assets
-│   └── logos/                  # NFL team logos
-├── database.sqlite             # SQLite database (created on setup)
-├── setup.js                    # Database setup script
-└── package.json
+```bash
+npm install
+npm run setup   # creates the SQLite database, seeds teams, creates an admin user
+npm run dev     # frontend on :4321, backend on :3001
 ```
 
-## 🧪 Testing the Application
+`npm run setup` prints the generated admin credentials — save them.
 
-To test the application functionality:
+The Astro dev server proxies `/api` and `/logos` through to the Express
+backend, so use <http://localhost:4321> for everything.
 
-1. **Create Test Users:** Use the registration feature to create multiple user accounts
-2. **Set up Games:** Create pick'em games using the admin dashboard
-3. **Import NFL Data:** Use the ESPN sync feature to import current NFL schedules
-4. **Make Test Picks:** Login with different users and make picks for upcoming games
+## Scripts
 
-### Admin Access
+| Command | Description |
+|---|---|
+| `npm run dev` | Frontend (:4321) and backend (:3001) together |
+| `npm run dev:frontend` | Astro dev server only |
+| `npm run dev:backend` | Express server only, under nodemon |
+| `npm run dev:local` | As `dev`, but loads `.env.local` (LocalStack) |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run setup` | Create and seed the local SQLite database |
+| `npm run init-db` | Database schema only, no seed data |
+| **`npm run verify`** | **lint + type-check + test — run this before pushing** |
+| `npm run lint` | ESLint (`lint:fix` to autofix) |
+| `npm run check` | `astro check` type-check |
+| `npm run test` | Vitest (`test:watch`, `test:coverage`) |
+| `npm run format` | Prettier (`format:check` to verify only) |
+| `npm run docker:build` / `docker:run` | Build and run the container locally |
+| `npm run localstack:*` | LocalStack lifecycle — see [Local DynamoDB](#local-dynamodb-with-localstack) |
 
-After running `npm run setup`, you'll have an admin account with credentials displayed during setup.
+CI runs lint → type-check → test → build on every PR to `main` and
+`develop` (`.github/workflows/ci.yml`).
 
-### What You Can Test
+### Lint baseline
 
-- **Pick Making:** Create users and make picks for upcoming NFL games
-- **Leaderboards:** View standings and user performance across weeks
-- **Stats Tracking:** See win percentages, correct picks, and rankings
-- **Game Management:** Create new games, invite players, manage settings
-- **Admin Functions:** Manage users, sync schedules, calculate picks
-- **Responsive Design:** Test on different screen sizes
-- **Copy Picks:** Test copying picks between multiple games
+`npm run lint` is green at **0 errors**, with roughly 530 warnings that are
+a deliberate, annotated backlog rather than a silenced one — each demoted
+rule carries its count and reason in `eslint.config.js`. The
+`react-hooks/*` warnings are the ones worth reading first; they point at
+real render loops and leaked intervals.
 
-## 🔧 Configuration
+Keep errors at zero. Drive warnings down and promote rules back to `error`
+as each category empties.
 
-### Environment Variables
+## Project layout
 
-Create a `.env` file in the root directory:
-
-```env
-# Database
-DATABASE_PATH=./database.sqlite
-
-# JWT Secret (generate a secure random string)
-JWT_SECRET=your-super-secret-jwt-key-here
-
-# SMTP Configuration (optional - can be configured via admin panel)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-FROM_EMAIL=your-email@gmail.com
-
-# Application URL
-CLIENT_URL=http://localhost:4321
-
-# Settings Encryption Key (for admin SMTP settings)
-SETTINGS_ENCRYPTION_KEY=your-32-character-encryption-key
-
-# Server Port
-PORT=3001
+```
+football-pick-em/
+├── src/                      # Frontend — Astro pages wrapping React islands
+│   ├── components/           # React components (one per screen)
+│   ├── layouts/              # Astro layouts
+│   ├── pages/                # File-based routes
+│   ├── lib/slug.ts           # Game-slug rules (mirrored in server/utils/slug.js)
+│   ├── stores/auth.ts        # Nanostores auth state
+│   └── utils/api.ts          # Typed API client
+├── server/                   # Backend — Express
+│   ├── routes/               # HTTP handlers
+│   ├── middleware/auth.js    # JWT verification, requireAdmin, requireGameOwner
+│   ├── providers/            # SQLiteProvider / DynamoDBProvider
+│   ├── services/
+│   │   ├── database/         # Per-entity services, one impl per provider
+│   │   ├── espnApi.js        # ESPN integration + response cache
+│   │   ├── scheduler.js      # node-cron score updates
+│   │   ├── configService.js  # Config + Secrets Manager resolution
+│   │   └── emailService.js   # Invitation email
+│   └── utils/                # logger, coerce, slug, seedTeams
+├── test/
+│   ├── server/               # Node-pool specs
+│   └── client/               # jsdom specs
+├── infrastructure/           # CloudFormation for the DynamoDB tables
+├── plans/                    # Planned / in-progress work — see plans/README.md
+├── scripts/                  # setup, init-db, LocalStack helpers
+└── Dockerfile                # Multi-stage production image
 ```
 
-### SMTP Setup
+> **Route paths use Express 5 / path-to-regexp 8 syntax.** A wildcard must be
+> named, and `/*splat` does **not** match the root — the SSR catch-all is
+> `/{*splat}` for that reason. Optional segments use braces
+> (`/test{/:name}`), not a `?` suffix.
+
+### Database abstraction
+
+`DatabaseServiceFactory` returns a SQLite or DynamoDB implementation of each
+service interface based on `DATABASE_TYPE`:
+
+- `sqlite` — local file
+- `dynamodb` — AWS
+- `auto` — DynamoDB when `NODE_ENV=production`, SQLite otherwise
+
+Both implement the interfaces in `server/services/database/interfaces/`.
+Anything added to one must be added to the other.
+
+> **The two providers encode booleans differently** — SQLite uses `0`/`1`,
+> DynamoDB uses the strings `"true"`/`"false"`. Never test a persisted flag
+> for truthiness: `!"false"` is `false` and `Boolean("false")` is `true`.
+> Route every such flag through `server/utils/coerce.js#toBoolean`. This
+> exact bug once made every logged-in user an admin in production.
+
+### Tables
+
+`football_teams`, `seasons`, `football_games`, `pickem_games`,
+`game_participants`, `picks`, `weekly_standings`, `game_invitations`,
+`system_settings`, `users`.
+
+SQLite schema lives in `server/providers/SQLiteProvider.js`; the DynamoDB
+equivalents, including their GSIs, are in
+`infrastructure/dynamodb-tables.yml`.
+
+`infrastructure/` holds two templates:
+
+| Template | Purpose |
+|---|---|
+| `dynamodb-tables.yml` | The 10 tables and their 18 GSIs — matches the deployed stack `football-pickem-dynamodb` exactly |
+| `deploy-stack.yml` | ECR repository, ECS cluster, GitHub OIDC deploy role and the three ECS roles |
+
+`dynamodb-tables.yml` is authoritative: it must stay byte-equivalent to
+what is deployed. Check with:
+
+```bash
+aws cloudformation detect-stack-drift --stack-name football-pickem-dynamodb
+```
+
+> Four earlier table templates were removed. `dynamodb-tables.yml` (the
+> original) and `dynamodb-tables-simple.yml` each omitted GSIs the code
+> queries; `dynamodb-tables-optimized.yml` had the opposite problem,
+> declaring 36 GSIs against the 18 that exist, and was never deployed;
+> `dynamodb-stack-template.yml` wrapped it, was never deployed either, and
+> published an App Runner SSM parameter that ECS Express makes obsolete.
+> Production had in fact been built from the *simple* template, so for a
+> while no committed file described the live stack. Recover any of them
+> from git history if you need the comparison.
+
+## Configuration
+
+Copy a template and fill it in — `.env.local.template` for local
+development, `.env.production.template` for deployment. Both are committed;
+the resulting `.env*` files are gitignored.
 
-You can configure SMTP settings either:
+### Core
 
-1. **Via Environment Variables** - Set the SMTP\_\* variables above
-2. **Via Admin Panel** - Login as admin and go to Settings to configure SMTP
+| Variable | Notes |
+|---|---|
+| `NODE_ENV` | `production` enables the scheduler, memory monitoring, and health-endpoint gating |
+| `PORT` | Express port. Defaults to 3001 locally, 8080 in the container |
+| `DATABASE_TYPE` | `sqlite`, `dynamodb`, or `auto` |
+| `DATABASE_PATH` | SQLite file location |
+| `JWT_SECRET` | **Required.** Signs auth tokens |
+| `SETTINGS_ENCRYPTION_KEY` | **Required.** Encrypts admin SMTP settings at rest |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeds the initial admin account |
+| `LOG_LEVEL` | `ERROR`, `WARN`, `INFO`, `DEBUG` |
 
-For Gmail:
+Generate the secrets with:
 
-- Use your Gmail address as SMTP_USER
-- Generate an App Password (not your regular password)
-- Enable 2-factor authentication first
+```bash
+openssl rand -hex 48   # JWT_SECRET
+openssl rand -hex 32   # SETTINGS_ENCRYPTION_KEY
+```
 
-## 📊 Admin Setup
+### DynamoDB
 
-After running `npm run setup`, you'll have an admin account. Use the admin dashboard to:
+| Variable | Notes |
+|---|---|
+| `AWS_REGION` | `us-east-1` — must match the region the tables live in |
+| `DYNAMODB_TABLE_PREFIX` | e.g. `football_pickem_` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Omit in AWS — use the instance/task role instead |
+| `USE_LOCALSTACK`, `LOCALSTACK_ENDPOINT` | Point the SDK at LocalStack |
+
+### Secrets Manager
+
+`configService` resolves any value beginning with `arn:aws:secretsmanager:`
+through Secrets Manager at startup, in production or when
+`USE_LOCALSTACK=true`. So set `JWT_SECRET` to a secret ARN rather than a
+literal and the application fetches it at boot.
+
+The role needs `secretsmanager:GetSecretValue` on that secret:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["secretsmanager:GetSecretValue"],
+  "Resource": "arn:aws:secretsmanager:*:*:secret:football-pickem/*"
+}
+```
 
-1. **Configure Current Season**
-
-   - Go to Admin → Seasons
-   - Set the current NFL season as active
-
-2. **Sync NFL Data**
-
-   - Go to Admin Dashboard
-   - Use "Sync Full Schedule" to import games from ESPN
-   - Enable the automatic scheduler for live updates
-
-3. **Configure SMTP** (Optional)
-
-   - Go to Admin → Settings
-   - Configure email settings for game invitations
-
-4. **Create Your First Game**
-   - Use "Create Game" to set up a pick'em pool
-   - Invite players via email
-
-## 🎮 Usage
-
-### For Players
-
-1. **Register/Login** - Create an account or login
-2. **Join Games** - Accept invitations or find public games
-3. **Make Picks** - Select winning teams for each week
-4. **Set Tiebreakers** - Choose total points for tiebreaker games
-5. **Track Progress** - View leaderboards and your performance
-
-### For Game Commissioners
-
-1. **Create Games** - Set up weekly or survivor pools
-2. **Invite Players** - Send email invitations
-3. **Manage Participants** - Add/remove players
-4. **Monitor Progress** - View all picks and standings
-
-### For Administrators
-
-1. **User Management** - Manage all user accounts
-2. **System Configuration** - SMTP, seasons, teams
-3. **Data Management** - ESPN sync, score updates
-4. **Game Oversight** - View and manage all games
-
-## 🔄 Deployment
-
-### AWS App Runner (Recommended)
-
-The application is optimized for deployment on AWS App Runner with containerization support.
-
-**Quick Deploy:**
-
-1. Push your code to GitHub/GitLab/Bitbucket
-2. Follow the [Deployment Guide](DEPLOYMENT.md)
-3. Use the [Deployment Checklist](DEPLOYMENT_CHECKLIST.md)
-
-**Key Files:**
-
-- [`Dockerfile`](Dockerfile) - Container configuration
-- [`apprunner.yaml`](apprunner.yaml) - App Runner configuration
-- [`scripts/start.sh`](scripts/start.sh) - Production startup script
-- [`.env.production.template`](.env.production.template) - Environment variables template
-
-### Traditional Server Deployment
-
-For traditional server deployment, see the detailed instructions below.
-
-### Prerequisites for Production
-
-- **Server Requirements:**
-
-  - Node.js 18+ (LTS recommended)
-  - 2GB+ RAM
-  - 10GB+ disk space
-  - Ubuntu 20.04+ or similar Linux distribution
-
-- **Domain & SSL:**
-
-  - Domain name pointing to your server
-  - SSL certificate (Let's Encrypt recommended)
-
-- **Email Service (Optional):**
-  - SMTP credentials for sending invitations
-  - Gmail, SendGrid, or similar service
-
-### Production Environment Setup
-
-1. **Create Production Environment File**
-
-   ```bash
-   # Create .env file with production values
-   cat > .env << EOF
-   # Database
-   DATABASE_PATH=./database.sqlite
-
-   # JWT Secret (generate a secure random string)
-   JWT_SECRET=$(openssl rand -base64 32)
-
-   # SMTP Configuration (optional)
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=your-email@gmail.com
-   SMTP_PASS=your-app-password
-   FROM_EMAIL=your-email@gmail.com
-
-   # Application URL
-   CLIENT_URL=https://yourdomain.com
-
-   # Settings Encryption Key (32 characters)
-   SETTINGS_ENCRYPTION_KEY=$(openssl rand -base64 24)
-
-   # Server Configuration
-   NODE_ENV=production
-   PORT=3001
-   EOF
-   ```
-
-2. **Install Dependencies**
-
-   ```bash
-   npm ci --only=production
-   ```
-
-3. **Build the Application**
-
-   ```bash
-   npm run build
-   ```
-
-4. **Initialize Database**
-
-   ```bash
-   npm run setup
-   ```
-
-   **Important:** Save the admin credentials displayed during setup!
-
-### Deployment Options
-
-#### Option 1: PM2 Process Manager (Recommended)
-
-1. **Install PM2**
-
-   ```bash
-   npm install -g pm2
-   ```
-
-2. **Create PM2 Ecosystem File**
-
-   ```bash
-   cat > ecosystem.config.js << EOF
-   module.exports = {
-     apps: [
-       {
-         name: 'football-pickem-api',
-         script: 'server/index.js',
-         env: {
-           NODE_ENV: 'production',
-           PORT: 3001
-         },
-         instances: 1,
-         autorestart: true,
-         watch: false,
-         max_memory_restart: '1G',
-         error_file: './logs/api-error.log',
-         out_file: './logs/api-out.log',
-         log_file: './logs/api-combined.log'
-       },
-       {
-         name: 'football-pickem-web',
-         script: 'npm',
-         args: 'run preview',
-         env: {
-           NODE_ENV: 'production',
-           PORT: 4321
-         },
-         instances: 1,
-         autorestart: true,
-         watch: false,
-         max_memory_restart: '512M',
-         error_file: './logs/web-error.log',
-         out_file: './logs/web-out.log',
-         log_file: './logs/web-combined.log'
-       }
-     ]
-   };
-   EOF
-   ```
-
-3. **Start Services**
-
-   ```bash
-   # Create logs directory
-   mkdir -p logs
-
-   # Start both services
-   pm2 start ecosystem.config.js
-
-   # Save PM2 configuration
-   pm2 save
-
-   # Setup PM2 to start on boot
-   pm2 startup
-   ```
-
-4. **Monitor Services**
-
-   ```bash
-   # View status
-   pm2 status
-
-   # View logs
-   pm2 logs
-
-   # Restart services
-   pm2 restart all
-   ```
-
-#### Option 2: Docker Deployment
-
-1. **Create Dockerfile**
-
-   ```dockerfile
-   FROM node:18-alpine
-
-   WORKDIR /app
-
-   # Copy package files
-   COPY package*.json ./
-   RUN npm ci --only=production
-
-   # Copy application code
-   COPY . .
-
-   # Build frontend
-   RUN npm run build
-
-   # Create non-root user
-   RUN addgroup -g 1001 -S nodejs
-   RUN adduser -S nextjs -u 1001
-
-   # Set permissions
-   RUN chown -R nextjs:nodejs /app
-   USER nextjs
-
-   EXPOSE 3001 4321
-
-   # Start both services
-   CMD ["sh", "-c", "npm run preview & node server/index.js"]
-   ```
-
-2. **Create docker-compose.yml**
-
-   ```yaml
-   version: "3.8"
-   services:
-     football-pickem:
-       build: .
-       ports:
-         - "3001:3001"
-         - "4321:4321"
-       environment:
-         - NODE_ENV=production
-         - DATABASE_PATH=/app/data/database.sqlite
-         - CLIENT_URL=https://yourdomain.com
-       volumes:
-         - ./data:/app/data
-         - ./logs:/app/logs
-       restart: unless-stopped
-   ```
-
-3. **Deploy with Docker**
-
-   ```bash
-   # Build and start
-   docker-compose up -d
-
-   # View logs
-   docker-compose logs -f
-   ```
-
-### Nginx Reverse Proxy Setup
-
-1. **Install Nginx**
-
-   ```bash
-   sudo apt update
-   sudo apt install nginx
-   ```
-
-2. **Create Nginx Configuration**
-
-   ```bash
-   sudo tee /etc/nginx/sites-available/football-pickem << EOF
-   server {
-       listen 80;
-       server_name yourdomain.com www.yourdomain.com;
-
-       # Redirect HTTP to HTTPS
-       return 301 https://\$server_name\$request_uri;
-   }
-
-   server {
-       listen 443 ssl http2;
-       server_name yourdomain.com www.yourdomain.com;
-
-       # SSL Configuration (Let's Encrypt)
-       ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-       ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-
-       # Security headers
-       add_header X-Frame-Options DENY;
-       add_header X-Content-Type-Options nosniff;
-       add_header X-XSS-Protection "1; mode=block";
-
-       # Frontend
-       location / {
-           proxy_pass http://localhost:4321;
-           proxy_set_header Host \$host;
-           proxy_set_header X-Real-IP \$remote_addr;
-           proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-           proxy_set_header X-Forwarded-Proto \$scheme;
-       }
-
-       # API
-       location /api/ {
-           proxy_pass http://localhost:3001;
-           proxy_set_header Host \$host;
-           proxy_set_header X-Real-IP \$remote_addr;
-           proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-           proxy_set_header X-Forwarded-Proto \$scheme;
-       }
-
-       # Static assets with caching
-       location /logos/ {
-           alias /path/to/football-pickem/public/logos/;
-           expires 1y;
-           add_header Cache-Control "public, immutable";
-       }
-
-       # Gzip compression
-       gzip on;
-       gzip_vary on;
-       gzip_min_length 1024;
-       gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
-   }
-   EOF
-   ```
-
-3. **Enable Site and SSL**
-
-   ```bash
-   # Enable site
-   sudo ln -s /etc/nginx/sites-available/football-pickem /etc/nginx/sites-enabled/
-
-   # Test configuration
-   sudo nginx -t
-
-   # Install Certbot for Let's Encrypt
-   sudo apt install certbot python3-certbot-nginx
-
-   # Get SSL certificate
-   sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
-
-   # Restart Nginx
-   sudo systemctl restart nginx
-   ```
-
-### Database Backup & Maintenance
-
-1. **Automated Backup Script**
-
-   ```bash
-   cat > backup.sh << EOF
-   #!/bin/bash
-
-   # Configuration
-   DB_PATH="./database.sqlite"
-   BACKUP_DIR="./backups"
-   DATE=\$(date +%Y%m%d_%H%M%S)
-
-   # Create backup directory
-   mkdir -p \$BACKUP_DIR
-
-   # Create backup
-   sqlite3 \$DB_PATH ".backup \$BACKUP_DIR/database_\$DATE.sqlite"
-
-   # Keep only last 30 backups
-   find \$BACKUP_DIR -name "database_*.sqlite" -type f -mtime +30 -delete
-
-   echo "Backup completed: database_\$DATE.sqlite"
-   EOF
-
-   chmod +x backup.sh
-   ```
-
-2. **Setup Cron Job for Daily Backups**
-   ```bash
-   # Add to crontab
-   (crontab -l 2>/dev/null; echo "0 2 * * * /path/to/football-pickem/backup.sh") | crontab -
-   ```
-
-### Monitoring & Logging
-
-1. **Log Rotation Setup**
-
-   ```bash
-   sudo tee /etc/logrotate.d/football-pickem << EOF
-   /path/to/football-pickem/logs/*.log {
-       daily
-       missingok
-       rotate 30
-       compress
-       delaycompress
-       notifempty
-       copytruncate
-   }
-   EOF
-   ```
-
-2. **System Monitoring**
-
-   ```bash
-   # Check application status
-   pm2 status
-
-   # Monitor system resources
-   htop
-
-   # Check disk space
-   df -h
-
-   # View application logs
-   pm2 logs --lines 100
-   ```
-
-### Security Considerations
-
-1. **Firewall Setup**
-
-   ```bash
-   # Enable UFW
-   sudo ufw enable
-
-   # Allow SSH, HTTP, and HTTPS
-   sudo ufw allow ssh
-   sudo ufw allow 80
-   sudo ufw allow 443
-
-   # Block direct access to application ports
-   sudo ufw deny 3001
-   sudo ufw deny 4321
-   ```
-
-2. **Regular Updates**
-
-   ```bash
-   # Update system packages
-   sudo apt update && sudo apt upgrade
-
-   # Update Node.js dependencies
-   npm audit fix
-
-   # Update PM2
-   npm install -g pm2@latest
-   pm2 update
-   ```
-
-### Troubleshooting
-
-**Common Issues:**
-
-1. **Application won't start:**
-
-   ```bash
-   # Check logs
-   pm2 logs
-
-   # Verify environment variables
-   cat .env
-
-   # Check database permissions
-   ls -la database.sqlite
-   ```
-
-2. **Database connection errors:**
-
-   ```bash
-   # Verify database exists and is readable
-   sqlite3 database.sqlite ".tables"
-
-   # Re-run setup if needed
-   npm run setup
-   ```
-
-3. **SMTP/Email issues:**
-
-   ```bash
-   # Test SMTP settings in admin panel
-   # Check firewall rules for SMTP ports
-   # Verify email credentials
-   ```
-
-4. **Performance issues:**
-
-   ```bash
-   # Monitor system resources
-   htop
-
-   # Check PM2 memory usage
-   pm2 monit
-
-   # Restart services
-   pm2 restart all
-   ```
-
-### Scaling Considerations
-
-For high-traffic deployments:
-
-1. **Load Balancing:** Use multiple PM2 instances
-2. **Database:** Consider PostgreSQL for better performance
-3. **Caching:** Implement Redis for session storage
-4. **CDN:** Use CloudFlare or similar for static assets
-5. **Monitoring:** Implement application monitoring (New Relic, DataDog)
-
-## 🛠️ Development
-
-### Available Scripts
-
-| Command                | Description                                         |
-| ---------------------- | --------------------------------------------------- |
-| `npm run dev`          | Start both frontend and backend in development mode |
-| `npm run dev:frontend` | Start only the Astro dev server (port 4321)         |
-| `npm run dev:backend`  | Start only the Express server (port 3001)           |
-| `npm run build`        | Build the frontend for production                   |
-| `npm run preview`      | Preview the production build                        |
-| `npm run setup`        | Set up database and create admin user               |
-
-### Key Technologies
-
-- **Frontend**: Astro + React + TypeScript + Tailwind CSS
-- **Backend**: Node.js + Express + SQLite
-- **Authentication**: JWT tokens
-- **State Management**: Nanostores
-- **Styling**: Tailwind CSS + Heroicons
-- **Email**: Nodemailer
-- **Scheduling**: node-cron
-- **External APIs**: ESPN API for NFL data
-
-### Database Schema
-
-The application uses SQLite with the following main tables:
-
-- `users` - User accounts and profiles
-- `pickem_games` - Pick'em games/pools
-- `game_participants` - User participation in games
-- `nfl_teams` - NFL team information
-- `seasons` - NFL seasons
-- `nfl_games` - NFL game schedule and scores
-- `picks` - User picks for games
-- `game_invitations` - Email invitations
-- `system_settings` - Admin configuration
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For support or questions:
-
-1. Check the admin dashboard for system status
-2. Review the server logs for error messages
-3. Ensure your database has been set up correctly
-4. Verify SMTP configuration if email isn't working
-
-## 🎉 Acknowledgments
-
-- ESPN for providing NFL data API
-- NFL teams for logos and brand assets
-- Astro and React communities for excellent documentation
-- All contributors to this project
+**Never commit literal secret values.** `apprunner.yaml` is in version
+control; put ARNs there, or set the values as service-level secrets.
+
+If resolution fails in production the app enters *degraded mode*: it keeps
+serving so health checks pass, but `JWT_SECRET` becomes a random
+per-process value. That is deliberate — it fails safe. Every existing
+session stops verifying until the configuration is fixed, which is the
+correct outcome and visible in the logs.
+
+### Health endpoints
+
+| Path | Auth | Use |
+|---|---|---|
+| `/health` | none | **Liveness. Point load balancers here.** No database work, always 200 |
+| `/api/health` | none | Fast check with database-initialised and config status |
+| `/api/health/*` | gated | `detailed`, `ready`, `database`, `dynamodb/*`, `performance` |
+
+Everything under `/api/health` except the index requires an admin JWT or an
+`x-health-token` header, **and in production returns 404 outright unless
+`ENABLE_DETAILED_HEALTH=true`**. Pointing a health check at
+`/api/health/live` will therefore fail in production — use `/health`.
+
+### SMTP
+
+Either set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`, or
+configure it in Admin → Settings, where it is stored encrypted with
+`SETTINGS_ENCRYPTION_KEY`. For Gmail, enable 2FA and use an App Password.
+
+> Password reset is **not wired to email yet** — the endpoint logs the token
+> instead of sending it. See `plans/2026-09-05-code-review.md` §1.6.
+
+## Local DynamoDB with LocalStack
+
+Exercises the DynamoDB code path without touching AWS. Requires Docker.
+
+```bash
+npm run localstack:start   # start, then seed secrets
+npm run localstack:setup   # create tables and GSIs
+npm run localstack:test    # verify connectivity
+npm run dev:local          # run the app against LocalStack
+```
+
+Also available: `localstack:status`, `localstack:logs`,
+`localstack:reset` (recreate + reseed), `localstack:stop`, and
+`localstack:clean` (tear down *and delete* `./localstack-data`).
+
+State persists in `./localstack-data` between restarts. Container config is
+in `docker-compose.localstack.yml`.
+
+## Admin setup
+
+After `npm run setup`, sign in with the printed credentials:
+
+1. **Admin → Seasons** — mark the current NFL season active.
+2. **Admin Dashboard → Sync Full Schedule** — import games from ESPN.
+3. **Admin → Settings** — configure SMTP if you want invitation emails.
+4. **Create Game** — start a pool and invite players.
+
+The scheduler then keeps scores current on its own: every 15 minutes during
+game windows, hourly pick recalculation, and a six-hourly off-hours check.
+
+## Deployment
+
+The production image is built by the multi-stage `Dockerfile` on
+`node:22-alpine`. Stage one installs all dependencies and runs
+`npm run build`; stage two gets the built output plus pruned production
+dependencies and runs as the non-root `node` user.
+
+```bash
+docker build -t football-pickem .
+docker run -p 8080:8080 --env-file .env.production football-pickem
+```
+
+Deployment checklist:
+
+- [ ] `npm run verify` passes
+- [ ] `JWT_SECRET` and `SETTINGS_ENCRYPTION_KEY` set — as Secrets Manager ARNs, not literals
+- [ ] `DATABASE_TYPE` correct for the target (`auto` or `dynamodb`)
+- [ ] `AWS_REGION` and `DYNAMODB_TABLE_PREFIX` match the deployed tables
+- [ ] DynamoDB tables and **their GSIs** created from `infrastructure/dynamodb-tables.yml`
+- [ ] Role has DynamoDB access — on ECS this is the **task** role, not the execution role
+- [ ] Outbound internet available, or the ESPN sync silently stops
+- [ ] Health check pointed at `/health`
+- [ ] `CLIENT_URL` / `FRONTEND_URL` set to the real origin, for CORS
+- [ ] One instance only, or the in-process scheduler runs N times over
+
+DynamoDB tables:
+
+```bash
+aws cloudformation deploy --template-file infrastructure/dynamodb-tables.yml --stack-name football-pickem-dynamodb --parameter-overrides TablePrefix=football_pickem_
+```
+
+GSIs matter — the code falls back to full table scans when an index is
+missing, which is correct but slow and expensive.
+
+Add an index by editing this template, not from the console. An index
+added out of band cannot later be adopted by a plain stack update:
+CloudFormation compares template against template rather than against
+reality, so it issues a create for an index that already exists and the
+update fails with *"Attempting to create an index which already exists"* —
+after presenting a change set that looks entirely safe. Recovering from
+that takes three stack operations, done once on 2026-09-08:
+
+1. Remove the affected tables from the template. Their `DeletionPolicy:
+   Retain` keeps the tables; they simply become unmanaged.
+2. Re-add them with `--change-set-type IMPORT` and a
+   `--resources-to-import` manifest. Import adopts live state without
+   calling `UpdateTable`, so indexes are never touched. The import
+   template must carry the *same* `Outputs` as the current stack — import
+   refuses to add any.
+3. A normal update to restore the `Outputs` removed in step 1.
+
+Note also that DynamoDB permits only one index create-or-delete per table
+per stack update, so batching index changes does not work either.
+
+### Current state: AWS App Runner
+
+Deployed via `apprunner.yaml` using App Runner's source-based build.
+
+**App Runner is closed to new customers.** Existing services keep working
+and AWS still patches them, but there will be no new features. Migration to
+ECS Express Mode is planned — see
+[`plans/2026-09-06-ecs-express-migration.md`](plans/2026-09-06-ecs-express-migration.md).
+
+Note that `scripts/start.sh`, the current container entrypoint, is a
+process supervisor written for App Runner. It must not survive the move to
+ECS: the shell becomes PID 1, so a dead Node process still looks like a
+healthy task.
+
+## Contributing
+
+1. Branch from `develop`.
+2. Make the change, with tests.
+3. `npm run verify` — must be clean.
+4. Open a PR against `develop`.
+
+Planned and in-flight work lives in [`plans/`](plans/README.md). The known
+open issues — security, correctness, architecture, and design — are indexed
+in [`plans/2026-09-05-code-review.md`](plans/2026-09-05-code-review.md).
+
+## Acknowledgments
+
+NFL data from the public ESPN API. Team logos and marks are the property of
+their respective clubs.

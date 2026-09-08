@@ -168,7 +168,7 @@ const UsersManager: React.FC = () => {
         // Show success message briefly
         setError('');
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || `Email verified for ${userName}`;
         
         // Insert success message at the top of the main content area
@@ -258,11 +258,11 @@ const UsersManager: React.FC = () => {
         // Show success message with temporary password
         setError('');
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.innerHTML = `
           <div class="font-semibold">Account created for ${confirmInviteData.email}</div>
           <div>Name: ${confirmInviteData.firstName} ${confirmInviteData.lastName}</div>
-          <div>Temporary password: <code class="bg-green-200 px-2 py-1 rounded font-mono">${confirmInviteData.tempPassword}</code></div>
+          <div>Temporary password: <code class="bg-success-soft px-2 py-1 rounded font-mono">${confirmInviteData.tempPassword}</code></div>
           <div class="text-sm mt-1">Send this password to the user securely</div>
         `;
         
@@ -299,7 +299,7 @@ const UsersManager: React.FC = () => {
         // Show success message briefly
         setError('');
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.textContent = `User "${userName}" (${userEmail}) deleted successfully`;
         
         // Insert success message at the top of the main content area
@@ -346,7 +346,7 @@ const UsersManager: React.FC = () => {
         
         // Show success message briefly
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || 'User invitation sent successfully';
         
         // Insert success message at the top of the main content area
@@ -397,7 +397,7 @@ const UsersManager: React.FC = () => {
         
         // Show success message briefly
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || 'Admin invitation sent successfully';
         
         // Insert success message at the top of the main content area
@@ -439,7 +439,7 @@ const UsersManager: React.FC = () => {
         
         // Show success message briefly
         const successDiv = document.createElement('div');
-        successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6';
+        successDiv.className = 'bg-success-soft border border-success text-success-ink px-4 py-3 rounded mb-6';
         successDiv.textContent = result.message || `Password reset email sent to ${userName}`;
         
         // Insert success message at the top of the main content area
@@ -461,18 +461,18 @@ const UsersManager: React.FC = () => {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
       </div>
     );
   }
 
   if (!isAuthenticated || !user || !user.isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-100 flex justify-center items-center">
+      <div className="min-h-screen bg-surface-alt flex justify-center items-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Access denied</p>
-          <a href="/dashboard" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+          <p className="text-ink-muted mb-4">Access denied</p>
+          <a href="/dashboard" className="bg-brand text-white px-6 py-2 rounded-lg hover:bg-brand-hover transition-colors flex items-center space-x-2">
             <HomeIcon className="h-4 w-4" />
             <span>Go to Dashboard</span>
           </a>
@@ -482,9 +482,9 @@ const UsersManager: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-alt">
       {/* Header */}
-      <header className="bg-green-600 text-white shadow-lg">
+      <header className="bg-brand text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
@@ -497,19 +497,19 @@ const UsersManager: React.FC = () => {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowInviteForm(true)}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+                className="bg-success hover:bg-success-ink text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Invite User
               </button>
               <button
                 onClick={() => setShowAdminInviteForm(true)}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+                className="bg-danger hover:bg-danger-ink text-white px-4 py-2 rounded-lg transition-colors"
               >
                 Invite Admin
               </button>
               <a
                 href="/admin"
-                className="bg-gray-600 text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
+                className="bg-ink-muted text-white hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
               >
                 Back to Admin
               </a>
@@ -520,61 +520,61 @@ const UsersManager: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-danger-soft border border-danger text-danger-ink px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {/* Users Table */}
-        <div className="bg-white rounded-lg shadow-md">
+        <div className="bg-surface rounded-lg shadow-md">
           <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">All Users</h2>
-            <p className="text-gray-600">Total: {users.length} users</p>
+            <h2 className="text-2xl font-bold text-ink">All Users</h2>
+            <p className="text-ink-muted">Total: {users.length} users</p>
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-sunk">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     User
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Games
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-line">
                 {users.map((userData) => (
-                  <tr key={userData.id} className="hover:bg-gray-50">
+                  <tr key={userData.id} className="hover:bg-surface-sunk">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                            <span className="text-sm font-medium text-gray-700">
+                          <div className="h-10 w-10 rounded-full bg-line-strong flex items-center justify-center">
+                            <span className="text-sm font-medium text-ink-muted">
                               {(userData.first_name || 'U').charAt(0)}{(userData.last_name || 'U').charAt(0)}
                             </span>
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-ink">
                             {userData.first_name || 'Unknown'} {userData.last_name || 'User'}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-ink-subtle">
                             {userData.is_admin && (
-                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                              <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-danger-soft text-danger-ink">
                                 Admin
                               </span>
                             )}
@@ -583,20 +583,20 @@ const UsersManager: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{userData.email}</div>
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-ink">{userData.email}</div>
+                      <div className="text-sm text-ink-subtle">
                         {userData.email_verified ? (
-                          <span className="text-green-600">✓ Verified</span>
+                          <span className="text-success">✓ Verified</span>
                         ) : (
                           <div className="flex items-center space-x-2">
-                            <span className="text-yellow-600">⚠ Unverified</span>
+                            <span className="text-warning">⚠ Unverified</span>
                             <button
                               onClick={() => {
                                 if (confirm(`Manually verify email for ${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}?\n\nThis will mark their email as verified without requiring them to click a verification link.`)) {
                                   verifyUserEmail(userData.id, `${userData.first_name || 'Unknown'} ${userData.last_name || 'User'}`, userData.email);
                                 }
                               }}
-                              className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-1 rounded text-xs font-medium"
+                              className="bg-brand-soft text-brand hover:bg-brand-soft px-2 py-1 rounded text-xs font-medium"
                               title="Manually verify email"
                             >
                               Verify
@@ -606,23 +606,23 @@ const UsersManager: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
+                      <div className="text-sm text-ink">
                         {userData.last_login ? (
-                          <span className="text-green-600">Active</span>
+                          <span className="text-success">Active</span>
                         ) : (
-                          <span className="text-gray-500">Never logged in</span>
+                          <span className="text-ink-subtle">Never logged in</span>
                         )}
                       </div>
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-ink-subtle">
                         {userData.last_login && 
                           `Last: ${new Date(userData.last_login).toLocaleDateString()}`
                         }
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink">
                       {userData.game_count} games
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-subtle">
                       {new Date(userData.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -632,8 +632,8 @@ const UsersManager: React.FC = () => {
                             onClick={() => toggleAdminStatus(userData.id, !userData.is_admin)}
                             className={`px-3 py-1 rounded text-xs font-medium ${
                               userData.is_admin
-                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                ? 'bg-danger-soft text-danger-ink hover:bg-danger-soft'
+                                : 'bg-brand-soft text-brand hover:bg-brand-soft'
                             }`}
                           >
                             {userData.is_admin ? 'Remove Admin' : 'Make Admin'}
@@ -648,7 +648,7 @@ const UsersManager: React.FC = () => {
                               setShowResetPasswordModal(true);
                             }}
                             disabled={sendingPasswordReset === userData.id}
-                            className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium"
+                            className="bg-warning-soft text-warning-ink hover:bg-warning-soft-hover disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium"
                           >
                             {sendingPasswordReset === userData.id ? 'Sending...' : 'Reset Password'}
                           </button>
@@ -661,7 +661,7 @@ const UsersManager: React.FC = () => {
                               });
                               setShowDeleteUserModal(true);
                             }}
-                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                            className="bg-danger-soft text-danger-ink hover:bg-danger-soft px-3 py-1 rounded text-xs font-medium"
                           >
                             Delete User
                           </button>
@@ -676,60 +676,60 @@ const UsersManager: React.FC = () => {
         </div>
 
         {/* Pending Invitations */}
-        <div className="bg-white rounded-lg shadow-md mt-8">
+        <div className="bg-surface rounded-lg shadow-md mt-8">
           <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">Pending Invitations</h2>
-            <p className="text-gray-600">Total: {invitations.length} pending invitations</p>
+            <h2 className="text-2xl font-bold text-ink">Pending Invitations</h2>
+            <p className="text-ink-muted">Total: {invitations.length} pending invitations</p>
           </div>
           
           {invitations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-surface-sunk">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Email
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Game
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Invited By
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Sent
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Expires
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-subtle uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-surface divide-y divide-line">
                   {invitations.map((invitation) => (
-                    <tr key={invitation.id} className="hover:bg-gray-50">
+                    <tr key={invitation.id} className="hover:bg-surface-sunk">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{invitation.email}</div>
+                        <div className="text-sm font-medium text-ink">{invitation.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{invitation.game_name}</div>
+                        <div className="text-sm text-ink">{invitation.game_name}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{invitation.invited_by_name}</div>
+                        <div className="text-sm text-ink">{invitation.invited_by_name}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-subtle">
                         {new Date(invitation.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-subtle">
                         {new Date(invitation.expires_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
                           <button
                             onClick={() => openConfirmInviteModal(invitation.id, invitation.email)}
-                            className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1 rounded text-xs font-medium"
+                            className="bg-success-soft text-success-ink hover:bg-success-soft px-3 py-1 rounded text-xs font-medium"
                           >
                             Confirm
                           </button>
@@ -739,7 +739,7 @@ const UsersManager: React.FC = () => {
                                 cancelInvitation(invitation.id);
                               }
                             }}
-                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                            className="bg-danger-soft text-danger-ink hover:bg-danger-soft px-3 py-1 rounded text-xs font-medium"
                           >
                             Cancel
                           </button>
@@ -752,23 +752,23 @@ const UsersManager: React.FC = () => {
             </div>
           ) : (
             <div className="p-6 text-center">
-              <div className="text-gray-500 mb-4">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="text-ink-subtle mb-4">
+                <svg className="mx-auto h-12 w-12 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m13-8l-4 4m0 0l-4-4m4 4V3" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Invitations</h3>
-              <p className="text-gray-500 mb-4">There are currently no pending user invitations.</p>
+              <h3 className="text-lg font-medium text-ink mb-2">No Pending Invitations</h3>
+              <p className="text-ink-subtle mb-4">There are currently no pending user invitations.</p>
               <div className="flex space-x-3 justify-center">
                 <button
                   onClick={() => setShowInviteForm(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  className="bg-success hover:bg-success-ink text-white px-4 py-2 rounded-lg transition-colors"
                 >
                   Invite a User
                 </button>
                 <button
                   onClick={() => setShowAdminInviteForm(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  className="bg-danger hover:bg-danger-ink text-white px-4 py-2 rounded-lg transition-colors"
                 >
                   Invite an Admin
                 </button>
@@ -780,32 +780,32 @@ const UsersManager: React.FC = () => {
         {/* Invite User Modal */}
         {showInviteForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Invite User to Game</h3>
               <form onSubmit={handleInviteUser} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-email-address">
                     Email Address
                   </label>
-                  <input
+                  <input id="usersmanager-email-address"
                     type="email"
                     value={inviteFormData.email}
                     onChange={(e) => setInviteFormData({...inviteFormData, email: e.target.value})}
                     placeholder="Enter user's email address"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-assign-to-game">
                     Assign to Game
                   </label>
-                  <select
+                  <select id="usersmanager-assign-to-game"
                     value={inviteFormData.gameId}
                     onChange={(e) => setInviteFormData({...inviteFormData, gameId: e.target.value})}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <option value="">Select a game...</option>
                     {games.filter(game => game.is_active).map(game => (
@@ -824,14 +824,14 @@ const UsersManager: React.FC = () => {
                       setInviteFormData({ email: '', gameId: '' });
                       setError('');
                     }}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                    className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={inviting}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {inviting ? 'Sending...' : 'Send Invitation'}
                   </button>
@@ -844,35 +844,35 @@ const UsersManager: React.FC = () => {
         {/* Invite Admin Modal */}
         {showAdminInviteForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Invite Admin User</h3>
               <form onSubmit={handleInviteAdmin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-email-address-2">
                     Email Address
                   </label>
-                  <input
+                  <input id="usersmanager-email-address-2"
                     type="email"
                     value={adminInviteEmail}
                     onChange={(e) => setAdminInviteEmail(e.target.value)}
                     placeholder="Enter admin user's email address"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
                   />
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                <div className="bg-warning-soft border border-warning rounded-md p-3">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                      <svg className="h-5 w-5 text-warning" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">
+                      <h3 className="text-sm font-medium text-warning-ink">
                         Admin Invitation
                       </h3>
-                      <div className="mt-2 text-sm text-yellow-700">
+                      <div className="mt-2 text-sm text-warning-ink">
                         <p>This will invite the user to become an administrator with full access to manage users, games, and system settings.</p>
                       </div>
                     </div>
@@ -887,14 +887,14 @@ const UsersManager: React.FC = () => {
                       setAdminInviteEmail('');
                       setError('');
                     }}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                    className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={invitingAdmin}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {invitingAdmin ? 'Sending...' : 'Send Admin Invitation'}
                   </button>
@@ -907,70 +907,70 @@ const UsersManager: React.FC = () => {
         {/* Confirm Invitation Modal */}
         {showConfirmInviteModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Confirm Invitation</h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-ink-muted mb-4">
                 Create account for <strong>{confirmInviteData.email}</strong>
               </p>
               
               <form onSubmit={confirmInvitation} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-first-name">
                     First Name
                   </label>
-                  <input
+                  <input id="usersmanager-first-name"
                     type="text"
                     value={confirmInviteData.firstName}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, firstName: e.target.value})}
                     placeholder="Enter first name"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-last-name">
                     Last Name
                   </label>
-                  <input
+                  <input id="usersmanager-last-name"
                     type="text"
                     value={confirmInviteData.lastName}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, lastName: e.target.value})}
                     placeholder="Enter last name"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-muted mb-1" htmlFor="usersmanager-temporary-password">
                     Temporary Password
                   </label>
-                  <input
+                  <input id="usersmanager-temporary-password"
                     type="text"
                     value={confirmInviteData.tempPassword}
                     onChange={(e) => setConfirmInviteData({...confirmInviteData, tempPassword: e.target.value})}
                     placeholder="Enter temporary password"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full px-3 py-2 border border-line-strong rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-ink-subtle mt-1">
                     This password will be shown to you after account creation.
                   </p>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <div className="bg-brand-soft border border-brand rounded-md p-3">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                      <svg className="h-5 w-5 text-brand" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                       </svg>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-blue-800">
+                      <h3 className="text-sm font-medium text-brand-ink">
                         Account Creation
                       </h3>
-                      <div className="mt-2 text-sm text-blue-700">
+                      <div className="mt-2 text-sm text-brand">
                         <p>This will create a user account with the provided details and the user will be added to the invited game.</p>
                       </div>
                     </div>
@@ -991,14 +991,14 @@ const UsersManager: React.FC = () => {
                       });
                       setError('');
                     }}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                    className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={confirmingInvitation}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-success text-white px-4 py-2 rounded-lg hover:bg-success-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {confirmingInvitation ? 'Creating Account...' : 'Create Account'}
                   </button>
@@ -1011,12 +1011,12 @@ const UsersManager: React.FC = () => {
         {/* Reset Password Confirmation Modal */}
         {showResetPasswordModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Send Password Reset Email</h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-ink-muted mb-4">
                 Send password reset email to <strong>{resetPasswordData.userName}</strong> ({resetPasswordData.userEmail})?
               </p>
-              <p className="text-sm text-gray-500 mb-6">
+              <p className="text-sm text-ink-subtle mb-6">
                 This will send them an email with a link to reset their password.
               </p>
               
@@ -1027,7 +1027,7 @@ const UsersManager: React.FC = () => {
                     setShowResetPasswordModal(false);
                     setResetPasswordData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
@@ -1038,7 +1038,7 @@ const UsersManager: React.FC = () => {
                     setShowResetPasswordModal(false);
                     setResetPasswordData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors"
+                  className="bg-warning text-white px-4 py-2 rounded-lg hover:bg-warning-ink transition-colors"
                 >
                   Send Reset Email
                 </button>
@@ -1050,24 +1050,24 @@ const UsersManager: React.FC = () => {
         {/* Delete User Confirmation Modal */}
         {showDeleteUserModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-red-700">Delete User Account</h3>
-              <p className="text-gray-600 mb-4">
+            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4 text-danger-ink">Delete User Account</h3>
+              <p className="text-ink-muted mb-4">
                 Are you sure you want to delete user <strong>{deleteUserData.userName}</strong> ({deleteUserData.userEmail})?
               </p>
               
-              <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+              <div className="bg-danger-soft border border-danger rounded-md p-3 mb-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <svg className="h-5 w-5 text-danger" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
+                    <h3 className="text-sm font-medium text-danger-ink">
                       This action cannot be undone
                     </h3>
-                    <div className="mt-2 text-sm text-red-700">
+                    <div className="mt-2 text-sm text-danger-ink">
                       <p>This will permanently delete:</p>
                       <ul className="list-disc list-inside mt-1">
                         <li>All their picks and game data</li>
@@ -1086,7 +1086,7 @@ const UsersManager: React.FC = () => {
                     setShowDeleteUserModal(false);
                     setDeleteUserData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="px-4 py-2 text-ink-muted hover:text-ink transition-colors"
                 >
                   Cancel
                 </button>
@@ -1097,7 +1097,7 @@ const UsersManager: React.FC = () => {
                     setShowDeleteUserModal(false);
                     setDeleteUserData({ userId: '', userName: '', userEmail: '' });
                   }}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                  className="bg-danger text-white px-4 py-2 rounded-lg hover:bg-danger-ink transition-colors"
                 >
                   Delete User
                 </button>

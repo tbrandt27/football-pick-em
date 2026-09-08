@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InjectSecretsIntoContainer",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:football-pickem/jwt-secret-vkSzBv"
+    }
+  ]
+}

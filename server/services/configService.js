@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import secretsManager from './secretsManager.js';
 
 /**
@@ -52,14 +53,11 @@ class ConfigService {
           if ((process.env.NODE_ENV === 'production' || process.env.USE_LOCALSTACK === 'true') && typeof window === 'undefined') {
             try {
               console.log(`🔐 ${key}: Resolving from Secrets Manager...`);
-              console.log(`🔐 ${key}: Using ARN: ${envValue}`);
-              console.log(`🔐 ${key}: Extracting key: ${key}`);
               // For compound secrets, extract the specific key from the JSON
               // The secret keys match the environment variable names exactly
               const secretValue = await secretsManager.getSecret(envValue, key, fallback);
-              console.log(`✅ ${key}: Successfully resolved from Secrets Manager`);
-              console.log(`🔍 ${key}: Resolved value type: ${typeof secretValue}`);
-              console.log(`🔍 ${key}: Resolved value preview: ${typeof secretValue === 'string' ? `"${secretValue.substring(0, 100)}${secretValue.length > 100 ? '...' : ''}"` : secretValue}`);
+              // Never log the value itself -- these land in CloudWatch.
+              console.log(`✅ ${key}: Successfully resolved from Secrets Manager (${typeof secretValue}, length ${typeof secretValue === 'string' ? secretValue.length : 'n/a'})`);
               return secretValue;
             } catch (error) {
               console.error(`❌ ${key}: Failed to resolve from Secrets Manager: ${error.message}`);
@@ -89,7 +87,7 @@ class ConfigService {
             return fallback;
           }
         } else {
-          console.log(`� ${key}: Using direct environment value`);
+          console.log(`🔧 ${key}: Using direct environment value`);
           return envValue;
         }
       };
@@ -128,13 +126,22 @@ class ConfigService {
         this.degradedMode = true;
         this.configError = error.message;
         
-        // Use emergency fallbacks to keep app running
-        this.cache.set('JWT_SECRET', process.env.JWT_SECRET || 'emergency-fallback-jwt-secret-change-immediately');
-        this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || 'emergency-fallback-32-char-key-now!');
-        this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || 'admin@localhost');
-        this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || 'admin123');
+        // Emergency fallbacks keep the process up so health checks and public
+        // pages still respond instead of crash-looping.
+        //
+        // These MUST be random per process, never literals: a hardcoded fallback
+        // secret is committed to source, so anyone who can read this repo could
+        // forge a valid admin JWT whenever config resolution failed. Random
+        // values fail safe instead -- existing sessions stop verifying and
+        // nobody can mint new ones.
+        this.cache.set('JWT_SECRET', process.env.JWT_SECRET || randomBytes(48).toString('hex'));
+        this.cache.set('SETTINGS_ENCRYPTION_KEY', process.env.SETTINGS_ENCRYPTION_KEY || randomBytes(32).toString('hex'));
+        this.cache.set('ADMIN_EMAIL', process.env.ADMIN_EMAIL || null);
+        // No admin password fallback -- seeding an admin account with a known
+        // password on a degraded boot is worse than not seeding one at all.
+        this.cache.set('ADMIN_PASSWORD', process.env.ADMIN_PASSWORD || null);
         
-        console.log('🔄 Emergency configuration loaded - application running in degraded mode');
+        console.warn('🔄 Emergency configuration loaded - degraded mode. JWT_SECRET is ephemeral, so all existing sessions are invalid until config is fixed.');
       } else {
         // Fallback to default values only in local development
         console.log('🔄 Using fallback configuration values for local development...');

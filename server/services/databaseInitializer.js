@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import ESPNService from "./espnApi.js";
 import configService from "./configService.js";
+import { toFlagString } from '../utils/coerce.js';
 
 /**
  * Database Initializer Service
@@ -238,8 +239,8 @@ export default class DatabaseInitializer {
           password: hashedPassword,
           first_name: "Admin",
           last_name: "User",
-          is_admin: 'true',
-          email_verified: 'true',
+          is_admin: toFlagString(true),
+          email_verified: toFlagString(true),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });

@@ -257,7 +257,29 @@ class ESPNService {
             },
             score: comp.score ? parseInt(comp.score) : 0,
             record: comp.records ? comp.records[0]?.summary : null
-          }))
+          })),
+          // Betting line. Present only while a game is upcoming -- ESPN drops
+          // the odds block once a game completes, which is why callers must
+          // persist this rather than re-fetch it for past weeks.
+          odds: event.competitions[0].odds?.[0]
+            ? {
+                provider: event.competitions[0].odds[0].provider?.name ?? null,
+                // Negative, relative to the favourite (e.g. -3.5).
+                spread: typeof event.competitions[0].odds[0].spread === 'number'
+                  ? event.competitions[0].odds[0].spread
+                  : null,
+                overUnder: typeof event.competitions[0].odds[0].overUnder === 'number'
+                  ? event.competitions[0].odds[0].overUnder
+                  : null,
+                details: event.competitions[0].odds[0].details ?? null,
+                favoriteAbbreviation:
+                  (event.competitions[0].odds[0].homeTeamOdds?.favorite
+                    ? event.competitions[0].odds[0].homeTeamOdds?.team?.abbreviation
+                    : event.competitions[0].odds[0].awayTeamOdds?.favorite
+                      ? event.competitions[0].odds[0].awayTeamOdds?.team?.abbreviation
+                      : null) ?? null,
+              }
+            : null,
         } : null
       }));
     } catch (error) {
@@ -377,13 +399,33 @@ class ESPNService {
         const startTime = new Date(competition.date);
         const now = new Date().toISOString();
 
+        // ESPN only publishes odds while a game is upcoming and removes them
+        // once it completes, so persist whatever is present and never clear an
+        // already-stored line just because it has since disappeared upstream.
+        const odds = competition.odds;
+        const oddsFields = odds
+          ? {
+              spread: odds.spread,
+              over_under: odds.overUnder,
+              odds_provider: odds.provider,
+              odds_updated_at: now,
+              favorite_team_id:
+                odds.favoriteAbbreviation === homeTeam.team.abbreviation
+                  ? homeTeamRecord.id
+                  : odds.favoriteAbbreviation === awayTeam.team.abbreviation
+                    ? awayTeamRecord.id
+                    : null,
+            }
+          : null;
+
         if (existingGame) {
           // Update existing game
           const updateData = {
             home_score: homeTeam.score || 0,
             away_score: awayTeam.score || 0,
             status: gameData.status.type,
-            scores_updated_at: now
+            scores_updated_at: now,
+            ...(oddsFields ?? {}),
           };
 
           // Only update game date and start time if not doing scores-only update
@@ -409,7 +451,8 @@ class ESPNService {
             start_time: startTime.toISOString(),
             status: gameData.status.type,
             season_type: gameData.seasonType,
-            scores_updated_at: now
+            scores_updated_at: now,
+            ...(oddsFields ?? {}),
           };
 
           await nflDataService.createFootballGame(gameItem);

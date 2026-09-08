@@ -17,6 +17,7 @@ import pickRoutes from "./routes/picks.js";
 import seasonRoutes from "./routes/seasons.js";
 import adminRoutes from "./routes/admin.js";
 import healthRoutes from "./routes/health.js";
+import { apiLimiter } from "./middleware/rateLimit.js";
 // import databaseAdminRoutes from "./routes/databaseAdmin.js";
 
 // Import services
@@ -158,6 +159,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Behind App Runner (and behind an ALB after the ECS migration) the client IP
+// arrives in X-Forwarded-For. Without this, req.ip is the proxy address, every
+// request shares one rate-limit key, and a single caller can lock out everyone.
+//
+// Trust exactly one hop, never `true`: blanket trust lets a client spoof
+// X-Forwarded-For and sidestep the limiters entirely. Raise the count only if
+// a further trusted proxy is genuinely added in front.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -183,6 +195,10 @@ if (existsSync(clientPath)) {
   app.use(express.static(clientPath));
 }
 
+// Rate limiting. Applies to /api only, so static assets and SSR pages are
+// untouched. Per-route stricter limits live on the auth router itself.
+app.use("/api", apiLimiter);
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -197,7 +213,15 @@ app.use("/api/health", healthRoutes);
 // Serve static logo files with graceful fallback for missing files
 app.get("/logos/:filename", (req, res) => {
   const { filename } = req.params;
-  
+
+  // Express percent-decodes route params, so a request for
+  // /logos/..%2f..%2fpackage.json arrives here as "../../package.json" and the
+  // join() calls below would happily resolve outside the logos directory.
+  // Restrict to a single plain filename before touching the filesystem.
+  if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes("..")) {
+    return res.status(400).json({ error: "Invalid logo filename" });
+  }
+
   // Check for explicit environment variable first
   const explicitLogosPath = process.env.LOGOS_PATH;
   
@@ -255,12 +279,6 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
-});
-
 // Import Astro SSR handler
 let astroHandler;
 const serverPath = join(__dirname, "../dist/server/entry.mjs");
@@ -270,8 +288,13 @@ if (existsSync(serverPath)) {
   astroHandler = astroModule.handler;
 }
 
-// Handle all non-API routes with Astro SSR
-app.get("*", async (req, res) => {
+// Handle all non-API routes with Astro SSR.
+//
+// Express 5 uses path-to-regexp 8, where a bare "*" is no longer a valid
+// path -- a wildcard must be named. "/{*splat}" matches the root as well as
+// every deeper path, which is what "*" did in Express 4; "/*splat" alone
+// would skip "/".
+app.get("/{*splat}", async (req, res) => {
   // Skip API routes - they're already handled above
   if (req.path.startsWith('/api/') || req.path.startsWith('/logos/')) {
     return res.status(404).json({ error: "Route not found" });
@@ -288,6 +311,20 @@ app.get("*", async (req, res) => {
   } else {
     res.status(404).json({ error: "Application not built. Run 'npm run build' first." });
   }
+});
+
+// Error handling middleware.
+//
+// Express only routes to an error handler registered AFTER the middleware that
+// threw, so this must stay below the SSR catch-all above -- otherwise errors
+// from the API routes and the Astro handler fall through to Express's default
+// handler instead.
+app.use((err, req, res, _next) => {
+  console.error(err.stack);
+  if (res.headersSent) {
+    return;
+  }
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 // Function to find an available port
