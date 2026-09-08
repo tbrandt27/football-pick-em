@@ -231,15 +231,39 @@ Resources:
                   - 'ecr:PutImage'
                 Resource: !GetAtt EcrRepository.Arn
 
-              - Sid: DeployExpressService
+              # Express Mode has its OWN IAM action names -- granting the
+              # standard ecs:CreateService family is not enough and fails
+              # with "not authorized to perform ecs:CreateExpressGatewayService".
+              #
+              # This is exactly the set aws-actions/amazon-ecs-deploy-express-service
+              # calls, read from its source: Create/Describe/UpdateExpressGatewayService,
+              # DescribeServices, List/DescribeServiceDeployments, and
+              # Tag/UntagResource. RegisterTaskDefinition is deliberately absent
+              # -- Express Mode registers the task definition server-side, and
+              # the action never calls it.
+              - Sid: DeployExpressServiceScopedToThisService
                 Effect: Allow
                 Action:
-                  - 'ecs:CreateService'
-                  - 'ecs:UpdateService'
+                  - 'ecs:CreateExpressGatewayService'
+                  - 'ecs:UpdateExpressGatewayService'
+                  - 'ecs:DescribeExpressGatewayService'
                   - 'ecs:DescribeServices'
-                  - 'ecs:RegisterTaskDefinition'
-                  - 'ecs:DescribeTaskDefinition'
+                Resource: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ServiceName}/${ServiceName}'
+
+              # Service-deployment ARNs are a different resource type from the
+              # service itself and are derived at run time, so these stay
+              # unscoped. List/Describe are read-only. Tag/UntagResource are
+              # writes and are only exercised when the tags input is set,
+              # which it is not -- they are granted so enabling tags later
+              # does not mean another failed deploy. Narrow them to specific
+              # resource ARNs if tagging is ever turned on.
+              - Sid: DeploymentStatusAndTagging
+                Effect: Allow
+                Action:
+                  - 'ecs:ListServiceDeployments'
+                  - 'ecs:DescribeServiceDeployments'
                   - 'ecs:TagResource'
+                  - 'ecs:UntagResource'
                 Resource: '*'
 
               # Unrestricted PassRole would let this role register a task
