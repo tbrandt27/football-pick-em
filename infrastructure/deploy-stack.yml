@@ -289,10 +289,23 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: ReadJwtSecretForInjection
+              # The agent injects four secrets, not one: JWT_SECRET,
+              # SETTINGS_ENCRYPTION_KEY, ADMIN_EMAIL and ADMIN_PASSWORD.
+              #
+              # Scoped to the football-pickem/ prefix rather than four literal
+              # ARNs deliberately: a Secrets Manager ARN carries a random
+              # suffix that changes whenever a secret is recreated instead of
+              # updated in place, and pinning the literals means that silently
+              # revokes this grant and tasks fail to start with a bare
+              # ResourceInitializationError. The prefix covers rotation.
+              #
+              # This is the EXECUTION role, used only by the ECS agent to place
+              # values into the container environment. Application code reads
+              # secrets through the TASK role, which has its own grant.
+              - Sid: ReadApplicationSecretsForInjection
                 Effect: Allow
                 Action: 'secretsmanager:GetSecretValue'
-                Resource: !Ref JwtSecretArn
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:football-pickem/*'
 
   # Assumed by application code. This is what the DynamoDB providers and
   # secretsManager.js use at runtime. CI holds none of it.

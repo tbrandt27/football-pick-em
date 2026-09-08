@@ -34,8 +34,7 @@ COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/package*.json ./
 
 RUN mkdir -p /app/server/data /app/logs && \
-    chown -R node:node /app/server/data /app/logs && \
-    chmod +x scripts/start.sh
+    chown -R node:node /app/server/data /app/logs
 
 USER node
 
@@ -59,4 +58,19 @@ ENV BACKEND_PORT=3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["./scripts/start.sh"]
+# Run node directly rather than through scripts/start.sh.
+#
+# start.sh is a shell process-supervisor: it backgrounds node, restarts it up
+# to MAX_RESTARTS times, and polls /health itself. Under an orchestrator all of
+# that is redundant and actively harmful -- ECS restarts unhealthy tasks and
+# the ALB does the health checking, while the supervisor keeps the container
+# "running" through a crash loop so ECS never replaces it, and leaves the shell
+# as PID 1 instead of node.
+#
+# Everything start.sh set up is covered: NODE_ENV/PORT/FRONTEND_PORT/
+# BACKEND_PORT are ENV above, the data and log directories are created above,
+# and its SQLite init branch is dead in production, which uses DynamoDB.
+#
+# server/index.js:153-154 traps SIGTERM and SIGINT for graceful shutdown, so
+# node is safe as PID 1 and ECS task draining works.
+CMD ["node", "server/index.js"]
