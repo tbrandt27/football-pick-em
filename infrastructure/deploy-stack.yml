@@ -78,10 +78,42 @@ Parameters:
     MinValue: 1
     Description: 'Tagged images to keep before expiry'
 
+  ContainerInsights:
+    Type: String
+    Default: 'enabled'
+    AllowedValues: ['enabled', 'disabled', 'enhanced']
+    Description: >-
+      CloudWatch Container Insights. 'enhanced' adds per-task metrics at
+      noticeably higher CloudWatch cost; 'enabled' is the sensible default
+      for a single small service.
+
 Conditions:
   ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
 
 Resources:
+  # ---------------------------------------------------------------------
+  # ECS cluster
+  #
+  # aws-actions/amazon-ecs-deploy-express-service contains no CreateCluster
+  # call -- it fails with ClusterNotFoundException if the cluster is absent,
+  # and this account had no clusters at all, not even 'default'. Creating it
+  # here rather than as a workflow step keeps ecs:CreateCluster off the
+  # deploy role.
+  #
+  # Express Mode manages its own capacity, so no capacity providers or
+  # default strategy are declared.
+  # ---------------------------------------------------------------------
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ServiceName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: !Ref ContainerInsights
+      Tags:
+        - Key: Application
+          Value: FootballPickem
+
   # ---------------------------------------------------------------------
   # Container registry
   # ---------------------------------------------------------------------
@@ -359,6 +391,12 @@ Outputs:
     Value: !GetAtt EcsInfrastructureRole.Arn
     Export:
       Name: !Sub '${AWS::StackName}-EcsInfrastructureRoleArn'
+
+  EcsClusterName:
+    Description: 'cluster input for the deploy workflow'
+    Value: !Ref EcsCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsClusterName'
 
   OidcSubjectClaim:
     Description: 'The only OIDC subject permitted to assume the deploy role'

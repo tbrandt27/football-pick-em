@@ -13,6 +13,11 @@ The template derives them from `AWS::AccountId` and `AWS::Region` instead.
 App Runner had a single instance role. ECS splits the job, and conflating
 the parts is a privilege-escalation bug rather than a tidiness problem:
 
+The stack also creates the ECS **cluster**. The deploy action contains no
+`CreateCluster` call — it fails with `ClusterNotFoundException` — and this
+account had no clusters at all, not even `default`. Creating it in
+CloudFormation keeps `ecs:CreateCluster` off the deploy role.
+
 | Role | Assumed by | Purpose |
 |---|---|---|
 | `football-pickem-github-deploy` | GitHub Actions, via OIDC | push to ECR, update the service |
@@ -95,9 +100,16 @@ aws cloudformation deploy --template-file infrastructure/deploy-stack.yml --stac
 `CreateOidcProvider=false` if the account already has the GitHub provider —
 it is account-wide, so only one can exist.
 
-Verified against the account on 2026-09-07: no OIDC provider, no ECR
-repositories, and none of the four roles existed yet, so the defaults are
-correct for a first deploy.
+**Deployed 2026-09-07** as stack `football-pickem-deploy`
+(`UPDATE_COMPLETE`). Verified after execution: the OIDC subject resolved to
+`repo:tbrandt27/football-pick-em:environment:production` with `StringEquals`
+as the only operator, `iam:PassRole` pinned to the three role ARNs with no
+wildcard, ECR `IMMUTABLE` with both lifecycle rules applied, and the cluster
+`ACTIVE` with `containerInsights: enabled`.
+
+The deploy role cannot yet be assumed by anything: the `production`
+environment does not exist in the repository, so no GitHub token can carry
+that subject.
 
 ### Equivalent manual commands
 
