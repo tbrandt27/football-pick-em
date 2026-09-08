@@ -305,7 +305,7 @@ the answer in minutes.
 
 ### 2.2a Production GSI audit and the mixed-type `is_admin` bug **[done]**
 
-Audited against the live tables in `us-east-1` (account `137830278828`) on
+Audited against the live tables in the production account (`us-east-1`) on
 2026-09-07. This replaces the earlier template-based inference with the
 deployed state.
 

@@ -59,7 +59,7 @@ Parameters:
     Type: String
     Description: >-
       Full Secrets Manager ARN including the random suffix, e.g.
-      arn:aws:secretsmanager:us-east-1:137830278828:secret:football-pickem/jwt-secret-vkSzBv
+      arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:football-pickem/jwt-secret-<suffix>
       The suffix changes if the secret is deleted and recreated, so update
       the value in place when rotating.
     AllowedPattern: '^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$'

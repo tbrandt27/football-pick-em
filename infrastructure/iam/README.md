@@ -5,8 +5,14 @@
 > it is, which a template diff does not. Deploy the stack; do not apply
 > these by hand. If you change one, change the template too.
 
-The account is `137830278828` / `us-east-1`, hard-coded in the ARNs below.
-The template derives them from `AWS::AccountId` and `AWS::Region` instead.
+ARNs below use `<ACCOUNT_ID>` as a placeholder — substitute the production
+account before using any of them by hand. The template needs no substitution:
+it derives every ARN from `AWS::AccountId` and `AWS::Region`.
+
+Because of the placeholder these JSON documents will be **rejected** if you
+pass them straight to `aws iam`, which is intentional — the stack is
+authoritative, and an ARN that fails loudly beats one silently pointed at
+somebody else's account.
 
 ## Why four roles, not one
 
@@ -92,7 +98,7 @@ Deploy the stack; it creates the ECR repository, the OIDC provider, and all
 four roles.
 
 ```bash
-aws cloudformation deploy --template-file infrastructure/deploy-stack.yml --stack-name football-pickem-deploy --capabilities CAPABILITY_NAMED_IAM --parameter-overrides JwtSecretArn=arn:aws:secretsmanager:us-east-1:137830278828:secret:football-pickem/jwt-secret-vkSzBv
+aws cloudformation deploy --template-file infrastructure/deploy-stack.yml --stack-name football-pickem-deploy --capabilities CAPABILITY_NAMED_IAM --parameter-overrides JwtSecretArn=$(aws secretsmanager list-secrets --query "SecretList[?Name=='football-pickem/jwt-secret'].ARN" --output text)
 ```
 
 `CAPABILITY_NAMED_IAM` is required because the roles use fixed names that
@@ -165,10 +171,13 @@ Repository settings, none of which live in this file:
   branches limited to `main`. **The trust policy is inert without it** —
   no environment means no `environment:production` subject, so the role
   cannot be assumed at all.
-- Repository variable or secret `AWS_ACCOUNT_ID` = `137830278828`. It is
-  not a credential; it is a secret here only to keep it out of public
-  logs, and the account ID is already published in
-  `plans/2026-09-05-code-review.md:308`.
+- **Environment** secret `AWS_ACCOUNT_ID` (not a repository secret) on the
+  `production` environment, so only jobs declaring that environment can
+  read it and it inherits the approval gate. An account ID is an
+  identifier rather than a credential — it lives in `secrets` only so
+  GitHub masks it in this public repository's build logs. Expect
+  `***.dkr.ecr...` in place of the registry host in push output as a
+  result.
 - Branch protection on `main`: require a pull request and the `verify`
   check, and disallow force-pushes.
 - Actions → "Fork pull request workflows from outside collaborators" set

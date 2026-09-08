@@ -5,7 +5,7 @@
       "Sid": "InjectSecretsIntoContainer",
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
-      "Resource": "arn:aws:secretsmanager:us-east-1:137830278828:secret:football-pickem/jwt-secret-vkSzBv"
+      "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:football-pickem/jwt-secret-vkSzBv"
     }
   ]
 }

@@ -17,7 +17,7 @@
         "ecr:CompleteLayerUpload",
         "ecr:PutImage"
       ],
-      "Resource": "arn:aws:ecr:us-east-1:137830278828:repository/football-pickem"
+      "Resource": "arn:aws:ecr:us-east-1:<ACCOUNT_ID>:repository/football-pickem"
     },
     {
       "Sid": "DeployExpressService",
@@ -36,9 +36,9 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::137830278828:role/football-pickem-ecs-execution",
-        "arn:aws:iam::137830278828:role/football-pickem-ecs-task",
-        "arn:aws:iam::137830278828:role/football-pickem-ecs-infrastructure"
+        "arn:aws:iam::<ACCOUNT_ID>:role/football-pickem-ecs-execution",
+        "arn:aws:iam::<ACCOUNT_ID>:role/football-pickem-ecs-task",
+        "arn:aws:iam::<ACCOUNT_ID>:role/football-pickem-ecs-infrastructure"
       ],
       "Condition": {
         "StringEquals": {

@@ -15,15 +15,15 @@
         "dynamodb:BatchWriteItem"
       ],
       "Resource": [
-        "arn:aws:dynamodb:us-east-1:137830278828:table/football_pickem_*",
-        "arn:aws:dynamodb:us-east-1:137830278828:table/football_pickem_*/index/*"
+        "arn:aws:dynamodb:us-east-1:<ACCOUNT_ID>:table/football_pickem_*",
+        "arn:aws:dynamodb:us-east-1:<ACCOUNT_ID>:table/football_pickem_*/index/*"
       ]
     },
     {
       "Sid": "SettingsEncryptionAndSmtpReads",
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
-      "Resource": "arn:aws:secretsmanager:us-east-1:137830278828:secret:football-pickem/*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:football-pickem/*"
     }
   ]
 }
