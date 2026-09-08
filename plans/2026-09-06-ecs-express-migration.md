@@ -213,9 +213,57 @@ turns a rollback into an hour of split traffic. Check the current TTL at
 the provider, since it is not visible from AWS.
 
 Note the ECS Express service must serve the same hostname for CORS to keep
-working: `FRONTEND_URL` has to be `https://pickem.bisforbrandt.com`, and
-the ALB needs an ACM certificate for it. The infrastructure role's managed
-policy already grants the ACM permissions for this.
+working: `FRONTEND_URL` has to be `https://pickem.bisforbrandt.com`.
+
+### How Express Mode handles custom domains
+
+Confirmed against the AWS docs and the CLI on 2026-09-08.
+
+Express Mode terminates **HTTPS automatically on its own generated URL**,
+with an AWS-provided ACM certificate it manages. A custom domain is a
+different matter: **the Express Mode API has no domain or certificate
+parameter at all.** `aws ecs create-express-gateway-service` accepts only
+execution/infrastructure/task roles, primary container, network config,
+cpu/memory, scaling target, health-check path, tags and monitoring — and
+`aws-actions/amazon-ecs-deploy-express-service` exposes the same set. So the
+domain cannot be configured through the deploy workflow.
+
+It is done **outside** Express Mode, on the ALB it created:
+
+1. Cluster → service → **Resources** tab → the listener rule → Edit.
+2. Copy the existing Host header value (the Express application URL), then
+   **remove the rule** — there can only be one condition of each type.
+3. Re-add a Host header condition with the Express URL, then
+   **Add OR condition value** and enter `pickem.bisforbrandt.com`. Missing
+   this step is how you end up serving one hostname and 404-ing the other.
+4. On the ALB listener's **Certificates** tab, add an ACM certificate for
+   the custom domain. It must live in **us-east-1**, the ALB's region.
+5. Point DNS at the ALB.
+
+**DNS: we have no Route 53 hosted zone.** The AWS procedure assumes one and
+uses an Alias record. The docs cover our case explicitly: *"If your domain
+is hosted elsewhere, you will need a CNAME to point to the Application Load
+Balancer DNS record."* So cutover is a CNAME at the external provider, and
+an Alias-record apex is not available to us. Certificate validation will
+also need a CNAME added there.
+
+### The risk this introduces
+
+Express Mode's responsibility model is explicit that it *"does not validate
+whether resource modifications using direct APIs will conflict"* and *"will
+not overwrite changes unless requested as part of an Express Mode update"*.
+The docs give a concrete conflict example: passing a new log group reverts a
+manually changed `logDriver`.
+
+Our `deploy.yml` calls the Express Mode update on **every deploy**, and the
+custom domain lives in a hand-edited listener rule. Whether a routine
+update re-asserts that rule and drops the OR condition is not documented
+either way. **Test it during validation**: add the domain, run a second
+`workflow_dispatch`, and check the rule still carries both hostnames. If it
+does not, the domain has to move into whatever declares the service —
+`AWS::ECS::ExpressGatewayService` exists as a CloudFormation resource, which
+would let `deploy-stack.yml` own the service and leave CI to build and push
+the image only.
 
 ## Order
 

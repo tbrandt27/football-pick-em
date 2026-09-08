@@ -128,14 +128,23 @@ jobs:
           # serve — leaving the default would fail every health check.
           health-check-path: /health
 
+          # Mirrors the live App Runner service. FRONTEND_URL drives the CORS
+          # origin at server/index.js:185, which otherwise defaults to
+          # http://localhost:4321 and blocks every browser request. Both URLs
+          # must be the custom domain, not the generated ALB hostname.
+          #
+          # LOGOS_PATH/APP_ROOT use /app here, not App Runner's
+          # /var/app/current -- the Dockerfile's WORKDIR is /app.
           environment-variables: |
             [
               {"name":"NODE_ENV","value":"production"},
               {"name":"DATABASE_TYPE","value":"auto"},
               {"name":"DYNAMODB_TABLE_PREFIX","value":"football_pickem_"},
               {"name":"AWS_REGION","value":"us-east-1"},
-              {"name":"LOGOS_PATH","value":"/var/app/current/public/logos"},
-              {"name":"APP_ROOT","value":"/var/app/current"}
+              {"name":"LOGOS_PATH","value":"/app/public/logos"},
+              {"name":"APP_ROOT","value":"/app"},
+              {"name":"CLIENT_URL","value":"https://pickem.bisforbrandt.com"},
+              {"name":"FRONTEND_URL","value":"https://pickem.bisforbrandt.com"}
             ]
 
           # Injected by the ECS agent using the EXECUTION role, so the
@@ -143,15 +152,43 @@ jobs:
           # the workflow log.
           # The -vkSzBv tail is Secrets Manager's random suffix and is part
           # of the ARN; ECS requires the full ARN here, not the name.
+          # All four the App Runner service injects. Without
+          # SETTINGS_ENCRYPTION_KEY configService resolves no fallback under
+          # NODE_ENV=production, enters degraded mode and mints an ephemeral
+          # JWT_SECRET -- every session invalidated on every deploy.
+          #
+          # All four ARNs verified against list-secrets on 2026-09-08. The
+          # trailing 6 characters are Secrets Manager's random suffix, which
+          # is part of the ARN -- ECS requires the full ARN, not the name, and
+          # a task started against a wrong one dies with
+          # ResourceInitializationError before the container ever runs.
+          #
+          # The suffix changes if a secret is deleted and recreated rather
+          # than updated in place, so rotate values with put-secret-value.
+          # Re-check with:
+          #
+          #   aws secretsmanager list-secrets \
+          #     --query "SecretList[?starts_with(Name,'football-pickem/')].[Name,ARN]" \
+          #     --output text
           secrets: |
             [
-              {"name":"JWT_SECRET","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/jwt-secret-vkSzBv"}
+              {"name":"JWT_SECRET","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/jwt-secret-vkSzBv"},
+              {"name":"SETTINGS_ENCRYPTION_KEY","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/settings-encryption-key-9nFuPW"},
+              {"name":"ADMIN_EMAIL","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/admin-email-EdWm93"},
+              {"name":"ADMIN_PASSWORD","valueFrom":"arn:aws:secretsmanager:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:football-pickem/admin-password-dTdBlC"}
             ]
 
+          # Pinned to exactly one task. server/services/scheduler.js runs
+          # node-cron IN PROCESS, so every task runs its own scheduler: ESPN
+          # score syncs and pick calculations would execute concurrently, and
+          # pick-reminder emails would go out once per task -- pickReminders.js
+          # dedupes through an in-process Map, which does not span tasks.
+          #
+          # To scale past one, move the scheduler to an EventBridge rule
+          # hitting an authenticated endpoint, or to its own single-task
+          # service. Until then this must stay 1/1.
           min-task-count: "1"
-          max-task-count: "4"
-          auto-scaling-metric: AVERAGE_CPU
-          auto-scaling-target-value: "60"
+          max-task-count: "1"
 
       - name: Summarise
         run: |
