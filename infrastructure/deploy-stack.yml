@@ -278,9 +278,26 @@ Resources:
                   - !GetAtt EcsExecutionRole.Arn
                   - !GetAtt EcsTaskRole.Arn
                   - !GetAtt EcsInfrastructureRole.Arn
+                # StringEqualsIfExists, not StringEquals.
+                #
+                # ecs:CreateExpressGatewayService does not populate
+                # iam:PassedToService, and a StringEquals on an absent key
+                # evaluates false, so the strict form failed closed with
+                # "not authorized to perform: iam:PassRole". IfExists allows
+                # the call when the key is missing while still constraining it
+                # when present. Both principals are listed because the
+                # execution and task roles are passed to ecs-tasks while the
+                # infrastructure role is passed to ecs.
+                #
+                # The primary control is the Resource pin above: these three
+                # role ARNs and nothing else. Their own trust policies also
+                # only admit ecs-tasks/ecs with a matching aws:SourceAccount,
+                # so passing them to anything else would be inert.
                 Condition:
-                  StringEquals:
-                    'iam:PassedToService': 'ecs-tasks.amazonaws.com'
+                  StringEqualsIfExists:
+                    'iam:PassedToService':
+                      - 'ecs-tasks.amazonaws.com'
+                      - 'ecs.amazonaws.com'
 
   # ---------------------------------------------------------------------
   # ECS runtime roles. App Runner had one instance role; ECS splits the job
