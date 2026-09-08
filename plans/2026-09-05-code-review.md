@@ -255,6 +255,32 @@ more to scan, mid-scan error propagation, and the ceiling warning.
 > a later note reversed that. The reversal was correct — current-season
 > lookup was reworked to not need it. Do not add it.
 
+**The template audit above was wrong about which file was authoritative**
+(corrected 2026-09-08). It reasoned about GSI *counts* without checking
+what was deployed. In fact:
+
+- The live stack `football-pickem-dynamodb` was created from
+  `dynamodb-tables-simple.yml` — the template this audit deleted. The
+  deployed template was byte-identical to it apart from a trailing newline.
+- `dynamodb-tables-optimized.yml`, marked "kept — authoritative", had never
+  been deployed and never was. It declared 36 GSIs against the 18 that
+  exist and the 12 the code queries.
+- `dynamodb-stack-template.yml`, marked "kept, repointed", had never been
+  deployed either. None of its three resources existed:
+  `football_pickem_application-role-prod` returned `NoSuchEntity` and both
+  SSM parameters returned `ParameterNotFound`. App Runner used a
+  hand-created `apprunner_footballpickem` role instead.
+
+So deleting the two "incomplete" templates removed the only file that
+described production, and for two days no committed file did. Both
+remaining templates were then deleted too and replaced with
+`infrastructure/dynamodb-tables.yml`, reconciled against live state and
+verified table-by-table against `describe-table`.
+
+The lesson generalises: GSI counts in a template say nothing about what is
+deployed. Compare against `get-template` and `describe-table`, not between
+files.
+
 
 
 **This section was wrong.** It claimed `getUserByEmail` scans the users
@@ -314,8 +340,9 @@ deployed state.
 
 Two indexes were deployed that no code path queries — **both since deleted**
 (2026-09-07), along with their definitions in
-`infrastructure/dynamodb-tables-optimized.yml` and
-`scripts/dev/setup-localstack.js` so a redeploy cannot resurrect them:
+`infrastructure/dynamodb-tables.yml` (then named
+`dynamodb-tables-optimized.yml`) and `scripts/dev/setup-localstack.js` so a
+redeploy cannot resurrect them:
 
 - `is_current-index` on `seasons` — declared its key as `S` while the app
   writes `is_current` as a native `BOOL`, so it indexed **0 of 1** items. It

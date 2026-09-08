@@ -120,23 +120,31 @@ Anything added to one must be added to the other.
 
 SQLite schema lives in `server/providers/SQLiteProvider.js`; the DynamoDB
 equivalents, including their GSIs, are in
-`infrastructure/dynamodb-tables-optimized.yml`.
+`infrastructure/dynamodb-tables.yml`.
 
 `infrastructure/` holds two templates:
 
 | Template | Purpose |
 |---|---|
-| `dynamodb-tables-optimized.yml` | The 10 tables and every GSI the code queries |
-| `dynamodb-stack-template.yml` | Wraps the above, and adds the application IAM role for DynamoDB plus SSM parameters publishing the database config and role ARN |
+| `dynamodb-tables.yml` | The 10 tables and their 18 GSIs — matches the deployed stack `football-pickem-dynamodb` exactly |
+| `deploy-stack.yml` | ECR repository, ECS cluster, GitHub OIDC deploy role and the three ECS roles |
 
-Deploy the stack template to get the roles and parameters as well, or the
-tables template alone if you manage IAM separately.
+`dynamodb-tables.yml` is authoritative: it must stay byte-equivalent to
+what is deployed. Check with:
 
-> Two earlier table templates (`dynamodb-tables.yml`,
-> `dynamodb-tables-simple.yml`) were removed: each omitted GSIs the code
-> queries, and a missing index fails quietly — the app keeps working and
-> silently falls back to full table scans. Recover them from git history if
-> you ever need the comparison.
+```bash
+aws cloudformation detect-stack-drift --stack-name football-pickem-dynamodb
+```
+
+> Four earlier table templates were removed. `dynamodb-tables.yml` (the
+> original) and `dynamodb-tables-simple.yml` each omitted GSIs the code
+> queries; `dynamodb-tables-optimized.yml` had the opposite problem,
+> declaring 36 GSIs against the 18 that exist, and was never deployed;
+> `dynamodb-stack-template.yml` wrapped it, was never deployed either, and
+> published an App Runner SSM parameter that ECS Express makes obsolete.
+> Production had in fact been built from the *simple* template, so for a
+> while no committed file described the live stack. Recover any of them
+> from git history if you need the comparison.
 
 ## Configuration
 
@@ -269,7 +277,7 @@ Deployment checklist:
 - [ ] `JWT_SECRET` and `SETTINGS_ENCRYPTION_KEY` set — as Secrets Manager ARNs, not literals
 - [ ] `DATABASE_TYPE` correct for the target (`auto` or `dynamodb`)
 - [ ] `AWS_REGION` and `DYNAMODB_TABLE_PREFIX` match the deployed tables
-- [ ] DynamoDB tables and **their GSIs** created from `infrastructure/dynamodb-tables-optimized.yml` (the only complete template)
+- [ ] DynamoDB tables and **their GSIs** created from `infrastructure/dynamodb-tables.yml`
 - [ ] Role has DynamoDB access — on ECS this is the **task** role, not the execution role
 - [ ] Outbound internet available, or the ESPN sync silently stops
 - [ ] Health check pointed at `/health`
@@ -279,16 +287,31 @@ Deployment checklist:
 DynamoDB tables:
 
 ```bash
-aws cloudformation deploy \
-  --template-file infrastructure/dynamodb-tables-optimized.yml \
-  --stack-name football-pickem-tables \
-  --parameter-overrides TablePrefix=football_pickem_
+aws cloudformation deploy --template-file infrastructure/dynamodb-tables.yml --stack-name football-pickem-dynamodb --parameter-overrides TablePrefix=football_pickem_
 ```
 
 GSIs matter — the code falls back to full table scans when an index is
-missing, which is correct but slow and expensive. An index can be added
-later from the DynamoDB console with no downtime and no data loss; it takes
-a couple of minutes to become `Active`.
+missing, which is correct but slow and expensive.
+
+Add an index by editing this template, not from the console. An index
+added out of band cannot later be adopted by a plain stack update:
+CloudFormation compares template against template rather than against
+reality, so it issues a create for an index that already exists and the
+update fails with *"Attempting to create an index which already exists"* —
+after presenting a change set that looks entirely safe. Recovering from
+that takes three stack operations, done once on 2026-09-08:
+
+1. Remove the affected tables from the template. Their `DeletionPolicy:
+   Retain` keeps the tables; they simply become unmanaged.
+2. Re-add them with `--change-set-type IMPORT` and a
+   `--resources-to-import` manifest. Import adopts live state without
+   calling `UpdateTable`, so indexes are never touched. The import
+   template must carry the *same* `Outputs` as the current stack — import
+   refuses to add any.
+3. A normal update to restore the `Outputs` removed in step 1.
+
+Note also that DynamoDB permits only one index create-or-delete per table
+per stack update, so batching index changes does not work either.
 
 ### Current state: AWS App Runner
 
