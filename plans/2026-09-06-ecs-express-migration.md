@@ -269,13 +269,60 @@ the image only.
 
 1. ~~Add ECR repo + GitHub Actions build/push.~~ **done** (2026-09-08)
 2. ~~Create the IAM roles.~~ **done** — four, not three, plus the cluster
-3. **Wire the four missing secrets and env vars** (§5). Blocks everything
-   below; until it is done the `push:` trigger stays commented out.
-4. Switch `CMD` to run Node directly; drop `start.sh`.
+3. ~~Wire the missing secrets and env vars.~~ **done** — all four secrets
+   exist and their ARNs are verified live
+4. ~~Switch `CMD` to run Node directly; drop `start.sh`.~~ **done**
 5. Stand up Express Mode alongside App Runner via `workflow_dispatch`;
-   validate on its own URL.
-6. Re-enable the `push:` trigger.
-7. Cut over; delete the App Runner service.
+   validate on its own URL. **Runs with `DISABLE_SCHEDULER=true`** — see
+   below.
+6. Cut over: repoint DNS **and remove `DISABLE_SCHEDULER` in the same
+   change**.
+7. Re-enable the `push:` trigger.
+8. Delete the App Runner service — not before ECS has served real traffic
+   for a few days. It is the rollback.
+
+### Cutover checklist
+
+The ECS service reads the **same DynamoDB tables** as App Runner — same
+`football_pickem_` prefix, and nothing in the codebase creates tables. That
+is what makes cutover a DNS change rather than a migration, and also what
+makes the two services interfere while both run.
+
+- [x] **ACM cert for `pickem.bisforbrandt.com` in us-east-1** — done
+      2026-09-08. A *second* cert, attached as a non-default SNI cert; the
+      `.on.aws` cert Express Mode manages stays default. Its own cert covers
+      only that hostname with 0 additional names, and being AWS-managed it
+      cannot be given SANs.
+- [x] **Custom domain added to the listener rule as an OR condition** —
+      done 2026-09-08 on rule `ff3ff6606692e880`, modifying conditions only
+      so the target-group forward was preserved (verified by diffing the
+      rule before and after).
+- [x] **CNAME repointed** — done. Verified against ALB IPs directly rather
+      than through a resolver: both hostnames return 200 on `/`,
+      `/api/teams` and `/health`.
+- [ ] Dispatch a second deploy and confirm the listener rule still carries
+      both hostnames — Express Mode may re-assert it. **Untested.** If it
+      reverts, the domain silently 404s and the service definition needs to
+      move into CloudFormation via `AWS::ECS::ExpressGatewayService`.
+- [ ] Pause App Runner (`pause-service`, not `delete-service` — delete
+      destroys the service config, custom-domain association and GitHub
+      connection binding, which is the rollback)
+- [ ] **Remove `DISABLE_SCHEDULER` from `deploy.yml` and redeploy.** Verify
+      at `/api/health/detailed` that the scheduler check reads `healthy`,
+      not `disabled`
+- [ ] Confirm a score sync actually runs (`*/15`) and that reminder emails
+      resume
+- [ ] Leave App Runner running as the rollback
+
+Sequencing note: `DISABLE_SCHEDULER=true` stays until App Runner is paused,
+because both services schedule against the same tables while both run.
+Pausing App Runner and removing the flag belong in the same step.
+
+Forgetting `DISABLE_SCHEDULER` is the quiet failure to watch for: the app
+serves fine, but scores stop updating and no reminder emails go out, with
+nothing erroring. `server/routes/health.js` reports `disabled` distinctly
+from `stopped` for exactly this reason, and
+`test/server/schedulerKillSwitch.test.js` pins the guard's polarity.
 
 > **Not a blocker for the security fix.** App Runner deploys from `main`
 > with `AutoDeploymentsEnabled: false`, so merging `develop` to `main`

@@ -208,9 +208,17 @@ router.get('/detailed', async (req, res) => {
     // Scheduler health check
     try {
       const schedulerStatus = await scheduler.getStatus();
+      // Distinguish "deliberately off" from "should be running but isn't".
+      // A disabled scheduler fails silently -- scores stop updating and no
+      // reminder emails go out, with nothing erroring -- so it has to be
+      // visible here rather than inferable only from a startup log line.
+      const deliberatelyDisabled = process.env.DISABLE_SCHEDULER === 'true';
       checks.push({
         name: 'scheduler',
-        status: schedulerStatus.isRunning ? 'healthy' : 'stopped',
+        status: deliberatelyDisabled
+          ? 'disabled'
+          : (schedulerStatus.isRunning ? 'healthy' : 'stopped'),
+        disabledByConfig: deliberatelyDisabled,
         isRunning: schedulerStatus.isRunning,
         isGameDay: schedulerStatus.isGameDay,
         isActiveGameTime: schedulerStatus.isActiveGameTime,
