@@ -410,9 +410,30 @@ const startServer = async () => {
       console.log(`🚀 Server running on port ${finalPort}`);
       console.log(`🌐 Access your app at: http://localhost:${finalPort}`);
 
-      // Start automatic scheduler
-      console.log("🕐 Starting automatic scheduler...");
-      scheduler.start();
+      // Start automatic scheduler, unless explicitly disabled.
+      //
+      // The scheduler runs node-cron IN PROCESS, so every running instance
+      // runs every job. That is fine on a single instance and wrong the
+      // moment there are two -- score syncs double up, pick calculations
+      // recompute concurrently, and pick reminders send one email per
+      // instance, because pickReminders.js dedupes through an in-process Map
+      // that does not span processes.
+      //
+      // Two situations need this off:
+      //   1. Running ECS Express alongside App Runner during migration. Both
+      //      read the same DynamoDB tables, so both would schedule.
+      //   2. Scaling past one task, until the scheduler moves to EventBridge
+      //      or its own single-task service.
+      //
+      // MUST be re-enabled at cutover. A silently unscheduled production is a
+      // worse failure than duplicates: scores stop updating and no reminder
+      // emails go out, with nothing erroring to tell you.
+      if (process.env.DISABLE_SCHEDULER === "true") {
+        console.warn("⏸️  Scheduler DISABLED via DISABLE_SCHEDULER=true — no score syncs, pick calculations or reminder emails will run in this instance.");
+      } else {
+        console.log("🕐 Starting automatic scheduler...");
+        scheduler.start();
+      }
       
       // Start heartbeat in production to detect silent failures
       if (process.env.NODE_ENV === 'production') {

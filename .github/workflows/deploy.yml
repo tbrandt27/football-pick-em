@@ -128,6 +128,23 @@ jobs:
           # serve — leaving the default would fail every health check.
           health-check-path: /health
 
+          # DISABLE_SCHEDULER=true is TEMPORARY -- REMOVE AT CUTOVER.
+          #
+          # This service reads the same DynamoDB tables as the live App Runner
+          # service, and the scheduler runs in process, so leaving it enabled
+          # means two schedulers over one dataset: doubled ESPN syncs, pick
+          # calculations recomputed concurrently, and up to two reminder
+          # emails per user, because pickReminders.js dedupes through a Map
+          # that is per-process.
+          #
+          # Drop it in the same change that repoints DNS. Forgetting it means
+          # scores silently stop updating and no reminders go out, with
+          # nothing erroring. Confirm either way at /api/health/detailed: the
+          # scheduler check reports "disabled" rather than "healthy".
+          #
+          # Note the JSON below is a string input -- it cannot carry comments,
+          # which is why this sits out here.
+          #
           # Mirrors the live App Runner service. FRONTEND_URL drives the CORS
           # origin at server/index.js:185, which otherwise defaults to
           # http://localhost:4321 and blocks every browser request. Both URLs
@@ -144,7 +161,8 @@ jobs:
               {"name":"LOGOS_PATH","value":"/app/public/logos"},
               {"name":"APP_ROOT","value":"/app"},
               {"name":"CLIENT_URL","value":"https://pickem.bisforbrandt.com"},
-              {"name":"FRONTEND_URL","value":"https://pickem.bisforbrandt.com"}
+              {"name":"FRONTEND_URL","value":"https://pickem.bisforbrandt.com"},
+              {"name":"DISABLE_SCHEDULER","value":"true"}
             ]
 
           # Injected by the ECS agent using the EXECUTION role, so the
